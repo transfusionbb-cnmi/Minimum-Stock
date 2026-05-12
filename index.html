@@ -325,13 +325,54 @@
 </head>
 
 <body>
-  <main class="app-shell">
-    <div id="topDashboard" class="mb-4"></div>
-    <div class="hero-card">
-      <div class="mb-4">
-        <h1 class="fw-bold mb-2">Minimum Stock Blood Bank</h1>
+  <button class="mobile-menu-btn" onclick="toggleSidebar()">☰ เมนู</button>
+<div id="sideOverlay" class="side-overlay" onclick="toggleSidebar(false)"></div>
+
+<div class="app-layout">
+  <aside id="sideMenu" class="side-menu">
+    <div class="side-title">Blood Stock</div>
+
+    <button class="side-btn active" onclick="showDashboardPage('minimum', this)">
+      📊 Minimum Stock
+    </button>
+
+    <button class="side-btn" onclick="showDashboardPage('expiry', this)">
+      ⏳ Expiry Risk
+    </button>
+
+    <button class="side-btn" onclick="showDashboardPage('mobile', this)">
+      🚌 Mobile Unit Planning
+    </button>
+  </aside>
+
+  <main>
+    <section id="page-minimum" class="dashboard-page active">
+      <div id="topDashboard" class="mb-4"></div>
+    </section>
+
+    <section id="page-expiry" class="dashboard-page">
+      <div class="hero-card">
+        <h1 class="fw-bold mb-2">Expiry Risk Dashboard</h1>
         <div class="small-muted">
-          อัปโหลดไฟล์ Excel เพื่อคำนวณ Minimum Stock จากรายการ Released
+          ใช้ดูเลือดที่ใกล้หมดอายุ และรายการที่ควรเร่งจัดการ
+        </div>
+      </div>
+    </section>
+
+    <section id="page-mobile" class="dashboard-page">
+      <div class="hero-card">
+        <h1 class="fw-bold mb-2">Mobile Unit Planning Dashboard</h1>
+        <div class="small-muted">
+          ใช้ประเมินว่าควรออกหน่วยไหม และควรเน้น product / blood group ไหน
+        </div>
+      </div>
+    </section>
+
+    <div class="hero-card mt-4">
+      <div class="mb-4">
+        <h1 class="fw-bold mb-2">อัปโหลดไฟล์ใหม่</h1>
+        <div class="small-muted">
+          อัปโหลดไฟล์ Excel เพื่อคำนวณ Minimum Stock รอบใหม่
         </div>
       </div>
 
@@ -353,15 +394,19 @@
       </button>
 
       <div id="statusBox" class="status-box"></div>
-      <div id="loadingBox" class="status-box" style="display:none;">
-  <div class="fw-bold mb-1">⏳ กำลังประมวลผลไฟล์ใหญ่</div>
-  <div class="small-muted">ระบบกำลังอ่าน Excel, แปลงวันที่ และคำนวณ Minimum Stock กรุณารอสักครู่</div>
-  <div class="progress mt-3" style="height: 10px;">
-    <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%;"></div>
-  </div>
-</div>
 
-<div id="dashboard" class="mt-4" style="display:none;"></div>
+      <div id="loadingBox" class="status-box" style="display:none;">
+        <div class="fw-bold mb-1">⏳ กำลังประมวลผลไฟล์ใหญ่</div>
+        <div class="small-muted">ระบบกำลังอ่าน Excel, แปลงวันที่ และคำนวณ Minimum Stock กรุณารอสักครู่</div>
+        <div class="progress mt-3" style="height: 10px;">
+          <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%;"></div>
+        </div>
+      </div>
+
+      <div id="dashboard" class="mt-4" style="display:none;"></div>
+    </div>
+  </main>
+</div>
 
 <div id="modalOverlay" class="modal-overlay">
   <div class="nice-modal">
@@ -371,9 +416,6 @@
     <button class="btn btn-main w-100" onclick="closeModal()">รับทราบ</button>
   </div>
 </div>
-      
-    </div>
-  </main>
 
   <script>
     const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzOcuADXBhegKJzgNODfyX2MfafMJmQ0ZP1k0Q0AxeeI5FAj1_716evZDFOCvHn9iIw/exec";
