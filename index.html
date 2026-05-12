@@ -139,6 +139,73 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+    .priority-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.priority-card {
+  background: white;
+  border-radius: 22px;
+  padding: 18px;
+  border: 1px solid #d8ecff;
+}
+
+.priority-card.critical {
+  border-color: #ffc9c9;
+  background: #fff6f6;
+}
+
+.priority-card.overstock {
+  border-color: #e3d2ff;
+  background: #fbf8ff;
+}
+
+.tab-scroll {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 2px 14px;
+}
+
+.tab-btn {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-weight: 800;
+  background: white;
+  color: #31506f;
+  box-shadow: 0 8px 20px rgba(30, 90, 150, 0.08);
+  white-space: nowrap;
+}
+
+.tab-btn.active {
+  background: linear-gradient(135deg, #1887d9, #43b0f1);
+  color: white;
+}
+
+.action-pill {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-weight: 800;
+  font-size: 13px;
+  display: inline-block;
+}
+
+.alert-critical { background:#ffe1e1; color:#b42323; }
+.alert-warning { background:#fff4d6; color:#9a6700; }
+.alert-watch { background:#eaf6ff; color:#0969a8; }
+.alert-normal { background:#e8fff3; color:#087443; }
+.alert-overstock { background:#f1e8ff; color:#6b2bbf; }
+
+@media (max-width: 768px) {
+  .priority-grid {
+    grid-template-columns: 1fr;
+  }
+}
     
   </style>
 </head>
@@ -312,72 +379,85 @@
       statusBox.textContent = message;
     }
 
-    function renderDashboard(data) {
-  const results = data.results || [];
+    let currentDashboardData = null;
+let currentTab = "LPRC / LDPRC";
 
+function renderDashboard(data) {
+  currentDashboardData = data;
+
+  const results = data.results || [];
   const totalMin = results.reduce((sum, r) => sum + Number(r.minimumStock || 0), 0);
   const totalUsed = results.reduce((sum, r) => sum + Number(r.totalUsed || 0), 0);
-  const topItem = [...results].sort((a, b) => Number(b.minimumStock) - Number(a.minimumStock))[0];
+  const totalNet = results.reduce((sum, r) => sum + Number(r.netAvailable || 0), 0);
 
-  dashboard.style.display = "none";
+  const criticalItems = results.filter(r =>
+    String(r.alertLevel || "").toLowerCase() === "critical" ||
+    String(r.alertLevel || "").toLowerCase() === "warning"
+  );
+
+  const overstockItems = results.filter(r =>
+    String(r.alertLevel || "").toLowerCase() === "overstock"
+  );
+
   const topDashboard = document.getElementById("topDashboard");
 
   topDashboard.innerHTML = `
-    <div class="summary-grid mb-4">
-      <div class="summary-card">
-        <div class="small-muted">ช่วงวันที่</div>
-        <div class="fw-bold">${data.startDate || "-"} ถึง ${data.endDate || "-"}</div>
+    <div class="mb-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+        <div>
+          <h1 class="fw-bold mb-1">Minimum Stock Dashboard</h1>
+          <div class="small-muted">
+            ข้อมูลล่าสุดจากไฟล์: <b>${data.fileName || "-"}</b><br>
+            อัปเดตล่าสุด: <b>${formatDisplayDateTime(data.calculatedAt) || "-"}</b>
+          </div>
+        </div>
+        <button class="btn btn-main" onclick="scrollToUpload()">อัปโหลดไฟล์ใหม่</button>
       </div>
-      <div class="summary-card">
-        <div class="small-muted">Released</div>
-        <div class="fs-3 fw-bold">${data.releasedRows || 0}</div>
-      </div>
-      <div class="summary-card">
-        <div class="small-muted">Total Used</div>
-        <div class="fs-3 fw-bold">${totalUsed}</div>
-      </div>
-      <div class="summary-card">
-        <div class="small-muted">Minimum Stock รวม</div>
-        <div class="fs-3 fw-bold">${totalMin}</div>
-      </div>
-    </div>
 
-    <div class="summary-card mb-4">
-      <div class="small-muted">รายการที่ต้องมี stock สูงสุด</div>
-      <div class="fw-bold">
-        ${topItem ? `${topItem.type} ${topItem.bloodGroup} = ${topItem.minimumStock}` : "-"}
+      <div class="summary-grid mb-4">
+        <div class="summary-card">
+          <div class="small-muted">ช่วงวันที่</div>
+          <div class="fw-bold">${data.startDate || "-"} ถึง ${data.endDate || "-"}</div>
+        </div>
+        <div class="summary-card">
+          <div class="small-muted">Total Used</div>
+          <div class="fs-3 fw-bold">${totalUsed}</div>
+        </div>
+        <div class="summary-card">
+          <div class="small-muted">Net Available</div>
+          <div class="fs-3 fw-bold">${totalNet}</div>
+        </div>
+        <div class="summary-card">
+          <div class="small-muted">Minimum Stock รวม</div>
+          <div class="fs-3 fw-bold">${totalMin}</div>
+        </div>
       </div>
-    </div>
 
-    <div class="result-table table-responsive">
-      <table class="table table-hover align-middle mb-0">
-        <thead>
-          <tr>
-            <th>Type</th>
-            <th>Blood Group</th>
-            <th class="text-end">Total Used</th>
-            <th class="text-end">Max/Day</th>
-            <th class="text-end">Avg/Day</th>
-            <th class="text-end">Minimum Stock</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${results.map(r => `
-            <tr>
-              <td>
-                <span class="badge-type ${getTypeClass(r.type)}">${r.type}</span>
-              </td>
-              <td class="fw-bold">${r.bloodGroup}</td>
-              <td class="text-end">${r.totalUsed}</td>
-              <td class="text-end">${r.maxDay}</td>
-              <td class="text-end">${r.avgDay}</td>
-              <td class="text-end fw-bold">${r.minimumStock}</td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
+      <div class="priority-grid">
+        <div class="priority-card critical">
+          <h5 class="fw-bold mb-2">⚠️ ต้องจัดการก่อน</h5>
+          ${renderPriorityList(criticalItems, "ไม่มีรายการต่ำกว่า Minimum")}
+        </div>
+
+        <div class="priority-card overstock">
+          <h5 class="fw-bold mb-2">📦 Stock สูงมาก</h5>
+          ${renderPriorityList(overstockItems, "ไม่มีรายการสูงเกิน")}
+        </div>
+      </div>
+
+      <div class="tab-scroll">
+        ${["LPRC / LDPRC", "FFP", "LDPPC", "Cryo", "SDP"].map(type => `
+          <button class="tab-btn ${type === currentTab ? "active" : ""}" onclick="changeTab('${type}')">
+            ${type}
+          </button>
+        `).join("")}
+      </div>
+
+      <div id="tabContent"></div>
     </div>
   `;
+
+  renderTabContent();
 }
 
 function getTypeClass(type) {
@@ -441,6 +521,105 @@ function closeModal() {
       </div>
     `;
   }
+}
+
+    function changeTab(type) {
+  currentTab = type;
+  renderDashboard(currentDashboardData);
+}
+
+function renderTabContent() {
+  const results = currentDashboardData?.results || [];
+  const filtered = results.filter(r => r.type === currentTab);
+
+  const tabContent = document.getElementById("tabContent");
+
+  tabContent.innerHTML = `
+    <div class="result-table table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Blood Group</th>
+            <th class="text-end">Minimum</th>
+            <th class="text-end">Available</th>
+            <th class="text-end">Pending</th>
+            <th class="text-end">Ready</th>
+            <th class="text-end">Net</th>
+            <th class="text-end">Gap</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${filtered.map(r => `
+            <tr>
+              <td class="fw-bold">${r.bloodGroup}</td>
+              <td class="text-end fw-bold">${r.minimumStock}</td>
+              <td class="text-end">${r.available ?? 0}</td>
+              <td class="text-end">${r.pendingScreening ?? 0}</td>
+              <td class="text-end">${r.readyToIssue ?? 0}</td>
+              <td class="text-end fw-bold">${r.netAvailable ?? 0}</td>
+              <td class="text-end fw-bold">${r.gap ?? 0}</td>
+              <td>
+                <span class="action-pill ${getAlertClass(r.alertLevel)}">
+                  ${r.suggestedAction || r.suggestion || "-"}
+                </span>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderPriorityList(items, emptyText) {
+  if (!items || items.length === 0) {
+    return `<div class="small-muted">${emptyText}</div>`;
+  }
+
+  return `
+    <div class="d-grid gap-2">
+      ${items.map(r => `
+        <div>
+          <b>${r.type} ${r.bloodGroup}</b>
+          <span class="small-muted">Gap ${r.gap}</span><br>
+          <span class="small-muted">${r.suggestedAction || r.suggestion}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function getAlertClass(level) {
+  const l = String(level || "").toLowerCase();
+
+  if (l === "critical") return "alert-critical";
+  if (l === "warning") return "alert-warning";
+  if (l === "watch") return "alert-watch";
+  if (l === "overstock") return "alert-overstock";
+  return "alert-normal";
+}
+
+function scrollToUpload() {
+  document.querySelector(".hero-card:last-of-type")?.scrollIntoView({
+    behavior: "smooth",
+    block: "start"
+  });
+}
+
+function formatDisplayDateTime(value) {
+  if (!value) return "";
+
+  const d = new Date(value);
+  if (isNaN(d)) return value;
+
+  return d.toLocaleString("th-TH", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
     
   </script>
