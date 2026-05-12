@@ -796,97 +796,33 @@ function formatDisplayDateTime(value) {
   });
 }
 
-  <button class="mobile-menu-btn" onclick="toggleSidebar()">☰ เมนู</button>
-<div id="sideOverlay" class="side-overlay" onclick="toggleSidebar(false)"></div>
+    function showDashboardPage(page, btn) {
+  document.querySelectorAll(".dashboard-page").forEach(el => {
+    el.classList.remove("active");
+  });
 
-<div class="app-layout">
-  <aside id="sideMenu" class="side-menu">
-    <div class="side-title">Blood Stock</div>
+  document.getElementById("page-" + page).classList.add("active");
 
-    <button class="side-btn active" onclick="showDashboardPage('minimum', this)">
-      📊 Minimum Stock
-    </button>
+  document.querySelectorAll(".side-btn").forEach(el => {
+    el.classList.remove("active");
+  });
 
-    <button class="side-btn" onclick="showDashboardPage('expiry', this)">
-      ⏳ Expiry Risk
-    </button>
+  btn.classList.add("active");
 
-    <button class="side-btn" onclick="showDashboardPage('mobile', this)">
-      🚌 Mobile Unit Planning
-    </button>
-  </aside>
+  toggleSidebar(false);
+}
 
-  <main>
-    <section id="page-minimum" class="dashboard-page active">
-      <div id="topDashboard" class="mb-4"></div>
-    </section>
+function toggleSidebar(force) {
+  const sideMenu = document.getElementById("sideMenu");
+  const overlay = document.getElementById("sideOverlay");
 
-    <section id="page-expiry" class="dashboard-page">
-      <div class="hero-card">
-        <h1 class="fw-bold mb-2">Expiry Risk Dashboard</h1>
-        <div class="small-muted">
-          ใช้ดูเลือดที่ใกล้หมดอายุ และรายการที่ควรเร่งจัดการ
-        </div>
-      </div>
-    </section>
+  const shouldOpen = force === undefined
+    ? !sideMenu.classList.contains("open")
+    : force;
 
-    <section id="page-mobile" class="dashboard-page">
-      <div class="hero-card">
-        <h1 class="fw-bold mb-2">Mobile Unit Planning Dashboard</h1>
-        <div class="small-muted">
-          ใช้ประเมินว่าควรออกหน่วยไหม และควรเน้น product / blood group ไหน
-        </div>
-      </div>
-    </section>
-
-    <div class="hero-card mt-4">
-      <div class="mb-4">
-        <h1 class="fw-bold mb-2">อัปโหลดไฟล์ใหม่</h1>
-        <div class="small-muted">
-          อัปโหลดไฟล์ Excel เพื่อคำนวณ Minimum Stock รอบใหม่
-        </div>
-      </div>
-
-      <div id="uploadZone" class="upload-zone">
-        <div class="fs-1 mb-2">📁</div>
-        <h5 class="fw-bold mb-2">ลากไฟล์ Excel มาวางตรงนี้</h5>
-        <div class="small-muted mb-3">หรือกดเพื่อเลือกไฟล์ .xlsx</div>
-        <input id="fileInput" type="file" accept=".xlsx,.xls" hidden />
-        <button class="btn btn-main" type="button">เลือกไฟล์ Excel</button>
-      </div>
-
-      <div class="mt-3">
-        <div class="small-muted">ไฟล์ที่เลือก</div>
-        <div id="fileName" class="fw-bold">ยังไม่ได้เลือกไฟล์</div>
-      </div>
-
-      <button id="uploadBtn" class="btn btn-main w-100 mt-4" disabled>
-        อัปโหลดและคำนวณ Minimum Stock
-      </button>
-
-      <div id="statusBox" class="status-box"></div>
-
-      <div id="loadingBox" class="status-box" style="display:none;">
-        <div class="fw-bold mb-1">⏳ กำลังประมวลผลไฟล์ใหญ่</div>
-        <div class="small-muted">ระบบกำลังอ่าน Excel, แปลงวันที่ และคำนวณ Minimum Stock กรุณารอสักครู่</div>
-        <div class="progress mt-3" style="height: 10px;">
-          <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%;"></div>
-        </div>
-      </div>
-
-      <div id="dashboard" class="mt-4" style="display:none;"></div>
-    </div>
-  </main>
-</div>
-
-<div id="modalOverlay" class="modal-overlay">
-  <div class="nice-modal">
-    <div id="modalIcon" class="modal-icon">✅</div>
-    <h4 id="modalTitle" class="fw-bold mb-2">สำเร็จ</h4>
-    <div id="modalMessage" class="small-muted mb-4"></div>
-    <button class="btn btn-main w-100" onclick="closeModal()">รับทราบ</button>
-  </div>
-</div>
+  sideMenu.classList.toggle("open", shouldOpen);
+  overlay.classList.toggle("show", shouldOpen);
+}
     
   </script>
 </body>
