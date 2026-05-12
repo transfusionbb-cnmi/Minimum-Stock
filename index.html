@@ -193,6 +193,9 @@
   font-weight: 800;
   font-size: 13px;
   display: inline-block;
+  white-space: nowrap;
+  text-align: center;
+  min-width: 86px;
 }
 
 .alert-critical { background:#ffe1e1; color:#b42323; }
@@ -206,7 +209,6 @@
     grid-template-columns: 1fr;
   }
 }
-    
   </style>
 </head>
 
@@ -569,7 +571,7 @@ function renderTabContent() {
               <td class="text-end fw-bold">${r.gap ?? 0}</td>
               <td>
                 <span class="action-pill ${getAlertClass(r.alertLevel)}">
-                  ${r.suggestedAction || r.suggestion || "-"}
+                  ${getShortActionText(r)}
                 </span>
               </td>
             </tr>
@@ -578,6 +580,16 @@ function renderTabContent() {
       </table>
     </div>
   `;
+}
+
+    function getShortActionText(r) {
+  const level = String(r.alertLevel || "").toLowerCase();
+
+  if (level === "critical") return "เติมด่วน";
+  if (level === "warning") return "ควรเติม";
+  if (level === "watch") return "เฝ้าระวัง";
+  if (level === "overstock") return "ชะลอเติม";
+  return "ปกติ";
 }
 
 function renderPriorityList(items, emptyText) {
