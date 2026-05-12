@@ -391,9 +391,12 @@ function renderDashboard(data) {
   const totalNet = results.reduce((sum, r) => sum + Number(r.netAvailable || 0), 0);
 
   const criticalItems = results.filter(r =>
+  !["LDPPC", "SDP"].includes(r.type) &&
+  (
     String(r.alertLevel || "").toLowerCase() === "critical" ||
     String(r.alertLevel || "").toLowerCase() === "warning"
-  );
+  )
+);
 
   const overstockItems = results.filter(r =>
     String(r.alertLevel || "").toLowerCase() === "overstock"
@@ -535,18 +538,23 @@ function renderTabContent() {
   const tabContent = document.getElementById("tabContent");
 
   tabContent.innerHTML = `
+  <div class="summary-card mb-3">
+    <div class="small-muted">
+      ใช้ได้จริง = พร้อมใช้ - จองผู้ป่วย | ขาด/เกิน = ใช้ได้จริง - Minimum Stock
+    </div>
+  </div>
     <div class="result-table table-responsive">
       <table class="table table-hover align-middle mb-0">
         <thead>
           <tr>
             <th>Blood Group</th>
             <th class="text-end">Minimum</th>
-            <th class="text-end">Available</th>
-            <th class="text-end">Pending</th>
-            <th class="text-end">Ready</th>
-            <th class="text-end">Net</th>
-            <th class="text-end">Gap</th>
-            <th>Action</th>
+            <th class="text-end">พร้อมใช้</th>
+            <th class="text-end">รอตรวจ/รอแปะ Bag</th>
+            <th class="text-end">คล้องกับผู้ป่วย</th>
+            <th class="text-end">ใช้ได้จริง</th>
+            <th class="text-end">ขาด/เกิน</th>
+            <th>คำแนะนำ</th>
           </tr>
         </thead>
         <tbody>
