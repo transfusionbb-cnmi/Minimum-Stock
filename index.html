@@ -368,7 +368,7 @@
       </div>
     </section>
 
-    <div class="hero-card mt-4">
+    <div id="uploadSection" class="hero-card mt-4">
       <div class="mb-4">
         <h1 class="fw-bold mb-2">อัปโหลดไฟล์ใหม่</h1>
         <div class="small-muted">
@@ -775,7 +775,11 @@ function getAlertClass(level) {
 }
 
 function scrollToUpload() {
-  document.querySelector(".hero-card:last-of-type")?.scrollIntoView({
+  const uploadSection = document.getElementById("uploadSection");
+
+  if (!uploadSection) return;
+
+  uploadSection.scrollIntoView({
     behavior: "smooth",
     block: "start"
   });
