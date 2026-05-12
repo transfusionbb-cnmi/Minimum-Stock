@@ -72,6 +72,74 @@
       color: #6b8298;
       font-size: 14px;
     }
+
+    .modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(12, 35, 60, 0.45);
+  backdrop-filter: blur(6px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 18px;
+}
+
+.nice-modal {
+  width: 100%;
+  max-width: 420px;
+  background: white;
+  border-radius: 28px;
+  padding: 28px;
+  text-align: center;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.22);
+}
+
+.modal-icon {
+  font-size: 44px;
+  margin-bottom: 12px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.summary-card {
+  background: white;
+  border-radius: 22px;
+  padding: 18px;
+  border: 1px solid #d8ecff;
+  box-shadow: 0 12px 30px rgba(30, 90, 150, 0.08);
+}
+
+.result-table {
+  background: white;
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid #d8ecff;
+}
+
+.badge-type {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.type-prc { background:#ffe7e7; color:#b42323; }
+.type-ffp { background:#e6f4ff; color:#0969a8; }
+.type-ldppc { background:#fff4d6; color:#9a6700; }
+.type-cryo { background:#f1e8ff; color:#6b2bbf; }
+.type-sdp { background:#e8fff3; color:#087443; }
+
+@media (max-width: 768px) {
+  .summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+    
   </style>
 </head>
 
@@ -103,6 +171,25 @@
       </button>
 
       <div id="statusBox" class="status-box"></div>
+      <div id="loadingBox" class="status-box" style="display:none;">
+  <div class="fw-bold mb-1">⏳ กำลังประมวลผลไฟล์ใหญ่</div>
+  <div class="small-muted">ระบบกำลังอ่าน Excel, แปลงวันที่ และคำนวณ Minimum Stock กรุณารอสักครู่</div>
+  <div class="progress mt-3" style="height: 10px;">
+    <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%;"></div>
+  </div>
+</div>
+
+<div id="dashboard" class="mt-4" style="display:none;"></div>
+
+<div id="modalOverlay" class="modal-overlay">
+  <div class="nice-modal">
+    <div id="modalIcon" class="modal-icon">✅</div>
+    <h4 id="modalTitle" class="fw-bold mb-2">สำเร็จ</h4>
+    <div id="modalMessage" class="small-muted mb-4"></div>
+    <button class="btn btn-main w-100" onclick="closeModal()">รับทราบ</button>
+  </div>
+</div>
+      
     </div>
   </main>
 
@@ -114,6 +201,12 @@
     const fileName = document.getElementById("fileName");
     const uploadBtn = document.getElementById("uploadBtn");
     const statusBox = document.getElementById("statusBox");
+    const loadingBox = document.getElementById("loadingBox");
+    const dashboard = document.getElementById("dashboard");
+    const modalOverlay = document.getElementById("modalOverlay");
+    const modalIcon = document.getElementById("modalIcon");
+    const modalTitle = document.getElementById("modalTitle");
+    const modalMessage = document.getElementById("modalMessage");
 
     let selectedFile = null;
 
@@ -158,7 +251,9 @@
 
       uploadBtn.disabled = true;
       uploadBtn.textContent = "กำลังอัปโหลด...";
-      showStatus("กำลังส่งไฟล์ไปยังระบบ กรุณารอสักครู่", true);
+      showStatus("กำลังส่งไฟล์ไปยังระบบ", true);
+      loadingBox.style.display = "block";
+      dashboard.style.display = "none";
 
       try {
         const base64 = await fileToBase64(selectedFile);
@@ -179,13 +274,17 @@
           throw new Error(data.message || "อัปโหลดไม่สำเร็จ");
         }
 
-        showStatus("✅ อัปโหลดสำเร็จ: " + data.fileName, true);
+        showStatus("✅ คำนวณสำเร็จ: " + data.fileName, true);
+        renderDashboard(data);
+        showModal("success", "คำนวณสำเร็จ", `อ่านข้อมูล ${data.totalRows} รายการ พบ Released ${data.releasedRows} รายการ`);
 
       } catch (err) {
         showStatus("❌ " + err.message, false);
+        showModal("error", "ไม่สำเร็จ", err.message);
       } finally {
         uploadBtn.disabled = false;
         uploadBtn.textContent = "อัปโหลดและคำนวณ Minimum Stock";
+        loadingBox.style.display = "none";
       }
     });
 
@@ -210,6 +309,97 @@
       statusBox.style.borderColor = good ? "#c8e6ff" : "#ffc9c9";
       statusBox.textContent = message;
     }
+
+    function renderDashboard(data) {
+  const results = data.results || [];
+
+  const totalMin = results.reduce((sum, r) => sum + Number(r.minimumStock || 0), 0);
+  const totalUsed = results.reduce((sum, r) => sum + Number(r.totalUsed || 0), 0);
+  const topItem = [...results].sort((a, b) => Number(b.minimumStock) - Number(a.minimumStock))[0];
+
+  dashboard.style.display = "block";
+
+  dashboard.innerHTML = `
+    <div class="summary-grid mb-4">
+      <div class="summary-card">
+        <div class="small-muted">ช่วงวันที่</div>
+        <div class="fw-bold">${data.startDate || "-"} ถึง ${data.endDate || "-"}</div>
+      </div>
+      <div class="summary-card">
+        <div class="small-muted">Released</div>
+        <div class="fs-3 fw-bold">${data.releasedRows || 0}</div>
+      </div>
+      <div class="summary-card">
+        <div class="small-muted">Total Used</div>
+        <div class="fs-3 fw-bold">${totalUsed}</div>
+      </div>
+      <div class="summary-card">
+        <div class="small-muted">Minimum Stock รวม</div>
+        <div class="fs-3 fw-bold">${totalMin}</div>
+      </div>
+    </div>
+
+    <div class="summary-card mb-4">
+      <div class="small-muted">รายการที่ต้องมี stock สูงสุด</div>
+      <div class="fw-bold">
+        ${topItem ? `${topItem.type} ${topItem.bloodGroup} = ${topItem.minimumStock}` : "-"}
+      </div>
+    </div>
+
+    <div class="result-table table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Blood Group</th>
+            <th class="text-end">Total Used</th>
+            <th class="text-end">Max/Day</th>
+            <th class="text-end">Avg/Day</th>
+            <th class="text-end">Minimum Stock</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${results.map(r => `
+            <tr>
+              <td>
+                <span class="badge-type ${getTypeClass(r.type)}">${r.type}</span>
+              </td>
+              <td class="fw-bold">${r.bloodGroup}</td>
+              <td class="text-end">${r.totalUsed}</td>
+              <td class="text-end">${r.maxDay}</td>
+              <td class="text-end">${r.avgDay}</td>
+              <td class="text-end fw-bold">${r.minimumStock}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function getTypeClass(type) {
+  const t = String(type || "").toLowerCase();
+
+  if (t.includes("lprc")) return "type-prc";
+  if (t.includes("ffp")) return "type-ffp";
+  if (t.includes("ldppc")) return "type-ldppc";
+  if (t.includes("cryo")) return "type-cryo";
+  if (t.includes("sdp")) return "type-sdp";
+
+  return "type-ffp";
+}
+
+function showModal(type, title, message) {
+  modalIcon.textContent = type === "success" ? "✅" : "⚠️";
+  modalTitle.textContent = title;
+  modalMessage.textContent = message;
+  modalOverlay.style.display = "flex";
+}
+
+function closeModal() {
+  modalOverlay.style.display = "none";
+}
+    
   </script>
 </body>
 </html>
