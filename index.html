@@ -145,6 +145,7 @@
 
 <body>
   <main class="app-shell">
+    <div id="topDashboard" class="mb-4"></div>
     <div class="hero-card">
       <div class="mb-4">
         <h1 class="fw-bold mb-2">Minimum Stock Blood Bank</h1>
@@ -209,6 +210,7 @@
     const modalMessage = document.getElementById("modalMessage");
 
     let selectedFile = null;
+    document.addEventListener("DOMContentLoaded", loadDashboardOnStart);
 
     uploadZone.addEventListener("click", () => fileInput.click());
 
@@ -317,9 +319,10 @@
   const totalUsed = results.reduce((sum, r) => sum + Number(r.totalUsed || 0), 0);
   const topItem = [...results].sort((a, b) => Number(b.minimumStock) - Number(a.minimumStock))[0];
 
-  dashboard.style.display = "block";
+  dashboard.style.display = "none";
+  const topDashboard = document.getElementById("topDashboard");
 
-  dashboard.innerHTML = `
+  topDashboard.innerHTML = `
     <div class="summary-grid mb-4">
       <div class="summary-card">
         <div class="small-muted">ช่วงวันที่</div>
@@ -398,6 +401,46 @@ function showModal(type, title, message) {
 
 function closeModal() {
   modalOverlay.style.display = "none";
+}
+
+    async function loadDashboardOnStart() {
+  const topDashboard = document.getElementById("topDashboard");
+
+  topDashboard.innerHTML = `
+    <div class="hero-card">
+      <div class="fw-bold">กำลังโหลด Dashboard ล่าสุด...</div>
+      <div class="small-muted">ระบบกำลังดึงค่า Minimum Stock ล่าสุดจาก Google Sheet</div>
+    </div>
+  `;
+
+  try {
+    const res = await fetch(WEB_APP_URL + "?action=getDashboard");
+    const data = await res.json();
+
+    if (!data.ok) {
+      throw new Error(data.message || "โหลด Dashboard ไม่สำเร็จ");
+    }
+
+    if (!data.results || data.results.length === 0) {
+      topDashboard.innerHTML = `
+        <div class="hero-card">
+          <h4 class="fw-bold mb-2">ยังไม่มีข้อมูล Minimum Stock</h4>
+          <div class="small-muted">กรุณาอัปโหลดไฟล์ Excel เพื่อคำนวณครั้งแรก</div>
+        </div>
+      `;
+      return;
+    }
+
+    renderDashboard(data);
+
+  } catch (err) {
+    topDashboard.innerHTML = `
+      <div class="hero-card">
+        <h4 class="fw-bold mb-2">โหลด Dashboard ไม่สำเร็จ</h4>
+        <div class="small-muted">${err.message}</div>
+      </div>
+    `;
+  }
 }
     
   </script>
