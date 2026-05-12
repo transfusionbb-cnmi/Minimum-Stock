@@ -590,7 +590,7 @@ function renderPriorityList(items, emptyText) {
       ${items.map(r => `
         <div>
           <b>${r.type} ${r.bloodGroup}</b>
-          <span class="small-muted">Gap ${r.gap}</span><br>
+          <span class="small-muted">${Number(r.gap) < 0 ? "ขาด" : "เกิน"} ${Math.abs(Number(r.gap || 0))} ยูนิต</span><br>
           <span class="small-muted">${r.suggestedAction || r.suggestion}</span>
         </div>
       `).join("")}
