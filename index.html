@@ -332,6 +332,10 @@
   <aside id="sideMenu" class="side-menu">
     <div class="side-title">Blood Stock</div>
 
+    <button class="side-btn" onclick="showDashboardPage('upload', this)">
+      📤 Upload File
+    </button>
+
     <button class="side-btn active" onclick="showDashboardPage('minimum', this)">
       📊 Minimum Stock
     </button>
@@ -346,29 +350,9 @@
   </aside>
 
   <main>
-    <section id="page-minimum" class="dashboard-page active">
-      <div id="topDashboard" class="mb-4"></div>
-    </section>
 
-    <section id="page-expiry" class="dashboard-page">
-      <div class="hero-card">
-        <h1 class="fw-bold mb-2">Expiry Risk Dashboard</h1>
-        <div class="small-muted">
-          ใช้ดูเลือดที่ใกล้หมดอายุ และรายการที่ควรเร่งจัดการ
-        </div>
-      </div>
-    </section>
-
-    <section id="page-mobile" class="dashboard-page">
-      <div class="hero-card">
-        <h1 class="fw-bold mb-2">Mobile Unit Planning Dashboard</h1>
-        <div class="small-muted">
-          ใช้ประเมินว่าควรออกหน่วยไหม และควรเน้น product / blood group ไหน
-        </div>
-      </div>
-    </section>
-
-    <div id="uploadSection" class="hero-card mt-4">
+    <section id="page-upload" class="dashboard-page">
+  <div id="uploadSection" class="hero-card"><div id="uploadSection" class="hero-card mt-4">
       <div class="mb-4">
         <h1 class="fw-bold mb-2">อัปโหลดไฟล์ใหม่</h1>
         <div class="small-muted">
@@ -402,8 +386,34 @@
           <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%;"></div>
         </div>
       </div>
+  </div>
+</section>
+    
+    <section id="page-minimum" class="dashboard-page active">
+      <div id="topDashboard" class="mb-4"></div>
+    </section>
 
-      <div id="dashboard" class="mt-4" style="display:none;"></div>
+    <section id="page-expiry" class="dashboard-page">
+      <div class="hero-card">
+        <h1 class="fw-bold mb-2">Expiry Risk Dashboard</h1>
+        <div class="small-muted">
+          ใช้ดูเลือดที่ใกล้หมดอายุ และรายการที่ควรเร่งจัดการ
+        </div>
+      </div>
+    </section>
+
+    <section id="page-mobile" class="dashboard-page">
+      <div class="hero-card">
+        <h1 class="fw-bold mb-2">Mobile Unit Planning Dashboard</h1>
+        <div class="small-muted">
+          ใช้ประเมินว่าควรออกหน่วยไหม และควรเน้น product / blood group ไหน
+        </div>
+      </div>
+    </section>
+
+    
+
+          <div id="dashboard" class="mt-4" style="display:none;"></div>
     </div>
   </main>
 </div>
@@ -775,14 +785,8 @@ function getAlertClass(level) {
 }
 
 function scrollToUpload() {
-  const uploadSection = document.getElementById("uploadSection");
-
-  if (!uploadSection) return;
-
-  uploadSection.scrollIntoView({
-    behavior: "smooth",
-    block: "start"
-  });
+  const uploadBtn = document.querySelector("[onclick=\"showDashboardPage('upload', this)\"]");
+  showDashboardPage("upload", uploadBtn);
 }
 
 function formatDisplayDateTime(value) {
