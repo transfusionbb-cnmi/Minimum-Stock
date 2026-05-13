@@ -1047,7 +1047,7 @@ function renderMobilePlanning(data) {
       </div>
 
       <div class="summary-card">
-        <div class="small-muted">PRC Need รวม</div>
+        text<div class="small-muted">ความต้องการใช้ PRC เพิ่ม</div>: `ยังไม่มีความต้องการใช้ LPRC / LDPRC เพิ่ม แต่มีถุงใกล้หมดอายุ/หมดอายุ ${expiryHigh} unit ควรบริหารการใช้ก่อนเพิ่ม stock`
         <div class="fs-3 fw-bold">${decisionBase.totalPrcNeed || 0}</div>
       </div>
     </div>
@@ -1090,15 +1090,15 @@ function renderMobilePlanning(data) {
         <thead>
           <tr>
             <th>Product</th>
-            <th>Group</th>
-            <th class="text-end">Minimum</th>
-            <th class="text-end">Net Available</th>
-            <th class="text-end">Need</th>
-            <th class="text-end">CNMI</th>
-            <th class="text-end">TRC</th>
-            <th class="text-end">TRC %</th>
-            <th class="text-end">High Expiry</th>
-            <th class="text-end">Watch</th>
+<th>Group</th>
+<th class="text-end">Minimum</th>
+<th class="text-end">ใช้ได้จริง</th>
+<th class="text-end">ควรเติม</th>
+<th class="text-end">CNMI</th>
+<th class="text-end">TRC</th>
+<th class="text-end">TRC %</th>
+<th class="text-end">ใกล้หมดอายุมาก</th>
+<th class="text-end">เฝ้าระวัง</th>
           </tr>
         </thead>
         <tbody>
@@ -1119,7 +1119,7 @@ function getMobilePlanningDecision(decisionBase) {
       level: "warning",
       icon: "⚠️",
       title: "ขาดบางส่วน แต่ต้องจัดการใกล้หมดอายุก่อน",
-      text: `LPRC / LDPRC มี Need รวม ${need} unit และมีถุงใกล้หมดอายุ/หมดอายุ ${expiryHigh} unit ควรเติมเฉพาะหมู่ที่ขาดจริง พร้อมจัดการ expiry risk ก่อนออกหน่วยใหญ่`
+      text: `LPRC / LDPRC มีความต้องการใช้เพิ่ม ${need} unit และมีถุงใกล้หมดอายุ/หมดอายุ ${expiryHigh} unit ควรเติมเฉพาะหมู่ที่ขาดจริง พร้อมจัดการเลือดใกล้หมดอายุก่อนออกหน่วยใหญ่`
     };
   }
 
@@ -1128,7 +1128,7 @@ function getMobilePlanningDecision(decisionBase) {
       level: "critical",
       icon: "🚌",
       title: "ควรวางแผนออกหน่วยเพื่อลดการพึ่ง TRC",
-      text: `LPRC / LDPRC มี Need รวม ${need} unit และสัดส่วน TRC ใน PRC อยู่ที่ ${trcRatio}% เหมาะกับการวางแผนออกหน่วยโดยเน้นหมู่เลือดที่ขาด`
+      text: `LPRC / LDPRC มีความต้องการใช้เพิ่ม ${need} unit และสัดส่วนเลือดจาก TRC อยู่ที่ ${trcRatio}% เหมาะกับการวางแผนออกหน่วย โดยเน้นหมู่เลือดที่ขาด`
     };
   }
 
@@ -1137,7 +1137,7 @@ function getMobilePlanningDecision(decisionBase) {
       level: "warning",
       icon: "🩸",
       title: "ควรเติม stock เฉพาะหมู่ที่ขาด",
-      text: `LPRC / LDPRC มี Need รวม ${need} unit ควรดูตารางแยกหมู่เลือดด้านล่างก่อนตัดสินใจออกหน่วย`
+      text: `LPRC / LDPRC มีความต้องการใช้เพิ่ม ${need} unit ควรดูตารางแยกหมู่เลือดด้านล่างก่อนตัดสินใจออกหน่วย`
     };
   }
 
@@ -1146,7 +1146,7 @@ function getMobilePlanningDecision(decisionBase) {
       level: "watch",
       icon: "⏳",
       title: "ยังไม่ควรออกหน่วยเพิ่ม เน้นจัดการวันหมดอายุ",
-      text: `ยังไม่มี Need ของ LPRC / LDPRC แต่มีถุงใกล้หมดอายุ/หมดอายุ ${expiryHigh} unit ควรบริหารการใช้ก่อนเพิ่ม stock`
+      text: `ยังไม่มีความต้องการใช้ LPRC / LDPRC เพิ่ม แต่มีถุงใกล้หมดอายุ/หมดอายุ ${expiryHigh} unit ควรบริหารการใช้ก่อนเพิ่ม stock`
     };
   }
 
