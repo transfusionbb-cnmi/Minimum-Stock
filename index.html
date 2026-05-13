@@ -283,7 +283,151 @@
   display: block;
 }
 
-@media (max-width: 900px) {
+.mobile-filter-card {
+  background: rgba(255,255,255,0.94);
+  border: 1px solid #d8ecff;
+  border-radius: 28px;
+  padding: 24px;
+  box-shadow: 0 18px 45px rgba(30, 90, 150, 0.10);
+  margin-bottom: 18px;
+}
+
+.mobile-date-input {
+  border: 1px solid #c8e6ff;
+  border-radius: 16px;
+  padding: 12px 14px;
+  font-weight: 800;
+  color: #16324f;
+  background: #f8fcff;
+}
+
+.mobile-decision-card {
+  border-radius: 24px;
+  padding: 20px;
+  margin-top: 16px;
+  border: 1px solid #d8ecff;
+}
+
+.mobile-decision-card.critical {
+  background: #fff1f1;
+  border-color: #ffc9c9;
+}
+
+.mobile-decision-card.warning {
+  background: #fff8e8;
+  border-color: #ffe0a3;
+}
+
+.mobile-decision-card.watch {
+  background: #eef7ff;
+  border-color: #bfe3ff;
+}
+
+.mobile-decision-card.normal {
+  background: #effff6;
+  border-color: #bff0d4;
+}
+
+.mobile-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.mobile-chart-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.mobile-chart-card {
+  background: white;
+  border: 1px solid #d8ecff;
+  border-radius: 22px;
+  padding: 18px;
+  box-shadow: 0 12px 30px rgba(30, 90, 150, 0.08);
+}
+
+.mobile-bar-row {
+  margin-bottom: 14px;
+}
+
+.mobile-bar-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.mobile-bar-track {
+  width: 100%;
+  height: 14px;
+  border-radius: 999px;
+  background: #edf4fb;
+  overflow: hidden;
+}
+
+.mobile-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.fill-cnmi { background: #1887d9; }
+.fill-trc { background: #f59f00; }
+.fill-other { background: #8c9aaa; }
+
+.fill-expired { background: #7a271a; }
+.fill-high { background: #d92d20; }
+.fill-medium { background: #f59f00; }
+.fill-watch { background: #1887d9; }
+.fill-safe { background: #12b76a; }
+.fill-unknown { background: #8c9aaa; }
+
+.mobile-table-card {
+  background: white;
+  border: 1px solid #d8ecff;
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: 0 12px 30px rgba(30, 90, 150, 0.08);
+}
+
+.mobile-table-card table {
+  min-width: 980px;
+}
+
+.mobile-product-badge {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-weight: 900;
+  font-size: 13px;
+  display: inline-block;
+}
+
+.mobile-note-box {
+  background: #f7fbff;
+  border: 1px solid #d8ecff;
+  border-radius: 20px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+
+@media (max-width: 768px) {
+  .mobile-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .mobile-chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-filter-card {
+    padding: 20px;
+  }
+}
+    @media (max-width: 900px) {
   .app-layout {
     display: block;
     padding: 72px 14px 22px;
@@ -352,7 +496,7 @@
   <main>
 
     <section id="page-upload" class="dashboard-page">
-  <div id="uploadSection" class="hero-card"><div id="uploadSection" class="hero-card mt-4">
+  <div id="uploadSection" class="hero-card mt-4">
       <div class="mb-4">
         <h1 class="fw-bold mb-2">อัปโหลดไฟล์ใหม่</h1>
         <div class="small-muted">
@@ -403,13 +547,8 @@
     </section>
 
     <section id="page-mobile" class="dashboard-page">
-      <div class="hero-card">
-        <h1 class="fw-bold mb-2">Mobile Unit Planning Dashboard</h1>
-        <div class="small-muted">
-          ใช้ประเมินว่าควรออกหน่วยไหม และควรเน้น product / blood group ไหน
-        </div>
-      </div>
-    </section>
+  <div id="mobilePlanningDashboard"></div>
+</section>
 
     
 
@@ -510,8 +649,13 @@
         }
 
         showStatus("✅ คำนวณสำเร็จ: " + data.fileName, true);
-        renderDashboard(data);
-        showModal("success", "คำนวณสำเร็จ", `อ่านข้อมูล ${data.totalRows} รายการ พบ Released ${data.releasedRows} รายการ`);
+renderDashboard(data);
+
+if (document.getElementById("page-mobile")?.classList.contains("active")) {
+  loadMobilePlanning();
+}
+
+showModal("success", "คำนวณสำเร็จ", `อ่านข้อมูล ${data.totalRows} รายการ พบ Released ${data.releasedRows} รายการ`);
 
       } catch (err) {
         showStatus("❌ " + err.message, false);
@@ -547,6 +691,7 @@
 
     let currentDashboardData = null;
 let currentTab = "LPRC / LDPRC";
+let currentMobilePlanningData = null;
 
 function renderDashboard(data) {
   currentDashboardData = data;
@@ -783,6 +928,366 @@ function getAlertClass(level) {
   if (l === "overstock") return "alert-overstock";
   return "alert-normal";
 }
+    function getTodayYmd() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+async function loadMobilePlanning(selectedDate) {
+  const holder = document.getElementById("mobilePlanningDashboard");
+  if (!holder) return;
+
+  const targetDate = selectedDate || document.getElementById("mobilePlanDate")?.value || getTodayYmd();
+
+  holder.innerHTML = `
+    <div class="hero-card">
+      <div class="fw-bold">กำลังโหลด Mobile Unit Planning...</div>
+      <div class="small-muted">ระบบกำลังดึงข้อมูล stock, expiry risk และแหล่งที่มาของถุงเลือด</div>
+    </div>
+  `;
+
+  try {
+    const url = WEB_APP_URL + "?action=getMobilePlanning&selectedDate=" + encodeURIComponent(targetDate);
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (!data.ok) {
+      throw new Error(data.message || "โหลด Mobile Unit Planning ไม่สำเร็จ");
+    }
+
+    currentMobilePlanningData = data;
+    renderMobilePlanning(data);
+
+  } catch (err) {
+    holder.innerHTML = `
+      <div class="hero-card">
+        <h4 class="fw-bold mb-2">โหลด Mobile Unit Planning ไม่สำเร็จ</h4>
+        <div class="small-muted">${err.message}</div>
+      </div>
+    `;
+  }
+}
+
+function renderMobilePlanning(data) {
+  const holder = document.getElementById("mobilePlanningDashboard");
+  if (!holder) return;
+
+  const summary = data.summary || {};
+  const sourceSummary = summary.sourceSummary || {};
+  const expirySummary = summary.expirySummary || {};
+  const decisionBase = summary.decisionBase || {};
+  const rows = summary.typeGroupRows || [];
+
+  const totalSource =
+    Number(sourceSummary.CNMI || 0) +
+    Number(sourceSummary.TRC || 0) +
+    Number(sourceSummary.OTHER || 0);
+
+  const totalExpiry =
+    Number(expirySummary.EXPIRED || 0) +
+    Number(expirySummary.HIGH || 0) +
+    Number(expirySummary.MEDIUM || 0) +
+    Number(expirySummary.WATCH || 0) +
+    Number(expirySummary.SAFE || 0) +
+    Number(expirySummary.UNKNOWN || 0);
+
+  const totalTrcRatio = totalSource > 0
+    ? ((Number(sourceSummary.TRC || 0) / totalSource) * 100).toFixed(1)
+    : "0.0";
+
+  const decision = getMobilePlanningDecision(decisionBase);
+
+  holder.innerHTML = `
+    <div class="mobile-filter-card">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+          <h1 class="fw-bold mb-2">Mobile Unit Planning Dashboard</h1>
+          <div class="small-muted">
+            ประเมินการออกหน่วยโดยดู Minimum Stock + วันหมดอายุ + แหล่งที่มาของถุงเลือด
+          </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+          <input
+            id="mobilePlanDate"
+            type="date"
+            class="mobile-date-input"
+            value="${data.selectedDate || getTodayYmd()}"
+          />
+          <button class="btn btn-main" onclick="loadMobilePlanning()">
+            ประเมิน
+          </button>
+        </div>
+      </div>
+
+      <div class="mobile-decision-card ${decision.level}">
+        <div class="small-muted mb-1">คำแนะนำภาพรวม</div>
+        <h3 class="fw-bold mb-2">${decision.icon} ${decision.title}</h3>
+        <div>${decision.text}</div>
+      </div>
+    </div>
+
+    <div class="mobile-kpi-grid">
+      <div class="summary-card">
+        <div class="small-muted">CNMI Stock</div>
+        <div class="fs-3 fw-bold">${sourceSummary.CNMI || 0}</div>
+      </div>
+
+      <div class="summary-card">
+        <div class="small-muted">TRC Stock</div>
+        <div class="fs-3 fw-bold">${sourceSummary.TRC || 0}</div>
+      </div>
+
+      <div class="summary-card">
+        <div class="small-muted">TRC Ratio</div>
+        <div class="fs-3 fw-bold">${totalTrcRatio}%</div>
+      </div>
+
+      <div class="summary-card">
+        <div class="small-muted">PRC Need รวม</div>
+        <div class="fs-3 fw-bold">${decisionBase.totalPrcNeed || 0}</div>
+      </div>
+    </div>
+
+    <div class="mobile-note-box">
+      <div class="fw-bold mb-1">เกณฑ์ Expiry Risk</div>
+      <div class="small-muted">
+        LPRC / LDPRC: 7 / 14 / 21 วัน |
+        LDPPC / SDP: 1 / 3 / 5 วัน |
+        FFP / Cryo: 30 / 60 / 90 วัน
+      </div>
+    </div>
+
+    <div class="mobile-chart-grid">
+      <div class="mobile-chart-card">
+        <h5 class="fw-bold mb-3">Source Mix: CNMI vs TRC vs OTHER</h5>
+        ${renderSimpleBar("CNMI", sourceSummary.CNMI || 0, totalSource, "fill-cnmi")}
+        ${renderSimpleBar("TRC", sourceSummary.TRC || 0, totalSource, "fill-trc")}
+        ${renderSimpleBar("OTHER", sourceSummary.OTHER || 0, totalSource, "fill-other")}
+      </div>
+
+      <div class="mobile-chart-card">
+        <h5 class="fw-bold mb-3">Expiry Risk Summary</h5>
+        ${renderSimpleBar("EXPIRED", expirySummary.EXPIRED || 0, totalExpiry, "fill-expired")}
+        ${renderSimpleBar("HIGH", expirySummary.HIGH || 0, totalExpiry, "fill-high")}
+        ${renderSimpleBar("MEDIUM", expirySummary.MEDIUM || 0, totalExpiry, "fill-medium")}
+        ${renderSimpleBar("WATCH", expirySummary.WATCH || 0, totalExpiry, "fill-watch")}
+        ${renderSimpleBar("SAFE", expirySummary.SAFE || 0, totalExpiry, "fill-safe")}
+        ${renderSimpleBar("UNKNOWN", expirySummary.UNKNOWN || 0, totalExpiry, "fill-unknown")}
+      </div>
+    </div>
+
+    <div class="mobile-chart-card mb-3">
+      <h5 class="fw-bold mb-3">LPRC / LDPRC by Blood Group</h5>
+      ${renderPrcBloodGroupChart(rows)}
+    </div>
+
+    <div class="mobile-table-card table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Group</th>
+            <th class="text-end">Minimum</th>
+            <th class="text-end">Net Available</th>
+            <th class="text-end">Need</th>
+            <th class="text-end">CNMI</th>
+            <th class="text-end">TRC</th>
+            <th class="text-end">TRC %</th>
+            <th class="text-end">High Expiry</th>
+            <th class="text-end">Watch</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${renderMobilePlanningRows(rows)}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function getMobilePlanningDecision(decisionBase) {
+  const need = Number(decisionBase.totalPrcNeed || 0);
+  const trcRatio = Number(decisionBase.prcTrcRatio || 0);
+  const expiryHigh = Number(decisionBase.totalPrcExpiryHigh || 0);
+
+  if (need > 0 && expiryHigh > 0) {
+    return {
+      level: "warning",
+      icon: "⚠️",
+      title: "ขาดบางส่วน แต่ต้องจัดการใกล้หมดอายุก่อน",
+      text: `LPRC / LDPRC มี Need รวม ${need} unit และมีถุงใกล้หมดอายุ/หมดอายุ ${expiryHigh} unit ควรเติมเฉพาะหมู่ที่ขาดจริง พร้อมจัดการ expiry risk ก่อนออกหน่วยใหญ่`
+    };
+  }
+
+  if (need > 0 && trcRatio >= 30) {
+    return {
+      level: "critical",
+      icon: "🚌",
+      title: "ควรวางแผนออกหน่วยเพื่อลดการพึ่ง TRC",
+      text: `LPRC / LDPRC มี Need รวม ${need} unit และสัดส่วน TRC ใน PRC อยู่ที่ ${trcRatio}% เหมาะกับการวางแผนออกหน่วยโดยเน้นหมู่เลือดที่ขาด`
+    };
+  }
+
+  if (need > 0) {
+    return {
+      level: "warning",
+      icon: "🩸",
+      title: "ควรเติม stock เฉพาะหมู่ที่ขาด",
+      text: `LPRC / LDPRC มี Need รวม ${need} unit ควรดูตารางแยกหมู่เลือดด้านล่างก่อนตัดสินใจออกหน่วย`
+    };
+  }
+
+  if (expiryHigh > 0) {
+    return {
+      level: "watch",
+      icon: "⏳",
+      title: "ยังไม่ควรออกหน่วยเพิ่ม เน้นจัดการวันหมดอายุ",
+      text: `ยังไม่มี Need ของ LPRC / LDPRC แต่มีถุงใกล้หมดอายุ/หมดอายุ ${expiryHigh} unit ควรบริหารการใช้ก่อนเพิ่ม stock`
+    };
+  }
+
+  return {
+    level: "normal",
+    icon: "✅",
+    title: "ยังไม่จำเป็นต้องออกหน่วยจากมุม stock ปัจจุบัน",
+    text: "LPRC / LDPRC ยังไม่ต่ำกว่า Minimum และ expiry risk ระดับสูงยังไม่เด่น สามารถติดตามตามรอบปกติ"
+  };
+}
+
+function renderSimpleBar(label, value, total, fillClass) {
+  const percent = total > 0 ? Math.round((Number(value || 0) / total) * 100) : 0;
+
+  return `
+    <div class="mobile-bar-row">
+      <div class="mobile-bar-label">
+        <span>${label}</span>
+        <span>${value} (${percent}%)</span>
+      </div>
+      <div class="mobile-bar-track">
+        <div class="mobile-bar-fill ${fillClass}" style="width:${percent}%"></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderPrcBloodGroupChart(rows) {
+  const prcRows = (rows || [])
+    .filter(r => r.type === "LPRC / LDPRC")
+    .sort((a, b) => {
+      const order = { "O": 1, "A": 2, "B": 3, "AB": 4 };
+      return (order[a.bloodGroup] || 99) - (order[b.bloodGroup] || 99);
+    });
+
+  if (!prcRows.length) {
+    return `<div class="small-muted">ยังไม่มีข้อมูล LPRC / LDPRC</div>`;
+  }
+
+  const maxValue = Math.max(
+    ...prcRows.map(r => Math.max(
+      Number(r.minimumStock || 0),
+      Number(r.netAvailable || 0),
+      Number(r.trc || 0),
+      Number(r.cnmi || 0)
+    )),
+    1
+  );
+
+  return `
+    <div class="d-grid gap-3">
+      ${prcRows.map(r => `
+        <div>
+          <div class="fw-bold mb-1">Group ${r.bloodGroup}</div>
+          ${renderMiniCompareBar("Minimum", r.minimumStock, maxValue, "fill-other")}
+          ${renderMiniCompareBar("Net Available", r.netAvailable, maxValue, "fill-cnmi")}
+          ${renderMiniCompareBar("TRC", r.trc, maxValue, "fill-trc")}
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderMiniCompareBar(label, value, maxValue, fillClass) {
+  const percent = maxValue > 0 ? Math.round((Number(value || 0) / maxValue) * 100) : 0;
+
+  return `
+    <div class="mobile-bar-row" style="margin-bottom:8px;">
+      <div class="mobile-bar-label small-muted">
+        <span>${label}</span>
+        <span>${value || 0}</span>
+      </div>
+      <div class="mobile-bar-track" style="height:10px;">
+        <div class="mobile-bar-fill ${fillClass}" style="width:${percent}%"></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderMobilePlanningRows(rows) {
+  if (!rows || rows.length === 0) {
+    return `
+      <tr>
+        <td colspan="10" class="text-center small-muted py-4">
+          ยังไม่มีข้อมูล Mobile Planning
+        </td>
+      </tr>
+    `;
+  }
+
+  const orderType = {
+    "LPRC / LDPRC": 1,
+    "FFP": 2,
+    "LDPPC": 3,
+    "Cryo": 4,
+    "SDP": 5
+  };
+
+  const orderBlood = {
+    "O": 1,
+    "A": 2,
+    "B": 3,
+    "AB": 4,
+    "ไม่แยกหมู่": 5
+  };
+
+  const sorted = [...rows].sort((a, b) => {
+    const t = (orderType[a.type] || 99) - (orderType[b.type] || 99);
+    if (t !== 0) return t;
+    return (orderBlood[a.bloodGroup] || 99) - (orderBlood[b.bloodGroup] || 99);
+  });
+
+  return sorted.map(r => {
+    const trcRatio = Number(r.trcRatio || 0);
+    const need = Number(r.need || 0);
+    const highExpiry = Number(r.expired || 0) + Number(r.expiryHigh || 0);
+
+    let rowClass = "";
+    if (need > 0) rowClass = "table-warning";
+    if (highExpiry > 0) rowClass = "table-danger";
+
+    return `
+      <tr class="${rowClass}">
+        <td>
+          <span class="mobile-product-badge ${getTypeClass(r.type)}">
+            ${r.type}
+          </span>
+        </td>
+        <td class="fw-bold">${r.bloodGroup}</td>
+        <td class="text-end">${r.minimumStock || 0}</td>
+        <td class="text-end fw-bold">${r.netAvailable || 0}</td>
+        <td class="text-end fw-bold">${r.need || 0}</td>
+        <td class="text-end">${r.cnmi || 0}</td>
+        <td class="text-end">${r.trc || 0}</td>
+        <td class="text-end">${trcRatio}%</td>
+        <td class="text-end">${highExpiry}</td>
+        <td class="text-end">${r.expiryWatch || 0}</td>
+      </tr>
+    `;
+  }).join("");
+}
 
 function scrollToUpload() {
   const uploadBtn = document.querySelector("[onclick=\"showDashboardPage('upload', this)\"]");
@@ -818,6 +1323,10 @@ function formatDisplayDateTime(value) {
   btn.classList.add("active");
 
   toggleSidebar(false);
+
+  if (page === "mobile") {
+    loadMobilePlanning();
+  }
 }
 
 function toggleSidebar(force) {
