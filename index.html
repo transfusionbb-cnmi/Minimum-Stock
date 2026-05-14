@@ -464,6 +464,67 @@
     display: block;
   }
 }
+
+  .mobile-stock-cards {
+  display: none;
+}
+
+.stock-mobile-card {
+  background: white;
+  border: 1px solid #d8ecff;
+  border-radius: 22px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.stock-mobile-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.stock-mobile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.stock-mobile-item {
+  background: #f7fbff;
+  border-radius: 16px;
+  padding: 10px;
+}
+
+.stock-mobile-label {
+  color: #6b8298;
+  font-size: 13px;
+}
+
+.stock-mobile-value {
+  font-weight: 900;
+  font-size: 20px;
+}
+
+@media (max-width: 768px) {
+  .result-table {
+    display: none;
+  }
+
+  .mobile-stock-cards {
+    display: block;
+  }
+
+  .tab-scroll {
+    padding-bottom: 10px;
+  }
+
+  .tab-btn {
+    padding: 10px 14px;
+    font-size: 15px;
+  }
+}
     
   </style>
 </head>
@@ -849,11 +910,12 @@ function renderTabContent() {
   const tabContent = document.getElementById("tabContent");
 
   tabContent.innerHTML = `
-  <div class="summary-card mb-3">
-    <div class="small-muted">
-      ใช้ได้จริง = พร้อมใช้ - จองผู้ป่วย | ขาด/เกิน = ใช้ได้จริง - Minimum Stock
+    <div class="summary-card mb-3">
+      <div class="small-muted">
+        ใช้ได้จริง = พร้อมใช้ - จองผู้ป่วย | ขาด/เกิน = ใช้ได้จริง - Minimum Stock
+      </div>
     </div>
-  </div>
+
     <div class="result-table table-responsive">
       <table class="table table-hover align-middle mb-0">
         <thead>
@@ -887,6 +949,54 @@ function renderTabContent() {
           `).join("")}
         </tbody>
       </table>
+    </div>
+
+    <div class="mobile-stock-cards">
+      ${filtered.map(r => `
+        <div class="stock-mobile-card">
+          <div class="stock-mobile-head">
+            <div>
+              <div class="small-muted">Blood Group</div>
+              <div class="fs-3 fw-bold">${r.bloodGroup}</div>
+            </div>
+            <span class="action-pill ${getAlertClass(r.alertLevel)}">
+              ${getShortActionText(r)}
+            </span>
+          </div>
+
+          <div class="stock-mobile-grid">
+            <div class="stock-mobile-item">
+              <div class="stock-mobile-label">Minimum</div>
+              <div class="stock-mobile-value">${r.minimumStock}</div>
+            </div>
+
+            <div class="stock-mobile-item">
+              <div class="stock-mobile-label">พร้อมใช้</div>
+              <div class="stock-mobile-value">${r.available ?? 0}</div>
+            </div>
+
+            <div class="stock-mobile-item">
+              <div class="stock-mobile-label">รอตรวจ/รอแปะ</div>
+              <div class="stock-mobile-value">${r.pendingScreening ?? 0}</div>
+            </div>
+
+            <div class="stock-mobile-item">
+              <div class="stock-mobile-label">คล้องผู้ป่วย</div>
+              <div class="stock-mobile-value">${r.readyToIssue ?? 0}</div>
+            </div>
+
+            <div class="stock-mobile-item">
+              <div class="stock-mobile-label">ใช้ได้จริง</div>
+              <div class="stock-mobile-value">${r.netAvailable ?? 0}</div>
+            </div>
+
+            <div class="stock-mobile-item">
+              <div class="stock-mobile-label">ขาด/เกิน</div>
+              <div class="stock-mobile-value">${r.gap ?? 0}</div>
+            </div>
+          </div>
+        </div>
+      `).join("")}
     </div>
   `;
 }
