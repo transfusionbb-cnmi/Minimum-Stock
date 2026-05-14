@@ -633,6 +633,21 @@
     font-size: 15px;
   }
 }
+
+    .mobile-table-card th,
+.mobile-table-card td {
+  padding: 14px 12px;
+}
+
+.mobile-table-card thead th {
+  background: #f7fbff;
+  color: #31506f;
+  font-weight: 900;
+}
+
+.mobile-table-card tbody td {
+  font-size: 15px;
+}
     
   </style>
 </head>
@@ -1313,16 +1328,25 @@ function renderMobilePlanning(data) {
       ${renderPrcBloodGroupChart(prcRows)}
     </div>
 
+    <div class="mobile-note-box">
+      <div class="fw-bold mb-1">ตารางสรุปตามหมู่เลือด</div>
+      <div class="small-muted">
+        คาดว่าจะใช้ = ค่าเฉลี่ยล่าสุดเทียบกับช่วงเดียวกันปีที่แล้ว |
+        หาได้เอง = CNMI DateStockIn ช่วงเดียวกันปีที่แล้ว |
+        ควรออกเพิ่ม = ส่วนที่ยังไม่พอหลังรวม stock ปัจจุบันและที่คาดว่าจะหาได้เอง
+      </div>
+    </div>
+
     <div class="mobile-table-card table-responsive">
       <table class="table table-hover align-middle mb-0">
         <thead>
           <tr>
             <th>Group</th>
-            <th class="text-end">ใช้ได้จริง</th>
-            <th class="text-end">ใช้คาดการณ์</th>
-            <th class="text-end">จัดหาเอง</th>
-            <th class="text-end">เหลือคาดการณ์</th>
-            <th class="text-end">ออกเพิ่ม</th>
+            <th class="text-end">ใช้ได้ตอนนี้</th>
+            <th class="text-end">คาดว่าจะใช้</th>
+            <th class="text-end">หาได้เอง</th>
+            <th class="text-end">คาดว่าจะเหลือ</th>
+            <th class="text-end">ควรออกเพิ่ม</th>
             <th class="text-end">CNMI</th>
             <th class="text-end">TRC</th>
           </tr>
