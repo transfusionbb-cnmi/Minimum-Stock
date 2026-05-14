@@ -427,6 +427,58 @@
     padding: 20px;
   }
 }
+
+    .plan-button-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.plan-btn {
+  border: 1px solid #c8e6ff;
+  background: white;
+  color: #31506f;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-weight: 900;
+  box-shadow: 0 8px 20px rgba(30, 90, 150, 0.08);
+}
+
+.plan-btn.active {
+  background: linear-gradient(135deg, #1887d9, #43b0f1);
+  color: white;
+  border-color: transparent;
+}
+
+.forecast-hero {
+  background: linear-gradient(135deg, #ffffff, #f4faff);
+  border: 1px solid #d8ecff;
+  border-radius: 28px;
+  padding: 24px;
+  box-shadow: 0 18px 45px rgba(30, 90, 150, 0.10);
+  margin-bottom: 18px;
+}
+
+.forecast-pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-weight: 900;
+  font-size: 13px;
+  background: #eef7ff;
+  color: #0969a8;
+}
+
+.mobile-table-card table {
+  min-width: 1100px;
+}
+
+.row-advice {
+  min-width: 220px;
+  display: inline-block;
+}
+
+    
     @media (max-width: 900px) {
   .app-layout {
     display: block;
@@ -1046,21 +1098,28 @@ function getAlertClass(level) {
   return `${y}-${m}-${day}`;
 }
 
-async function loadMobilePlanning(selectedDate) {
+async function loadMobilePlanning(selectedDate, planDays) {
   const holder = document.getElementById("mobilePlanningDashboard");
   if (!holder) return;
 
   const targetDate = selectedDate || document.getElementById("mobilePlanDate")?.value || getTodayYmd();
+  const targetPlanDays = Number(planDays || document.querySelector(".plan-btn.active")?.dataset.days || 14);
 
   holder.innerHTML = `
     <div class="hero-card">
-      <div class="fw-bold">กำลังโหลด Mobile Unit Planning...</div>
-      <div class="small-muted">ระบบกำลังดึงข้อมูล stock, expiry risk และแหล่งที่มาของถุงเลือด</div>
+      <div class="fw-bold">กำลังโหลดแผนออกหน่วย...</div>
+      <div class="small-muted">ระบบกำลังคำนวณ forecast จากข้อมูลย้อนหลัง 2 ปี และ stock ปัจจุบัน</div>
     </div>
   `;
 
   try {
-    const url = WEB_APP_URL + "?action=getMobilePlanning&selectedDate=" + encodeURIComponent(targetDate);
+    const url =
+      WEB_APP_URL +
+      "?action=getMobilePlanning&selectedDate=" +
+      encodeURIComponent(targetDate) +
+      "&planDays=" +
+      encodeURIComponent(targetPlanDays);
+
     const res = await fetch(url);
     const data = await res.json();
 
@@ -1074,11 +1133,19 @@ async function loadMobilePlanning(selectedDate) {
   } catch (err) {
     holder.innerHTML = `
       <div class="hero-card">
-        <h4 class="fw-bold mb-2">โหลด Mobile Unit Planning ไม่สำเร็จ</h4>
+        <h4 class="fw-bold mb-2">โหลดแผนออกหน่วยไม่สำเร็จ</h4>
         <div class="small-muted">${err.message}</div>
       </div>
     `;
   }
+}
+
+function setMobilePlanDays(days) {
+  document.querySelectorAll(".plan-btn").forEach(btn => {
+    btn.classList.toggle("active", Number(btn.dataset.days) === Number(days));
+  });
+
+  loadMobilePlanning(null, days);
 }
 
 function renderMobilePlanning(data) {
@@ -1086,10 +1153,10 @@ function renderMobilePlanning(data) {
   if (!holder) return;
 
   const summary = data.summary || {};
-  const sourceSummary = summary.sourceSummary || {};
-  const expirySummary = summary.expirySummary || {};
   const decisionBase = summary.decisionBase || {};
   const rows = summary.typeGroupRows || [];
+  const planDays = Number(data.planDays || decisionBase.planDays || 14);
+
   const prcRows = rows.filter(r => r.type === "LPRC / LDPRC");
 
   const prcCnmi = prcRows.reduce((sum, r) => sum + Number(r.cnmi || 0), 0);
@@ -1098,35 +1165,22 @@ function renderMobilePlanning(data) {
   const prcTotalSource = prcCnmi + prcTrc + prcOther;
 
   const prcTrcRatioDisplay = prcTotalSource > 0
-  ? ((prcTrc / prcTotalSource) * 100).toFixed(1)
-  : "0.0";
-
-  const totalSource =
-    Number(sourceSummary.CNMI || 0) +
-    Number(sourceSummary.TRC || 0) +
-    Number(sourceSummary.OTHER || 0);
-
-  const totalExpiry =
-    Number(expirySummary.EXPIRED || 0) +
-    Number(expirySummary.HIGH || 0) +
-    Number(expirySummary.MEDIUM || 0) +
-    Number(expirySummary.WATCH || 0) +
-    Number(expirySummary.SAFE || 0) +
-    Number(expirySummary.UNKNOWN || 0);
-
-  const totalTrcRatio = totalSource > 0
-    ? ((Number(sourceSummary.TRC || 0) / totalSource) * 100).toFixed(1)
+    ? ((prcTrc / prcTotalSource) * 100).toFixed(1)
     : "0.0";
 
   const decision = getMobilePlanningDecision(decisionBase);
+  const riskText = Array.isArray(decisionBase.riskGroups) && decisionBase.riskGroups.length
+    ? decisionBase.riskGroups.join(", ")
+    : "-";
 
   holder.innerHTML = `
-    <div class="mobile-filter-card">
-      <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+    <div class="forecast-hero">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
         <div>
+          <div class="forecast-pill mb-2">LPRC / LDPRC Forecast</div>
           <h1 class="fw-bold mb-2">ประเมินแผนออกหน่วยรับบริจาค</h1>
           <div class="small-muted">
-            ช่วยดูว่าควรออกหน่วยรับบริจาคหรือไม่ โดยดูจาก Minimum Stock วันหมดอายุ และแหล่งที่มาของถุงเลือด
+            เลือกช่วงเวลาเพื่อดูว่า LPRC / LDPRC จะพอใช้หรือไม่ โดยเทียบ stock ปัจจุบันกับค่าเฉลี่ยล่าสุดและช่วงเดียวกันปีที่แล้ว
           </div>
         </div>
 
@@ -1143,8 +1197,14 @@ function renderMobilePlanning(data) {
         </div>
       </div>
 
+      <div class="plan-button-row mb-3">
+        <button class="plan-btn ${planDays === 7 ? "active" : ""}" data-days="7" onclick="setMobilePlanDays(7)">อีก 7 วัน</button>
+        <button class="plan-btn ${planDays === 14 ? "active" : ""}" data-days="14" onclick="setMobilePlanDays(14)">อีก 14 วัน</button>
+        <button class="plan-btn ${planDays === 30 ? "active" : ""}" data-days="30" onclick="setMobilePlanDays(30)">อีก 30 วัน</button>
+      </div>
+
       <div class="mobile-decision-card ${decision.level}">
-        <div class="small-muted mb-1">คำแนะนำภาพรวม</div>
+        <div class="small-muted mb-1">คำตอบของระบบ</div>
         <h3 class="fw-bold mb-2">${decision.icon} ${decision.title}</h3>
         <div>${decision.text}</div>
       </div>
@@ -1152,26 +1212,25 @@ function renderMobilePlanning(data) {
 
     <div class="mobile-kpi-grid">
       <div class="summary-card">
-        <div class="small-muted">CNMI: LPRC / LDPRC</div>
-        <div class="fs-3 fw-bold">${prcCnmi}</div>
+        <div class="small-muted">คาดว่าจะใช้ใน ${planDays} วัน</div>
+        <div class="fs-3 fw-bold">${decisionBase.totalForecastUse || 0}</div>
       </div>
 
       <div class="summary-card">
-        <div class="small-muted">TRC: LPRC / LDPRC</div>
-        <div class="fs-3 fw-bold">${prcTrc}</div>
+        <div class="small-muted">ควรเติมเพิ่ม</div>
+        <div class="fs-3 fw-bold">${decisionBase.totalNeedToCollect || 0}</div>
       </div>
 
       <div class="summary-card">
-        <div class="small-muted">TRC Ratio: LPRC / LDPRC</div>
+        <div class="small-muted">หมู่ที่เสี่ยงขาด</div>
+        <div class="fs-3 fw-bold">${riskText}</div>
+      </div>
+
+      <div class="summary-card">
+        <div class="small-muted">TRC Ratio</div>
         <div class="fs-3 fw-bold">${prcTrcRatioDisplay}%</div>
       </div>
-
-      <div class="summary-card">
-        <div class="small-muted">ความต้องการใช้ PRC เพิ่ม</div>
-        <div class="fs-3 fw-bold">${decisionBase.totalPrcNeed || 0}</div>
-      </div>
     </div>
-
 
     <div class="mobile-chart-grid">
       <div class="mobile-chart-card">
@@ -1183,23 +1242,24 @@ function renderMobilePlanning(data) {
     </div>
 
     <div class="mobile-chart-card mb-3">
-      <h5 class="fw-bold mb-3">LPRC / LDPRC by Blood Group</h5>
-      ${renderPrcBloodGroupChart(rows)}
+      <h5 class="fw-bold mb-3">Forecast แยกตามหมู่เลือด</h5>
+      ${renderPrcBloodGroupChart(prcRows)}
     </div>
 
     <div class="mobile-table-card table-responsive">
       <table class="table table-hover align-middle mb-0">
         <thead>
           <tr>
-            <th>Product</th>
-<th>Group</th>
-<th class="text-end">Minimum</th>
-<th class="text-end">ใช้ได้จริง</th>
-<th class="text-end">ควรเติม</th>
-<th class="text-end">CNMI</th>
-<th class="text-end">TRC</th>
-<th class="text-end">TRC %</th>
-<th>คำแนะนำ</th>
+            <th>Group</th>
+            <th class="text-end">ใช้ได้จริง</th>
+            <th class="text-end">ค่าเฉลี่ยล่าสุด</th>
+            <th class="text-end">ช่วงเดียวกันปีที่แล้ว</th>
+            <th class="text-end">คาดว่าจะใช้</th>
+            <th class="text-end">คาดว่าจะเหลือ</th>
+            <th class="text-end">ควรเติม</th>
+            <th class="text-end">CNMI</th>
+            <th class="text-end">TRC</th>
+            <th>คำแนะนำ</th>
           </tr>
         </thead>
         <tbody>
@@ -1211,51 +1271,45 @@ function renderMobilePlanning(data) {
 }
 
 function getMobilePlanningDecision(decisionBase) {
-  const need = Number(decisionBase.totalPrcNeed || 0);
+  const planDays = Number(decisionBase.planDays || 14);
+  const needToCollect = Number(decisionBase.totalNeedToCollect || 0);
+  const forecastUse = Number(decisionBase.totalForecastUse || 0);
   const trcRatio = Number(decisionBase.prcTrcRatio || 0);
-  const expiryHigh = Number(decisionBase.totalPrcExpiryHigh || 0);
+  const riskGroups = Array.isArray(decisionBase.riskGroups) ? decisionBase.riskGroups : [];
+  const riskText = riskGroups.length ? riskGroups.join(", ") : "-";
 
-  if (need > 0 && expiryHigh > 0) {
-    return {
-      level: "warning",
-      icon: "⚠️",
-      title: "ขาดบางส่วน แต่ต้องจัดการใกล้หมดอายุก่อน",
-      text: `LPRC / LDPRC มีความต้องการใช้เพิ่ม ${need} unit และมีถุงใกล้หมดอายุ/หมดอายุ ${expiryHigh} unit ควรเติมเฉพาะหมู่ที่ขาดจริง พร้อมจัดการเลือดใกล้หมดอายุก่อนออกหน่วยใหญ่`
-    };
-  }
-
-  if (need > 0 && trcRatio >= 30) {
+  if (needToCollect > 0 && planDays <= 7) {
     return {
       level: "critical",
-      icon: "🚌",
-      title: "ควรวางแผนออกหน่วยเพื่อลดการพึ่ง TRC",
-      text: `LPRC / LDPRC มีความต้องการใช้เพิ่ม ${need} unit และสัดส่วนเลือดจาก TRC อยู่ที่ ${trcRatio}% เหมาะกับการวางแผนออกหน่วย โดยเน้นหมู่เลือดที่ขาด`
+      icon: "🚨",
+      title: `อีก ${planDays} วันควรเติมด่วน`,
+      text: `ระบบคาดว่าจะใช้ LPRC / LDPRC ${forecastUse} unit และควรเติมเพิ่ม ${needToCollect} unit โดยหมู่ที่เสี่ยงขาดคือ ${riskText} อาจต้องวางแผนออกหน่วยหรือประสาน TRC เฉพาะหน้า`
     };
   }
 
-  if (need > 0) {
+  if (needToCollect > 0) {
     return {
       level: "warning",
-      icon: "🩸",
-      title: "ควรเติม stock เฉพาะหมู่ที่ขาด",
-      text: `LPRC / LDPRC มีความต้องการใช้เพิ่ม ${need} unit ควรดูตารางแยกหมู่เลือดด้านล่างก่อนตัดสินใจออกหน่วย`
+      icon: "🚌",
+      title: `อีก ${planDays} วันควรวางแผนออกหน่วย`,
+      text: `ระบบคาดว่าจะใช้ LPRC / LDPRC ${forecastUse} unit และควรเติมเพิ่ม ${needToCollect} unit โดยหมู่ที่ควรเน้นคือ ${riskText}`
     };
   }
 
-  if (expiryHigh > 0) {
+  if (trcRatio >= 30) {
     return {
       level: "watch",
-      icon: "⏳",
-      title: "ยังไม่ควรออกหน่วยเพิ่ม เน้นจัดการวันหมดอายุ",
-      text: `ยังไม่มีความต้องการใช้ LPRC / LDPRC เพิ่ม แต่มีถุงใกล้หมดอายุ/หมดอายุ ${expiryHigh} unit ควรบริหารการใช้ก่อนเพิ่ม stock`
+      icon: "👀",
+      title: `อีก ${planDays} วันยังพอใช้ แต่ควรลดการพึ่ง TRC`,
+      text: `LPRC / LDPRC ยังพอใช้ตาม forecast แต่สัดส่วนเลือดจาก TRC อยู่ที่ ${trcRatio}% ควรพิจารณาวางรอบออกหน่วยเพื่อลดการเบิกจาก TRC`
     };
   }
 
   return {
     level: "normal",
     icon: "✅",
-    title: "ยังไม่จำเป็นต้องออกหน่วยจากมุม stock ปัจจุบัน",
-    text: "LPRC / LDPRC ยังไม่ต่ำกว่า Minimum และ expiry risk ระดับสูงยังไม่เด่น สามารถติดตามตามรอบปกติ"
+    title: `อีก ${planDays} วันยังไม่จำเป็นต้องออกหน่วย`,
+    text: `LPRC / LDPRC ยังพอใช้ตาม forecast และสัดส่วนเลือดจาก TRC ไม่สูง สามารถติดตามตามรอบปกติ`
   };
 }
 
@@ -1289,10 +1343,9 @@ function renderPrcBloodGroupChart(rows) {
 
   const maxValue = Math.max(
     ...prcRows.map(r => Math.max(
-      Number(r.minimumStock || 0),
       Number(r.netAvailable || 0),
-      Number(r.trc || 0),
-      Number(r.cnmi || 0)
+      Number(r.forecastUse || 0),
+      Number(r.needToCollect || 0)
     )),
     1
   );
@@ -1301,10 +1354,13 @@ function renderPrcBloodGroupChart(rows) {
     <div class="d-grid gap-3">
       ${prcRows.map(r => `
         <div>
-          <div class="fw-bold mb-1">Group ${r.bloodGroup}</div>
-          ${renderMiniCompareBar("Minimum", r.minimumStock, maxValue, "fill-other")}
-          ${renderMiniCompareBar("Net Available", r.netAvailable, maxValue, "fill-cnmi")}
-          ${renderMiniCompareBar("TRC", r.trc, maxValue, "fill-trc")}
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <div class="fw-bold">Group ${r.bloodGroup}</div>
+            <span class="small-muted">${r.forecastAdvice || ""}</span>
+          </div>
+          ${renderMiniCompareBar("ใช้ได้จริง", r.netAvailable, maxValue, "fill-cnmi")}
+          ${renderMiniCompareBar("คาดว่าจะใช้", r.forecastUse, maxValue, "fill-trc")}
+          ${renderMiniCompareBar("ควรเติม", r.needToCollect, maxValue, "fill-high")}
         </div>
       `).join("")}
     </div>
@@ -1351,58 +1407,43 @@ function renderMobilePlanningRows(rows) {
     return `
       <tr>
         <td colspan="10" class="text-center small-muted py-4">
-          ยังไม่มีข้อมูล Mobile Planning
+          ยังไม่มีข้อมูล LPRC / LDPRC สำหรับประเมินแผนออกหน่วย
         </td>
       </tr>
     `;
   }
 
-  const orderType = {
-    "LPRC / LDPRC": 1,
-    "FFP": 2,
-    "LDPPC": 3,
-    "Cryo": 4,
-    "SDP": 5
-  };
-
   const orderBlood = {
     "O": 1,
     "A": 2,
     "B": 3,
-    "AB": 4,
-    "ไม่แยกหมู่": 5
+    "AB": 4
   };
 
   const sorted = [...rows].sort((a, b) => {
-    const t = (orderType[a.type] || 99) - (orderType[b.type] || 99);
-    if (t !== 0) return t;
     return (orderBlood[a.bloodGroup] || 99) - (orderBlood[b.bloodGroup] || 99);
   });
 
   return sorted.map(r => {
-    const trcRatio = Number(r.trcRatio || 0);
-    const need = Number(r.need || 0);
-    const highExpiry = Number(r.expired || 0) + Number(r.expiryHigh || 0);
+    const needToCollect = Number(r.needToCollect || 0);
+    const projectedBalance = Number(r.projectedBalance || 0);
 
     let rowClass = "";
-    if (need > 0) rowClass = "table-warning";
-    if (highExpiry > 0) rowClass = "table-danger";
+    if (needToCollect > 0) rowClass = "table-warning";
+    if (needToCollect > 0 && projectedBalance < 0) rowClass = "table-danger";
 
     return `
       <tr class="${rowClass}">
-        <td>
-          <span class="mobile-product-badge ${getTypeClass(r.type)}">
-            ${r.type}
-          </span>
-        </td>
-        <td class="fw-bold">${r.bloodGroup}</td>
-        <td class="text-end">${r.minimumStock || 0}</td>
+        <td class="fw-bold">Group ${r.bloodGroup}</td>
         <td class="text-end fw-bold">${r.netAvailable || 0}</td>
-        <td class="text-end fw-bold">${r.need || 0}</td>
+        <td class="text-end">${r.currentAvgExpectedUse || 0}</td>
+        <td class="text-end">${r.lastYearUsed || 0}</td>
+        <td class="text-end fw-bold">${r.forecastUse || 0}</td>
+        <td class="text-end fw-bold">${r.projectedBalance || 0}</td>
+        <td class="text-end fw-bold">${r.needToCollect || 0}</td>
         <td class="text-end">${r.cnmi || 0}</td>
         <td class="text-end">${r.trc || 0}</td>
-        <td class="text-end">${trcRatio}%</td>
-        <td>${getMobileRowAdvice(r)}</td>
+        <td><span class="row-advice">${r.forecastAdvice || "-"}</span></td>
       </tr>
     `;
   }).join("");
