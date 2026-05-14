@@ -1004,9 +1004,9 @@ function renderMobilePlanning(data) {
     <div class="mobile-filter-card">
       <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
         <div>
-          <h1 class="fw-bold mb-2">Mobile Unit Planning Dashboard</h1>
+          <h1 class="fw-bold mb-2">ประเมินแผนออกหน่วยรับบริจาค</h1>
           <div class="small-muted">
-            ประเมินการออกหน่วยโดยดู Minimum Stock + วันหมดอายุ + แหล่งที่มาของถุงเลือด
+            ช่วยดูว่าควรออกหน่วยรับบริจาคหรือไม่ โดยดูจาก Minimum Stock วันหมดอายุ และแหล่งที่มาของถุงเลือด
           </div>
         </div>
 
@@ -1018,7 +1018,7 @@ function renderMobilePlanning(data) {
             value="${data.selectedDate || getTodayYmd()}"
           />
           <button class="btn btn-main" onclick="loadMobilePlanning()">
-            ประเมิน
+            คำนวณแผน
           </button>
         </div>
       </div>
@@ -1047,7 +1047,7 @@ function renderMobilePlanning(data) {
       </div>
 
       <div class="summary-card">
-        text<div class="small-muted">ความต้องการใช้ PRC เพิ่ม</div>: `ยังไม่มีความต้องการใช้ LPRC / LDPRC เพิ่ม แต่มีถุงใกล้หมดอายุ/หมดอายุ ${expiryHigh} unit ควรบริหารการใช้ก่อนเพิ่ม stock`
+        <div class="small-muted">ความต้องการใช้ PRC เพิ่ม</div>
         <div class="fs-3 fw-bold">${decisionBase.totalPrcNeed || 0}</div>
       </div>
     </div>
