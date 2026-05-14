@@ -478,6 +478,62 @@
   display: inline-block;
 }
 
+    .group-forecast-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.group-forecast-card {
+  background: white;
+  border: 1px solid #d8ecff;
+  border-radius: 22px;
+  padding: 18px;
+  box-shadow: 0 12px 30px rgba(30, 90, 150, 0.08);
+}
+
+.group-forecast-kpi {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.group-forecast-item {
+  background: #f7fbff;
+  border: 1px solid #e5f1ff;
+  border-radius: 16px;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.group-forecast-item .value {
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.1;
+  color: #16324f;
+}
+
+.group-forecast-note {
+  color: #6b8298;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.mobile-table-card th {
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.mobile-table-card table {
+  min-width: 860px;
+}
+
+@media (max-width: 768px) {
+  .group-forecast-grid {
+    grid-template-columns: 1fr;
+  }
+}
     
     @media (max-width: 900px) {
   .app-layout {
@@ -1162,15 +1218,15 @@ function renderMobilePlanning(data) {
   const summary = data.summary || {};
   const decisionBase = summary.decisionBase || {};
   const rows = summary.typeGroupRows || [];
+
   const planDays = Number(data.targetPlanDays || data.planDays || decisionBase.planDays || 14);
-const targetMobileDate = data.targetMobileDate || getTodayYmd();
+  const targetMobileDate = data.targetMobileDate || getTodayYmd();
 
   const prcRows = rows.filter(r => r.type === "LPRC / LDPRC");
 
   const prcCnmi = prcRows.reduce((sum, r) => sum + Number(r.cnmi || 0), 0);
   const prcTrc = prcRows.reduce((sum, r) => sum + Number(r.trc || 0), 0);
-  const prcOther = prcRows.reduce((sum, r) => sum + Number(r.other || 0), 0);
-  const prcTotalSource = prcCnmi + prcTrc + prcOther;
+  const prcTotalSource = prcCnmi + prcTrc;
 
   const prcTrcRatioDisplay = prcTotalSource > 0
     ? ((prcTrc / prcTotalSource) * 100).toFixed(1)
@@ -1188,11 +1244,11 @@ const targetMobileDate = data.targetMobileDate || getTodayYmd();
           <div class="forecast-pill mb-2">LPRC / LDPRC Forecast</div>
           <h1 class="fw-bold mb-2">ประเมินแผนออกหน่วยรับบริจาค</h1>
           <div class="small-muted">
-            เลือกวันที่ที่คาดว่าจะออกหน่วย ระบบจะคำนวณว่า LPRC / LDPRC จะพอใช้ถึงวันนั้นหรือไม่ โดยเทียบ stock ปัจจุบัน ค่าเฉลี่ยล่าสุด และช่วงเดียวกันปีที่แล้ว
+            เลือกวันที่ที่คาดว่าจะออกหน่วย ระบบจะประเมินจาก stock ปัจจุบัน + การใช้ย้อนหลัง + การจัดหาเองในช่วงเดียวกันปีที่แล้ว
           </div>
         </div>
 
-        <div class="d-flex flex-wrap gap-2 align-items-center">
+        <div class="d-flex flex-wrap gap-2 align-items-end">
           <div>
             <div class="small-muted mb-1">วันที่คาดว่าจะออกหน่วย</div>
             <input
@@ -1217,38 +1273,39 @@ const targetMobileDate = data.targetMobileDate || getTodayYmd();
     </div>
 
     <div class="mobile-kpi-grid">
-  <div class="summary-card">
-    <div class="small-muted">คาดว่าจะใช้</div>
-    <div class="fs-3 fw-bold">${decisionBase.totalForecastUse || 0}</div>
-    <div class="small-muted mt-1">จากค่าเฉลี่ยล่าสุดเทียบช่วงเดียวกันปีที่แล้ว</div>
-  </div>
-
-  <div class="summary-card">
-    <div class="small-muted">คาดว่าจะจัดหาเองได้</div>
-    <div class="fs-3 fw-bold">${decisionBase.totalExpectedCnmiIn || 0}</div>
-    <div class="small-muted mt-1">จาก CNMI DateStockIn ช่วงเดียวกันปีที่แล้ว</div>
-  </div>
-
-  <div class="summary-card">
-    <div class="small-muted">ควรออกหน่วยเพิ่ม</div>
-    <div class="fs-3 fw-bold">${decisionBase.totalNeedToCollect || 0}</div>
-    <div class="small-muted mt-1">หลังหัก stock ปัจจุบันและที่คาดว่าจะจัดหาเองได้</div>
-  </div>
-
-  <div class="summary-card">
-    <div class="small-muted">หมู่เลือดที่เสี่ยงขาด</div>
-    <div class="fs-3 fw-bold">${riskText}</div>
-    <div class="small-muted mt-1">TRC Ratio ${prcTrcRatioDisplay}%</div>
-  </div>
-</div>
-
-    <div class="mobile-chart-grid">
-      <div class="mobile-chart-card">
-        <h5 class="fw-bold mb-3">แหล่งที่มาของ LPRC / LDPRC</h5>
-        ${renderSimpleBar("CNMI", prcCnmi, prcTotalSource, "fill-cnmi")}
-        ${renderSimpleBar("TRC", prcTrc, prcTotalSource, "fill-trc")}
-        ${renderSimpleBar("OTHER", prcOther, prcTotalSource, "fill-other")}
+      <div class="summary-card">
+        <div class="small-muted">คาดว่าจะใช้</div>
+        <div class="fs-3 fw-bold">${decisionBase.totalForecastUse || 0}</div>
       </div>
+
+      <div class="summary-card">
+        <div class="small-muted">คาดว่าจะจัดหาเองได้</div>
+        <div class="fs-3 fw-bold">${decisionBase.totalExpectedCnmiIn || 0}</div>
+      </div>
+
+      <div class="summary-card">
+        <div class="small-muted">คาดว่าจะเหลือ</div>
+        <div class="fs-3 fw-bold">${decisionBase.totalProjectedBalance || 0}</div>
+      </div>
+
+      <div class="summary-card">
+        <div class="small-muted">ควรออกหน่วยเพิ่ม</div>
+        <div class="fs-3 fw-bold">${decisionBase.totalNeedToCollect || 0}</div>
+      </div>
+    </div>
+
+    <div class="mobile-note-box">
+      <div class="fw-bold mb-1">สรุปเพิ่มเติม</div>
+      <div class="small-muted">
+        หมู่เลือดที่เสี่ยงขาด: <b>${riskText}</b> |
+        TRC Ratio: <b>${prcTrcRatioDisplay}%</b>
+      </div>
+    </div>
+
+    <div class="mobile-chart-card mb-3">
+      <h5 class="fw-bold mb-3">แหล่งที่มาของ LPRC / LDPRC ใน stock ปัจจุบัน</h5>
+      ${renderSimpleBar("CNMI", prcCnmi, prcTotalSource, "fill-cnmi")}
+      ${renderSimpleBar("TRC", prcTrc, prcTotalSource, "fill-trc")}
     </div>
 
     <div class="mobile-chart-card mb-3">
@@ -1262,13 +1319,12 @@ const targetMobileDate = data.targetMobileDate || getTodayYmd();
           <tr>
             <th>Group</th>
             <th class="text-end">ใช้ได้จริง</th>
-            <th class="text-end">คาดว่าจะใช้</th>
-            <th class="text-end">คาดว่าจะจัดหาเองได้</th>
-            <th class="text-end">คาดว่าจะเหลือ</th>
-            <th class="text-end">ควรออกหน่วยเพิ่ม</th>
-            <th class="text-end">CNMI stock</th>
-            <th class="text-end">TRC stock</th>
-            <th>คำแนะนำ</th>
+            <th class="text-end">ใช้คาดการณ์</th>
+            <th class="text-end">จัดหาเอง</th>
+            <th class="text-end">เหลือคาดการณ์</th>
+            <th class="text-end">ออกเพิ่ม</th>
+            <th class="text-end">CNMI</th>
+            <th class="text-end">TRC</th>
           </tr>
         </thead>
         <tbody>
@@ -1354,24 +1410,40 @@ function renderPrcBloodGroupChart(rows) {
     ...prcRows.map(r => Math.max(
       Number(r.netAvailable || 0),
       Number(r.forecastUse || 0),
-      Number(r.lastYearCnmiIn || 0),
       Number(r.needToCollect || 0)
     )),
     1
   );
 
   return `
-    <div class="d-grid gap-3">
+    <div class="group-forecast-grid">
       ${prcRows.map(r => `
-        <div>
-          <div class="d-flex justify-content-between align-items-center mb-1">
-            <div class="fw-bold">Group ${r.bloodGroup}</div>
-            <span class="small-muted">${r.forecastAdvice || ""}</span>
+        <div class="group-forecast-card">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-bold fs-5">Group ${r.bloodGroup}</div>
+            <div class="group-forecast-note">
+              จัดหาเองได้ ${r.lastYearCnmiIn || 0} unit
+            </div>
           </div>
+
+          <div class="group-forecast-kpi">
+            <div class="group-forecast-item">
+              <div class="small-muted">ใช้ได้จริง</div>
+              <div class="value">${r.netAvailable || 0}</div>
+            </div>
+            <div class="group-forecast-item">
+              <div class="small-muted">คาดว่าจะใช้</div>
+              <div class="value">${r.forecastUse || 0}</div>
+            </div>
+            <div class="group-forecast-item">
+              <div class="small-muted">ควรเติม</div>
+              <div class="value">${r.needToCollect || 0}</div>
+            </div>
+          </div>
+
           ${renderMiniCompareBar("ใช้ได้จริง", r.netAvailable, maxValue, "fill-cnmi")}
           ${renderMiniCompareBar("คาดว่าจะใช้", r.forecastUse, maxValue, "fill-trc")}
-          ${renderMiniCompareBar("คาดว่าจะจัดหาเองได้", r.lastYearCnmiIn, maxValue, "fill-safe")}
-          ${renderMiniCompareBar("ควรออกหน่วยเพิ่ม", r.needToCollect, maxValue, "fill-high")}
+          ${renderMiniCompareBar("ควรเติม", r.needToCollect, maxValue, "fill-high")}
         </div>
       `).join("")}
     </div>
@@ -1417,7 +1489,7 @@ function renderMobilePlanningRows(rows) {
   if (!rows || rows.length === 0) {
     return `
       <tr>
-        <td colspan="9" class="text-center small-muted py-4">
+        <td colspan="8" class="text-center small-muted py-4">
           ยังไม่มีข้อมูล LPRC / LDPRC สำหรับประเมินแผนออกหน่วย
         </td>
       </tr>
@@ -1441,7 +1513,7 @@ function renderMobilePlanningRows(rows) {
 
     let rowClass = "";
     if (needToCollect > 0) rowClass = "table-warning";
-    if (needToCollect > 0 && projectedBalance < 0) rowClass = "table-danger";
+    if (projectedBalance < 0) rowClass = "table-danger";
 
     return `
       <tr class="${rowClass}">
@@ -1453,7 +1525,6 @@ function renderMobilePlanningRows(rows) {
         <td class="text-end fw-bold">${r.needToCollect || 0}</td>
         <td class="text-end">${r.cnmi || 0}</td>
         <td class="text-end">${r.trc || 0}</td>
-        <td><span class="row-advice">${r.forecastAdvice || "-"}</span></td>
       </tr>
     `;
   }).join("");
