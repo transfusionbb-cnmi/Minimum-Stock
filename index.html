@@ -337,7 +337,7 @@
 
 .mobile-chart-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 14px;
   margin-bottom: 18px;
 }
@@ -1090,6 +1090,16 @@ function renderMobilePlanning(data) {
   const expirySummary = summary.expirySummary || {};
   const decisionBase = summary.decisionBase || {};
   const rows = summary.typeGroupRows || [];
+  const prcRows = rows.filter(r => r.type === "LPRC / LDPRC");
+
+  const prcCnmi = prcRows.reduce((sum, r) => sum + Number(r.cnmi || 0), 0);
+  const prcTrc = prcRows.reduce((sum, r) => sum + Number(r.trc || 0), 0);
+  const prcOther = prcRows.reduce((sum, r) => sum + Number(r.other || 0), 0);
+  const prcTotalSource = prcCnmi + prcTrc + prcOther;
+
+  const prcTrcRatioDisplay = prcTotalSource > 0
+  ? ((prcTrc / prcTotalSource) * 100).toFixed(1)
+  : "0.0";
 
   const totalSource =
     Number(sourceSummary.CNMI || 0) +
@@ -1142,18 +1152,18 @@ function renderMobilePlanning(data) {
 
     <div class="mobile-kpi-grid">
       <div class="summary-card">
-        <div class="small-muted">CNMI Stock</div>
-        <div class="fs-3 fw-bold">${sourceSummary.CNMI || 0}</div>
+        <div class="small-muted">CNMI: LPRC / LDPRC</div>
+        <div class="fs-3 fw-bold">${prcCnmi}</div>
       </div>
 
       <div class="summary-card">
-        <div class="small-muted">TRC Stock</div>
-        <div class="fs-3 fw-bold">${sourceSummary.TRC || 0}</div>
+        <div class="small-muted">TRC: LPRC / LDPRC</div>
+        <div class="fs-3 fw-bold">${prcTrc}</div>
       </div>
 
       <div class="summary-card">
-        <div class="small-muted">TRC Ratio</div>
-        <div class="fs-3 fw-bold">${totalTrcRatio}%</div>
+        <div class="small-muted">TRC Ratio: LPRC / LDPRC</div>
+        <div class="fs-3 fw-bold">${prcTrcRatioDisplay}%</div>
       </div>
 
       <div class="summary-card">
@@ -1162,31 +1172,13 @@ function renderMobilePlanning(data) {
       </div>
     </div>
 
-    <div class="mobile-note-box">
-      <div class="fw-bold mb-1">เกณฑ์ Expiry Risk</div>
-      <div class="small-muted">
-        LPRC / LDPRC: 7 / 14 / 21 วัน |
-        LDPPC / SDP: 1 / 3 / 5 วัน |
-        FFP / Cryo: 30 / 60 / 90 วัน
-      </div>
-    </div>
 
     <div class="mobile-chart-grid">
       <div class="mobile-chart-card">
-        <h5 class="fw-bold mb-3">Source Mix: CNMI vs TRC vs OTHER</h5>
-        ${renderSimpleBar("CNMI", sourceSummary.CNMI || 0, totalSource, "fill-cnmi")}
-        ${renderSimpleBar("TRC", sourceSummary.TRC || 0, totalSource, "fill-trc")}
-        ${renderSimpleBar("OTHER", sourceSummary.OTHER || 0, totalSource, "fill-other")}
-      </div>
-
-      <div class="mobile-chart-card">
-        <h5 class="fw-bold mb-3">Expiry Risk Summary</h5>
-        ${renderSimpleBar("EXPIRED", expirySummary.EXPIRED || 0, totalExpiry, "fill-expired")}
-        ${renderSimpleBar("HIGH", expirySummary.HIGH || 0, totalExpiry, "fill-high")}
-        ${renderSimpleBar("MEDIUM", expirySummary.MEDIUM || 0, totalExpiry, "fill-medium")}
-        ${renderSimpleBar("WATCH", expirySummary.WATCH || 0, totalExpiry, "fill-watch")}
-        ${renderSimpleBar("SAFE", expirySummary.SAFE || 0, totalExpiry, "fill-safe")}
-        ${renderSimpleBar("UNKNOWN", expirySummary.UNKNOWN || 0, totalExpiry, "fill-unknown")}
+        <h5 class="fw-bold mb-3">แหล่งที่มาของ LPRC / LDPRC</h5>
+        ${renderSimpleBar("CNMI", prcCnmi, prcTotalSource, "fill-cnmi")}
+        ${renderSimpleBar("TRC", prcTrc, prcTotalSource, "fill-trc")}
+        ${renderSimpleBar("OTHER", prcOther, prcTotalSource, "fill-other")}
       </div>
     </div>
 
@@ -1207,12 +1199,11 @@ function renderMobilePlanning(data) {
 <th class="text-end">CNMI</th>
 <th class="text-end">TRC</th>
 <th class="text-end">TRC %</th>
-<th class="text-end">ใกล้หมดอายุมาก</th>
-<th class="text-end">เฝ้าระวัง</th>
+<th>คำแนะนำ</th>
           </tr>
         </thead>
         <tbody>
-          ${renderMobilePlanningRows(rows)}
+          ${renderMobilePlanningRows(prcRows)}
         </tbody>
       </table>
     </div>
@@ -1336,6 +1327,25 @@ function renderMiniCompareBar(label, value, maxValue, fillClass) {
   `;
 }
 
+function getMobileRowAdvice(r) {
+  const need = Number(r.need || 0);
+  const trcRatio = Number(r.trcRatio || 0);
+
+  if (need > 0 && trcRatio >= 30) {
+    return "ควรเน้นออกหน่วย / ลดการพึ่ง TRC";
+  }
+
+  if (need > 0) {
+    return "ควรเติมเฉพาะหมู่นี้";
+  }
+
+  if (trcRatio >= 30) {
+    return "มีสัดส่วน TRC สูง แต่ยังไม่ขาด";
+  }
+
+  return "ติดตามตามรอบ";
+}
+    
 function renderMobilePlanningRows(rows) {
   if (!rows || rows.length === 0) {
     return `
@@ -1392,8 +1402,7 @@ function renderMobilePlanningRows(rows) {
         <td class="text-end">${r.cnmi || 0}</td>
         <td class="text-end">${r.trc || 0}</td>
         <td class="text-end">${trcRatio}%</td>
-        <td class="text-end">${highExpiry}</td>
-        <td class="text-end">${r.expiryWatch || 0}</td>
+        <td>${getMobileRowAdvice(r)}</td>
       </tr>
     `;
   }).join("");
