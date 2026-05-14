@@ -651,13 +651,8 @@
     </section>
 
     <section id="page-expiry" class="dashboard-page">
-      <div class="hero-card">
-        <h1 class="fw-bold mb-2">Expiry Risk Dashboard</h1>
-        <div class="small-muted">
-          ใช้ดูเลือดที่ใกล้หมดอายุ และรายการที่ควรเร่งจัดการ
-        </div>
-      </div>
-    </section>
+  <div id="expiryRiskDashboard"></div>
+</section>
 
     <section id="page-mobile" class="dashboard-page">
   <div id="mobilePlanningDashboard"></div>
@@ -1098,17 +1093,34 @@ function getAlertClass(level) {
   return `${y}-${m}-${day}`;
 }
 
-async function loadMobilePlanning(selectedDate, planDays) {
+    function diffDaysFromToday(targetDateText) {
+  const todayText = getTodayYmd();
+
+  const today = new Date(todayText + "T00:00:00");
+  const target = new Date(targetDateText + "T00:00:00");
+
+  if (isNaN(target)) return 1;
+
+  const diff = Math.ceil((target.getTime() - today.getTime()) / 86400000);
+
+  return Math.max(1, diff);
+}
+
+async function loadMobilePlanning(targetMobileDate) {
   const holder = document.getElementById("mobilePlanningDashboard");
   if (!holder) return;
 
-  const targetDate = selectedDate || document.getElementById("mobilePlanDate")?.value || getTodayYmd();
-  const targetPlanDays = Number(planDays || document.querySelector(".plan-btn.active")?.dataset.days || 14);
+  const selectedMobileDate =
+    targetMobileDate ||
+    document.getElementById("mobilePlanDate")?.value ||
+    getTodayYmd();
+
+  const targetPlanDays = diffDaysFromToday(selectedMobileDate);
 
   holder.innerHTML = `
     <div class="hero-card">
       <div class="fw-bold">กำลังโหลดแผนออกหน่วย...</div>
-      <div class="small-muted">ระบบกำลังคำนวณ forecast จากข้อมูลย้อนหลัง 2 ปี และ stock ปัจจุบัน</div>
+      <div class="small-muted">ระบบกำลังคำนวณจากวันที่คาดว่าจะออกหน่วย เทียบกับ stock ปัจจุบันและข้อมูลย้อนหลัง 2 ปี</div>
     </div>
   `;
 
@@ -1116,7 +1128,7 @@ async function loadMobilePlanning(selectedDate, planDays) {
     const url =
       WEB_APP_URL +
       "?action=getMobilePlanning&selectedDate=" +
-      encodeURIComponent(targetDate) +
+      encodeURIComponent(getTodayYmd()) +
       "&planDays=" +
       encodeURIComponent(targetPlanDays);
 
@@ -1126,6 +1138,9 @@ async function loadMobilePlanning(selectedDate, planDays) {
     if (!data.ok) {
       throw new Error(data.message || "โหลด Mobile Unit Planning ไม่สำเร็จ");
     }
+
+    data.targetMobileDate = selectedMobileDate;
+    data.targetPlanDays = targetPlanDays;
 
     currentMobilePlanningData = data;
     renderMobilePlanning(data);
@@ -1140,14 +1155,6 @@ async function loadMobilePlanning(selectedDate, planDays) {
   }
 }
 
-function setMobilePlanDays(days) {
-  document.querySelectorAll(".plan-btn").forEach(btn => {
-    btn.classList.toggle("active", Number(btn.dataset.days) === Number(days));
-  });
-
-  loadMobilePlanning(null, days);
-}
-
 function renderMobilePlanning(data) {
   const holder = document.getElementById("mobilePlanningDashboard");
   if (!holder) return;
@@ -1155,7 +1162,8 @@ function renderMobilePlanning(data) {
   const summary = data.summary || {};
   const decisionBase = summary.decisionBase || {};
   const rows = summary.typeGroupRows || [];
-  const planDays = Number(data.planDays || decisionBase.planDays || 14);
+  const planDays = Number(data.targetPlanDays || data.planDays || decisionBase.planDays || 14);
+const targetMobileDate = data.targetMobileDate || getTodayYmd();
 
   const prcRows = rows.filter(r => r.type === "LPRC / LDPRC");
 
@@ -1180,27 +1188,25 @@ function renderMobilePlanning(data) {
           <div class="forecast-pill mb-2">LPRC / LDPRC Forecast</div>
           <h1 class="fw-bold mb-2">ประเมินแผนออกหน่วยรับบริจาค</h1>
           <div class="small-muted">
-            เลือกช่วงเวลาเพื่อดูว่า LPRC / LDPRC จะพอใช้หรือไม่ โดยเทียบ stock ปัจจุบันกับค่าเฉลี่ยล่าสุดและช่วงเดียวกันปีที่แล้ว
+            เลือกวันที่ที่คาดว่าจะออกหน่วย ระบบจะคำนวณว่า LPRC / LDPRC จะพอใช้ถึงวันนั้นหรือไม่ โดยเทียบ stock ปัจจุบัน ค่าเฉลี่ยล่าสุด และช่วงเดียวกันปีที่แล้ว
           </div>
         </div>
 
         <div class="d-flex flex-wrap gap-2 align-items-center">
-          <input
-            id="mobilePlanDate"
-            type="date"
-            class="mobile-date-input"
-            value="${data.selectedDate || getTodayYmd()}"
-          />
+          <div>
+            <div class="small-muted mb-1">วันที่คาดว่าจะออกหน่วย</div>
+            <input
+              id="mobilePlanDate"
+              type="date"
+              class="mobile-date-input"
+              value="${targetMobileDate}"
+            />
+          </div>
+
           <button class="btn btn-main" onclick="loadMobilePlanning()">
             คำนวณแผน
           </button>
         </div>
-      </div>
-
-      <div class="plan-button-row mb-3">
-        <button class="plan-btn ${planDays === 7 ? "active" : ""}" data-days="7" onclick="setMobilePlanDays(7)">อีก 7 วัน</button>
-        <button class="plan-btn ${planDays === 14 ? "active" : ""}" data-days="14" onclick="setMobilePlanDays(14)">อีก 14 วัน</button>
-        <button class="plan-btn ${planDays === 30 ? "active" : ""}" data-days="30" onclick="setMobilePlanDays(30)">อีก 30 วัน</button>
       </div>
 
       <div class="mobile-decision-card ${decision.level}">
@@ -1212,17 +1218,17 @@ function renderMobilePlanning(data) {
 
     <div class="mobile-kpi-grid">
       <div class="summary-card">
-        <div class="small-muted">คาดว่าจะใช้ใน ${planDays} วัน</div>
+        <div class="small-muted">คาดว่าจะใช้ก่อนถึงวันออกหน่วย</div>
         <div class="fs-3 fw-bold">${decisionBase.totalForecastUse || 0}</div>
       </div>
 
       <div class="summary-card">
-        <div class="small-muted">ควรเติมเพิ่ม</div>
+        <div class="small-muted">ควรเติมก่อนถึงวันนั้น</div>
         <div class="fs-3 fw-bold">${decisionBase.totalNeedToCollect || 0}</div>
       </div>
 
       <div class="summary-card">
-        <div class="small-muted">หมู่ที่เสี่ยงขาด</div>
+        <div class="small-muted">หมู่เลือดที่เสี่ยงขาด</div>
         <div class="fs-3 fw-bold">${riskText}</div>
       </div>
 
@@ -1282,7 +1288,7 @@ function getMobilePlanningDecision(decisionBase) {
     return {
       level: "critical",
       icon: "🚨",
-      title: `อีก ${planDays} วันควรเติมด่วน`,
+      title: `ควรเติมด่วนภายใน ${planDays} วัน`,
       text: `ระบบคาดว่าจะใช้ LPRC / LDPRC ${forecastUse} unit และควรเติมเพิ่ม ${needToCollect} unit โดยหมู่ที่เสี่ยงขาดคือ ${riskText} อาจต้องวางแผนออกหน่วยหรือประสาน TRC เฉพาะหน้า`
     };
   }
@@ -1291,7 +1297,7 @@ function getMobilePlanningDecision(decisionBase) {
     return {
       level: "warning",
       icon: "🚌",
-      title: `อีก ${planDays} วันควรวางแผนออกหน่วย`,
+      title: `ควรวางแผนออกหน่วยภายใน ${planDays} วัน`,
       text: `ระบบคาดว่าจะใช้ LPRC / LDPRC ${forecastUse} unit และควรเติมเพิ่ม ${needToCollect} unit โดยหมู่ที่ควรเน้นคือ ${riskText}`
     };
   }
@@ -1300,7 +1306,7 @@ function getMobilePlanningDecision(decisionBase) {
     return {
       level: "watch",
       icon: "👀",
-      title: `อีก ${planDays} วันยังพอใช้ แต่ควรลดการพึ่ง TRC`,
+      title: `ยังพอใช้ถึงวันออกหน่วย แต่ควรลดการพึ่ง TRC`,
       text: `LPRC / LDPRC ยังพอใช้ตาม forecast แต่สัดส่วนเลือดจาก TRC อยู่ที่ ${trcRatio}% ควรพิจารณาวางรอบออกหน่วยเพื่อลดการเบิกจาก TRC`
     };
   }
@@ -1308,7 +1314,7 @@ function getMobilePlanningDecision(decisionBase) {
   return {
     level: "normal",
     icon: "✅",
-    title: `อีก ${planDays} วันยังไม่จำเป็นต้องออกหน่วย`,
+    title: `ยังไม่จำเป็นต้องออกหน่วยภายใน ${planDays} วัน`,
     text: `LPRC / LDPRC ยังพอใช้ตาม forecast และสัดส่วนเลือดจาก TRC ไม่สูง สามารถติดตามตามรอบปกติ`
   };
 }
@@ -1449,6 +1455,214 @@ function renderMobilePlanningRows(rows) {
   }).join("");
 }
 
+    async function loadExpiryRisk(days) {
+  const holder = document.getElementById("expiryRiskDashboard");
+  if (!holder) return;
+
+  const targetDays = Number(days || document.querySelector(".expiry-day-btn.active")?.dataset.days || 7);
+
+  holder.innerHTML = `
+    <div class="hero-card">
+      <div class="fw-bold">กำลังโหลด Expiry Risk...</div>
+      <div class="small-muted">ระบบกำลังดึงรายการเลือดใกล้หมดอายุ</div>
+    </div>
+  `;
+
+  try {
+    const url =
+      WEB_APP_URL +
+      "?action=getMobilePlanning&selectedDate=" +
+      encodeURIComponent(getTodayYmd()) +
+      "&planDays=1";
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (!data.ok) {
+      throw new Error(data.message || "โหลด Expiry Risk ไม่สำเร็จ");
+    }
+
+    renderExpiryRisk(data, targetDays);
+
+  } catch (err) {
+    holder.innerHTML = `
+      <div class="hero-card">
+        <h4 class="fw-bold mb-2">โหลด Expiry Risk ไม่สำเร็จ</h4>
+        <div class="small-muted">${err.message}</div>
+      </div>
+    `;
+  }
+}
+
+function setExpiryDays(days) {
+  document.querySelectorAll(".expiry-day-btn").forEach(btn => {
+    btn.classList.toggle("active", Number(btn.dataset.days) === Number(days));
+  });
+
+  loadExpiryRisk(days);
+}
+
+function renderExpiryRisk(data, days) {
+  const holder = document.getElementById("expiryRiskDashboard");
+  if (!holder) return;
+
+  const stockRows = data.stockRows || [];
+
+  const focusRows = stockRows.filter(r => {
+    const type = String(r.type || "");
+    const daysToExpire = Number(r.daysToExpire);
+
+    const isFocusProduct =
+      type === "LPRC / LDPRC" ||
+      type === "LDPPC" ||
+      type === "SDP" ||
+      type === "FFP";
+
+    return isFocusProduct && daysToExpire >= 0 && daysToExpire <= days;
+  });
+
+  const redCount = focusRows.filter(r => r.type === "LPRC / LDPRC").length;
+  const plateletCount = focusRows.filter(r => r.type === "LDPPC" || r.type === "SDP").length;
+  const ffpCount = focusRows.filter(r => r.type === "FFP").length;
+
+  const groupedRows = buildExpiryGroupedRows(focusRows);
+
+  holder.innerHTML = `
+    <div class="forecast-hero">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+        <div>
+          <div class="forecast-pill mb-2">Expiry Risk</div>
+          <h1 class="fw-bold mb-2">เลือดใกล้หมดอายุ</h1>
+          <div class="small-muted">
+            ใช้ดู LPRC / LDPRC, Platelet และ FFP ที่จะหมดอายุในช่วงที่เลือก เพื่อจัดการก่อนเกิด waste
+          </div>
+        </div>
+      </div>
+
+      <div class="plan-button-row">
+        ${[1, 3, 5, 7, 14, 30].map(d => `
+          <button
+            class="plan-btn expiry-day-btn ${Number(days) === d ? "active" : ""}"
+            data-days="${d}"
+            onclick="setExpiryDays(${d})"
+          >
+            ${d} วัน
+          </button>
+        `).join("")}
+      </div>
+    </div>
+
+    <div class="mobile-kpi-grid">
+      <div class="summary-card">
+        <div class="small-muted">LPRC / LDPRC</div>
+        <div class="fs-3 fw-bold">${redCount}</div>
+      </div>
+
+      <div class="summary-card">
+        <div class="small-muted">Platelet</div>
+        <div class="fs-3 fw-bold">${plateletCount}</div>
+      </div>
+
+      <div class="summary-card">
+        <div class="small-muted">FFP</div>
+        <div class="fs-3 fw-bold">${ffpCount}</div>
+      </div>
+
+      <div class="summary-card">
+        <div class="small-muted">รวมใน ${days} วัน</div>
+        <div class="fs-3 fw-bold">${focusRows.length}</div>
+      </div>
+    </div>
+
+    <div class="mobile-table-card table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>ความเร่งด่วน</th>
+            <th>Product</th>
+            <th>Group</th>
+            <th class="text-end">จำนวน</th>
+            <th class="text-end">หมดอายุเร็วสุด</th>
+            <th>ควรทำ</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${renderExpiryGroupedRows(groupedRows)}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function buildExpiryGroupedRows(rows) {
+  const bucket = {};
+
+  rows.forEach(r => {
+    const key = `${r.type}||${r.bloodGroup}||${r.daysToExpire}`;
+
+    if (!bucket[key]) {
+      bucket[key] = {
+        type: r.type,
+        bloodGroup: r.bloodGroup,
+        daysToExpire: Number(r.daysToExpire),
+        count: 0
+      };
+    }
+
+    bucket[key].count++;
+  });
+
+  return Object.values(bucket).sort((a, b) => {
+    if (a.daysToExpire !== b.daysToExpire) return a.daysToExpire - b.daysToExpire;
+    return String(a.type).localeCompare(String(b.type));
+  });
+}
+
+function getExpiryUrgency(daysToExpire) {
+  const d = Number(daysToExpire);
+
+  if (d <= 1) return "🔴 ด่วนมาก";
+  if (d <= 3) return "🟠 ด่วน";
+  if (d <= 7) return "🟡 เฝ้าระวัง";
+  return "🔵 ติดตาม";
+}
+
+function getExpiryActionText(row) {
+  const d = Number(row.daysToExpire);
+
+  if (d <= 1) return "เร่งกระจาย / แจ้งหน้างานทันที";
+  if (d <= 3) return "จัดลำดับใช้ก่อน และติดตามทุกวัน";
+  if (d <= 7) return "เฝ้าระวังและวางแผนใช้ก่อน";
+  return "ติดตามตามรอบ";
+}
+
+function renderExpiryGroupedRows(rows) {
+  if (!rows || rows.length === 0) {
+    return `
+      <tr>
+        <td colspan="6" class="text-center small-muted py-4">
+          ไม่มีรายการใกล้หมดอายุในช่วงที่เลือก
+        </td>
+      </tr>
+    `;
+  }
+
+  return rows.map(r => `
+    <tr>
+      <td class="fw-bold">${getExpiryUrgency(r.daysToExpire)}</td>
+      <td>
+        <span class="mobile-product-badge ${getTypeClass(r.type)}">
+          ${r.type}
+        </span>
+      </td>
+      <td class="fw-bold">${r.bloodGroup}</td>
+      <td class="text-end fw-bold">${r.count}</td>
+      <td class="text-end">${r.daysToExpire} วัน</td>
+      <td>${getExpiryActionText(r)}</td>
+    </tr>
+  `).join("");
+}
+
 function scrollToUpload() {
   const uploadBtn = document.querySelector("[onclick=\"showDashboardPage('upload', this)\"]");
   showDashboardPage("upload", uploadBtn);
@@ -1485,8 +1699,12 @@ function formatDisplayDateTime(value) {
   toggleSidebar(false);
 
   if (page === "mobile") {
-    loadMobilePlanning();
-  }
+  loadMobilePlanning();
+}
+
+if (page === "expiry") {
+  loadExpiryRisk(7);
+}
 }
 
 function toggleSidebar(force) {
