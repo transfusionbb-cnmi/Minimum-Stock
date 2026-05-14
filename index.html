@@ -1339,16 +1339,17 @@ function getMobilePlanningDecision(decisionBase) {
   const planDays = Number(decisionBase.planDays || 14);
   const needToCollect = Number(decisionBase.totalNeedToCollect || 0);
   const forecastUse = Number(decisionBase.totalForecastUse || 0);
+  const expectedCnmiIn = Number(decisionBase.totalExpectedCnmiIn || 0);
   const trcRatio = Number(decisionBase.prcTrcRatio || 0);
   const riskGroups = Array.isArray(decisionBase.riskGroups) ? decisionBase.riskGroups : [];
   const riskText = riskGroups.length ? riskGroups.join(", ") : "-";
 
-  text: `ระบบคาดว่าจะใช้ LPRC / LDPRC ${forecastUse} unit และคาดว่าจะจัดหาเองได้ ${decisionBase.totalExpectedCnmiIn || 0} unit แต่ยังควรออกหน่วยเพิ่ม ${needToCollect} unit โดยหมู่ที่เสี่ยงขาดคือ ${riskText} อาจต้องวางแผนออกหน่วยหรือประสาน TRC เฉพาะหน้า`
+  if (needToCollect > 0 && planDays <= 7) {
     return {
       level: "critical",
       icon: "🚨",
       title: `ควรเติมด่วนภายใน ${planDays} วัน`,
-      text: `ระบบคาดว่าจะใช้ LPRC / LDPRC ${forecastUse} unit และควรเติมเพิ่ม ${needToCollect} unit โดยหมู่ที่เสี่ยงขาดคือ ${riskText} อาจต้องวางแผนออกหน่วยหรือประสาน TRC เฉพาะหน้า`
+      text: `ระบบคาดว่าจะใช้ LPRC / LDPRC ${forecastUse} unit และคาดว่าจะจัดหาเองได้ ${expectedCnmiIn} unit แต่ยังควรออกหน่วยเพิ่ม ${needToCollect} unit โดยหมู่ที่เสี่ยงขาดคือ ${riskText} อาจต้องวางแผนออกหน่วยหรือประสาน TRC เฉพาะหน้า`
     };
   }
 
@@ -1357,7 +1358,7 @@ function getMobilePlanningDecision(decisionBase) {
       level: "warning",
       icon: "🚌",
       title: `ควรวางแผนออกหน่วยภายใน ${planDays} วัน`,
-      text: `ระบบคาดว่าจะใช้ LPRC / LDPRC ${forecastUse} unit และคาดว่าจะจัดหาเองได้ ${decisionBase.totalExpectedCnmiIn || 0} unit เมื่อเทียบกับ stock ปัจจุบันแล้วยังควรออกหน่วยเพิ่ม ${needToCollect} unit โดยหมู่ที่ควรเน้นคือ ${riskText}`
+      text: `ระบบคาดว่าจะใช้ LPRC / LDPRC ${forecastUse} unit และคาดว่าจะจัดหาเองได้ ${expectedCnmiIn} unit เมื่อเทียบกับ stock ปัจจุบันแล้วยังควรออกหน่วยเพิ่ม ${needToCollect} unit โดยหมู่ที่ควรเน้นคือ ${riskText}`
     };
   }
 
