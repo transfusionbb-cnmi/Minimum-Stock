@@ -1491,24 +1491,6 @@ function renderMiniCompareBar(label, value, maxValue, fillClass) {
   `;
 }
 
-function getMobileRowAdvice(r) {
-  const need = Number(r.need || 0);
-  const trcRatio = Number(r.trcRatio || 0);
-
-  if (need > 0 && trcRatio >= 30) {
-    return "ควรเน้นออกหน่วย / ลดการพึ่ง TRC";
-  }
-
-  if (need > 0) {
-    return "ควรเติมเฉพาะหมู่นี้";
-  }
-
-  if (trcRatio >= 30) {
-    return "มีสัดส่วน TRC สูง แต่ยังไม่ขาด";
-  }
-
-  return "ติดตามตามรอบ";
-}
     
 function renderMobilePlanningRows(rows) {
   if (!rows || rows.length === 0) {
