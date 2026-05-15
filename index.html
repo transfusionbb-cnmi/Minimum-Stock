@@ -1324,12 +1324,17 @@ function renderMobilePlanning(data) {
     </div>
 
     <div class="mobile-note-box">
-      <div class="fw-bold mb-1">สรุปเพิ่มเติม</div>
-      <div class="small-muted">
-        หมู่เลือดที่เสี่ยงขาด: <b>${riskText}</b> |
-        TRC Ratio: <b>${prcTrcRatioDisplay}%</b>
-      </div>
-    </div>
+  <div class="fw-bold mb-1">สรุปเพิ่มเติม</div>
+  <div class="small-muted mb-2">
+    หมู่เลือดที่เสี่ยงขาด: <b>${riskText}</b> |
+    TRC Ratio: <b>${prcTrcRatioDisplay}%</b>
+  </div>
+
+  <div class="fw-bold">
+    เลือดที่หมดอายุก่อนวันออกหน่วยและไม่นำมาคิดเป็น stock ใช้งาน:
+    ${decisionBase.totalExpiringBeforePlan || 0} unit
+  </div>
+</div>
 
     <div class="mobile-chart-card mb-3">
       <h5 class="fw-bold mb-3">แหล่งที่มาของ LPRC / LDPRC ใน stock ปัจจุบัน</h5>
