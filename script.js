@@ -4,6 +4,7 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
     const fileInput = document.getElementById("fileInput");
     const fileName = document.getElementById("fileName");
     const uploadBtn = document.getElementById("uploadBtn");
+    const clearDataBtn = document.getElementById("clearDataBtn");
     const statusBox = document.getElementById("statusBox");
     const loadingBox = document.getElementById("loadingBox");
     const dashboard = document.getElementById("dashboard");
@@ -55,14 +56,21 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
       if (!selectedFile) return;
 
       uploadBtn.disabled = true;
-      uploadBtn.textContent = "กำลังอัปโหลด...";
-      showStatus("กำลังส่งไฟล์ไปยังระบบ", true);
+      uploadBtn.textContent = "กำลังล้างข้อมูลเดิม...";
+      showStatus("กำลังล้างข้อมูลเดิมก่อนอัปโหลดรอบใหม่", true);
       loadingBox.style.display = "block";
       dashboard.style.display = "none";
 
       try {
+        await MinimumStockBackend.clearAllSnapshots({ gasWebAppUrl: WEB_APP_URL });
+        clearMinimumStockLocalCaches({ keepVersion: true });
+
+        uploadBtn.textContent = "กำลังอ่านไฟล์และคำนวณ...";
+        showStatus("ล้างข้อมูลเดิมแล้ว กำลังอ่าน Excel, คำนวณ และบันทึกไฟล์ใหม่", true);
+
         const data = await MinimumStockBackend.uploadExcel(selectedFile, {
-          gasWebAppUrl: WEB_APP_URL
+          gasWebAppUrl: WEB_APP_URL,
+          skipClearBeforeUpload: true
         });
 
         if (!data.ok) {
@@ -70,12 +78,7 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
         }
 
         showStatus("✅ คำนวณสำเร็จ: " + data.fileName, true);
-try {
-  localStorage.removeItem(MOBILE_CACHE_KEY);
-  localStorage.removeItem(EXPIRY_CACHE_KEY);
-} catch (err) {
-  console.warn("clear derived cache failed", err);
-}
+clearMinimumStockLocalCaches({ keepVersion: true });
 saveDashboardCache(data);
 renderDashboard(data);
 
@@ -94,6 +97,33 @@ showModal("success", "คำนวณสำเร็จ", `อ่านข้อ
         loadingBox.style.display = "none";
       }
     });
+
+    if (clearDataBtn) {
+      clearDataBtn.addEventListener("click", async () => {
+        const ok = confirm("ต้องการล้างข้อมูล Minimum Stock เดิมใน Supabase และ cache ของแอพนี้ใช่ไหม?\n\nหลังล้างแล้วหน้า Dashboard จะว่าง จนกว่าจะอัปโหลดไฟล์ใหม่");
+        if (!ok) return;
+
+        clearDataBtn.disabled = true;
+        clearDataBtn.textContent = "กำลังล้างข้อมูล...";
+        showStatus("กำลังล้างข้อมูลเดิมในระบบ", true);
+
+        try {
+          await MinimumStockBackend.clearAllSnapshots({ gasWebAppUrl: WEB_APP_URL });
+          clearMinimumStockLocalCaches({ keepVersion: true });
+          currentDashboardData = null;
+          currentMobilePlanningData = null;
+          renderEmptyDashboardAfterClear();
+          showStatus("✅ ล้างข้อมูลเดิมแล้ว พร้อมอัปโหลดไฟล์ใหม่", true);
+          showModal("success", "ล้างข้อมูลเดิมแล้ว", "ระบบล้าง snapshot เดิมและ cache ของแอพนี้แล้ว");
+        } catch (err) {
+          showStatus("❌ " + err.message, false);
+          showModal("error", "ล้างข้อมูลไม่สำเร็จ", err.message);
+        } finally {
+          clearDataBtn.disabled = false;
+          clearDataBtn.textContent = "🧹 ล้างข้อมูลเดิมในระบบ";
+        }
+      });
+    }
 
     function fileToBase64(file) {
       return new Promise((resolve, reject) => {
@@ -120,7 +150,7 @@ showModal("success", "คำนวณสำเร็จ", `อ่านข้อ
     let currentDashboardData = null;
 let currentTab = "LPRC / LDPRC";
 let currentMobilePlanningData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260617-resetfresh-v2-3";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260617-clearbeforeupload-v2-4";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -188,21 +218,66 @@ function readLightCache(key) {
   }
 }
 
+function clearMinimumStockLocalCaches(options = {}) {
+  try {
+    const keepVersion = Boolean(options.keepVersion);
+    const keysToRemove = [];
+
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      if (keepVersion && key === "minimumStock.__appVersion") continue;
+      if (
+        key === DASHBOARD_CACHE_KEY ||
+        key === MOBILE_CACHE_KEY ||
+        key === EXPIRY_CACHE_KEY ||
+        key.startsWith("minimumStock.") ||
+        key.startsWith("MinimumStock.") ||
+        key.startsWith("minstock.") ||
+        key.includes("minimum_stock")
+      ) {
+        keysToRemove.push(key);
+      }
+    }
+
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+    sessionStorage.clear();
+  } catch (err) {
+    console.warn("clearMinimumStockLocalCaches failed", err);
+  }
+}
+
 function clearMinimumStockCacheNow() {
   try {
+    clearMinimumStockLocalCaches({ keepVersion: false });
     if (typeof window.resetMinimumStockAppCache === "function") {
       window.resetMinimumStockAppCache();
       return;
     }
-    Object.keys(localStorage)
-      .filter(key => key.startsWith("minimumStock.") || key.includes("minimum_stock"))
-      .forEach(key => localStorage.removeItem(key));
-    sessionStorage.clear();
     location.reload();
   } catch (err) {
     console.warn("clearMinimumStockCacheNow failed", err);
     location.reload();
   }
+}
+
+function renderEmptyDashboardAfterClear() {
+  const topDashboard = document.getElementById("topDashboard");
+  const expiryRiskDashboard = document.getElementById("expiryRiskDashboard");
+  const mobilePlanningDashboard = document.getElementById("mobilePlanningDashboard");
+
+  if (topDashboard) {
+    topDashboard.innerHTML = `
+      <div class="hero-card mt-4">
+        <h3 class="fw-bold mb-2">ยังไม่มีข้อมูล Minimum Stock</h3>
+        <div class="small-muted mb-3">ล้างข้อมูลเดิมแล้ว กรุณาอัปโหลดไฟล์ Excel ใหม่เพื่อเริ่มคำนวณรอบล่าสุด</div>
+        <button class="btn btn-main" onclick="scrollToUpload()">ไปหน้าอัปโหลดไฟล์</button>
+      </div>
+    `;
+  }
+
+  if (expiryRiskDashboard) expiryRiskDashboard.innerHTML = "";
+  if (mobilePlanningDashboard) mobilePlanningDashboard.innerHTML = "";
 }
 
 function isSameDashboardData(a, b) {

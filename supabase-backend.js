@@ -72,6 +72,51 @@
     return getConfig().SNAPSHOT_TABLE || "minimum_stock_snapshots";
   }
 
+  function clearCachedSnapshotState() {
+    cachedSummarySnapshot = null;
+    cachedFullSnapshot = null;
+  }
+
+  async function clearAllSnapshots(options = {}) {
+    clearCachedSnapshotState();
+
+    if (!isConfigured()) {
+      return {
+        ok: true,
+        message: "ล้าง cache ฝั่งแอพแล้ว แต่ยังไม่ได้ตั้งค่า Supabase",
+        deleted: 0
+      };
+    }
+
+    const client = getClient();
+    if (!client) {
+      return { ok: true, message: "ไม่พบ Supabase client", deleted: 0 };
+    }
+
+    // แนะนำให้รันไฟล์ supabase-clear-before-upload.sql เพื่อสร้าง RPC นี้
+    const { data, error } = await client.rpc("minimum_stock_clear_all_snapshots");
+
+    if (error) {
+      // fallback เผื่อบาง Project เปิด delete policy ไว้แล้ว
+      const { error: directDeleteError } = await client
+        .from(getTableName())
+        .delete()
+        .not("id", "is", null);
+
+      if (directDeleteError) {
+        throw new Error(
+          "ล้างข้อมูลเดิมใน Supabase ไม่สำเร็จ: " +
+          (error.message || directDeleteError.message) +
+          " | ให้รันไฟล์ supabase-clear-before-upload.sql ใน SQL Editor ก่อน"
+        );
+      }
+
+      return { ok: true, message: "ล้างข้อมูลเดิมแล้ว", deleted: null };
+    }
+
+    return data || { ok: true, message: "ล้างข้อมูลเดิมแล้ว", deleted: null };
+  }
+
   async function fallbackGetDashboard(gasWebAppUrl) {
     if (!gasWebAppUrl) throw new Error("ยังไม่ได้ตั้งค่า Supabase และไม่มี GAS_WEB_APP_URL สำรอง");
     const res = await fetch(gasWebAppUrl + "?action=getDashboard");
@@ -1056,9 +1101,15 @@
     };
   }
 
-  async function saveSnapshot(parsed) {
+  async function saveSnapshot(parsed, options = {}) {
     const client = getClient();
     if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+
+    // ปกติ uploadExcel จะล้าง snapshot เดิมก่อนอ่านไฟล์แล้ว
+    // เผื่อมีการเรียก saveSnapshot ตรง ๆ จากภายนอก ให้ยังล้างได้ถ้าไม่ได้สั่งข้าม
+    if (!options.skipClearBeforeSave) {
+      await clearAllSnapshots({ beforeUpload: true });
+    }
 
     const payload = {
       file_name: parsed.fileName,
@@ -1119,8 +1170,13 @@
     if (!isConfigured()) return fallbackUploadExcel(file, options.gasWebAppUrl);
 
     try {
+      // ล้างข้อมูลเก่าก่อนจริง ๆ เพื่อให้รอบใหม่เริ่มเหมือนแอพใหม่
+      // ถ้า UI ล้างให้แล้ว สามารถส่ง skipClearBeforeUpload=true เข้ามาได้
+      if (!options.skipClearBeforeUpload) {
+        await clearAllSnapshots({ beforeUpload: true });
+      }
       const parsed = await parseExcelFile(file);
-      await saveSnapshot(parsed);
+      await saveSnapshot(parsed, { skipClearBeforeSave: true });
       return toDashboard({
         file_name: parsed.fileName,
         calculated_at: parsed.calculatedAt,
@@ -1141,6 +1197,7 @@
     uploadExcel,
     getDashboard,
     getMobilePlanning,
+    clearAllSnapshots,
     _internal: {
       parseExcelFile,
       calculateMinimumStock,
@@ -1148,7 +1205,8 @@
       buildLatestUsageHistory,
       buildLatestInHistory,
       buildMobilePlanningData,
-      isConfigured
+      isConfigured,
+      clearAllSnapshots
     }
   };
 })();
