@@ -18,7 +18,23 @@
   };
 
   let cachedClient = null;
-  let cachedSnapshot = null;
+  let cachedSummarySnapshot = null;
+  let cachedFullSnapshot = null;
+
+  const SUMMARY_SELECT = [
+    "id",
+    "created_at",
+    "file_name",
+    "calculated_at",
+    "total_rows",
+    "released_rows",
+    "result_rows",
+    "start_date",
+    "end_date",
+    "results"
+  ].join(",");
+
+  const FULL_SELECT = "*";
 
   function getConfig() {
     return window.MINIMUM_STOCK_CONFIG || {};
@@ -994,21 +1010,50 @@
     };
   }
 
-  async function getLatestSnapshot() {
-    if (cachedSnapshot) return cachedSnapshot;
+  async function getLatestSnapshot(options = {}) {
+    const full = Boolean(options.full);
+
+    if (full && cachedFullSnapshot) return cachedFullSnapshot;
+    if (!full && cachedSummarySnapshot) return cachedSummarySnapshot;
+
     const client = getClient();
     if (!client) return null;
 
+    // หน้า Dashboard ใช้แค่ข้อมูลสรุป จึงไม่ดึง stock_rows / history jsonb ก้อนใหญ่
+    // ส่วน Mobile Unit Planning ค่อยดึงแบบ full เฉพาะตอนเปิดเมนูนั้น
     const { data, error } = await client
       .from(getTableName())
-      .select("*")
+      .select(full ? FULL_SELECT : SUMMARY_SELECT)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (error) throw new Error("โหลดข้อมูลจาก Supabase ไม่สำเร็จ: " + error.message);
-    cachedSnapshot = data;
-    return cachedSnapshot;
+
+    if (full) {
+      cachedFullSnapshot = data;
+      cachedSummarySnapshot = data ? toSummarySnapshot(data) : null;
+      return cachedFullSnapshot;
+    }
+
+    cachedSummarySnapshot = data;
+    return cachedSummarySnapshot;
+  }
+
+  function toSummarySnapshot(snapshot) {
+    if (!snapshot) return null;
+    return {
+      id: snapshot.id,
+      created_at: snapshot.created_at,
+      file_name: snapshot.file_name,
+      calculated_at: snapshot.calculated_at,
+      total_rows: snapshot.total_rows,
+      released_rows: snapshot.released_rows,
+      result_rows: snapshot.result_rows,
+      start_date: snapshot.start_date,
+      end_date: snapshot.end_date,
+      results: snapshot.results || []
+    };
   }
 
   async function saveSnapshot(parsed) {
@@ -1033,11 +1078,12 @@
     const { data, error } = await client
       .from(getTableName())
       .insert(payload)
-      .select("*")
+      .select(SUMMARY_SELECT)
       .single();
 
     if (error) throw new Error("บันทึกลง Supabase ไม่สำเร็จ: " + error.message);
-    cachedSnapshot = data;
+    cachedSummarySnapshot = data;
+    cachedFullSnapshot = null;
     return data;
   }
 
@@ -1045,7 +1091,7 @@
     if (!isConfigured()) return fallbackGetDashboard(options.gasWebAppUrl);
 
     try {
-      const snapshot = await getLatestSnapshot();
+      const snapshot = await getLatestSnapshot({ full: false });
       return toDashboard(snapshot);
     } catch (err) {
       return fallbackGetDashboard(options.gasWebAppUrl);
@@ -1061,7 +1107,7 @@
     }
 
     try {
-      const snapshot = await getLatestSnapshot();
+      const snapshot = await getLatestSnapshot({ full: true });
       if (!snapshot) return fallbackMobilePlanning(options.gasWebAppUrl, selectedDate, planDays);
       return buildMobilePlanningData(snapshot, selectedDate, planDays);
     } catch (err) {
