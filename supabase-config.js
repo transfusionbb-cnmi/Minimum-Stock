@@ -7,8 +7,8 @@
   4) รันไฟล์ supabase-schema.sql ใน SQL Editor ของ Supabase ก่อนใช้งานจริง
 */
 window.MINIMUM_STOCK_CONFIG = {
-  SUPABASE_URL: "https://YOUR_PROJECT_ID.supabase.co",
-  SUPABASE_ANON_KEY: "YOUR_SUPABASE_ANON_PUBLIC_KEY",
+  SUPABASE_URL: "https://jynwsdtoqjsjkkefrhyt.supabase.co",
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5bndzZHRvcWpzamtrZWZyaHl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MTQ3NTMsImV4cCI6MjA5Njk5MDc1M30.0Wfh47c8G5yTV1q6Skrn1RlQFDljPkieuNmVF2Kj6Hk",
   SNAPSHOT_TABLE: "minimum_stock_snapshots",
   CALC_DAYS: 180,
 
