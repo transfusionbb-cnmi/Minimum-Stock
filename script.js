@@ -12,6 +12,11 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
     const modalIcon = document.getElementById("modalIcon");
     const modalTitle = document.getElementById("modalTitle");
     const modalMessage = document.getElementById("modalMessage");
+    const confirmOverlay = document.getElementById("confirmOverlay");
+    const confirmTitle = document.getElementById("confirmTitle");
+    const confirmMessage = document.getElementById("confirmMessage");
+    const confirmOkBtn = document.getElementById("confirmOkBtn");
+    const confirmCancelBtn = document.getElementById("confirmCancelBtn");
 
     let selectedFile = null;
     document.addEventListener("DOMContentLoaded", loadDashboardOnStart);
@@ -100,7 +105,7 @@ showModal("success", "คำนวณสำเร็จ", `อ่านข้อ
 
     if (clearDataBtn) {
       clearDataBtn.addEventListener("click", async () => {
-        const ok = confirm("ต้องการล้างข้อมูล Minimum Stock เดิมใน Supabase และ cache ของแอพนี้ใช่ไหม?\n\nหลังล้างแล้วหน้า Dashboard จะว่าง จนกว่าจะอัปโหลดไฟล์ใหม่");
+        const ok = await showConfirmModal("ยืนยันการล้างข้อมูล", "ต้องการล้างข้อมูล Minimum Stock เดิมใน Supabase และ cache ของแอพนี้ใช่ไหม?\n\nหลังล้างแล้วหน้า Dashboard จะว่าง จนกว่าจะอัปโหลดไฟล์ใหม่");
         if (!ok) return;
 
         clearDataBtn.disabled = true;
@@ -150,7 +155,7 @@ showModal("success", "คำนวณสำเร็จ", `อ่านข้อ
     let currentDashboardData = null;
 let currentTab = "LPRC / LDPRC";
 let currentMobilePlanningData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260617-clearbeforeupload-v2-4";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260617-v2-5-1-supabaseonly";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -393,6 +398,28 @@ function showModal(type, title, message) {
 
 function closeModal() {
   modalOverlay.style.display = "none";
+}
+
+function showConfirmModal(title, message) {
+  return new Promise((resolve) => {
+    confirmTitle.textContent = title || "ยืนยัน";
+    confirmMessage.innerHTML = String(message || "").replace(/\n/g, "<br>");
+    confirmOverlay.style.display = "flex";
+
+    const cleanup = (result) => {
+      confirmOverlay.style.display = "none";
+      confirmOkBtn.onclick = null;
+      confirmCancelBtn.onclick = null;
+      confirmOverlay.onclick = null;
+      resolve(result);
+    };
+
+    confirmOkBtn.onclick = () => cleanup(true);
+    confirmCancelBtn.onclick = () => cleanup(false);
+    confirmOverlay.onclick = (e) => {
+      if (e.target === confirmOverlay) cleanup(false);
+    };
+  });
 }
 
     async function loadDashboardOnStart() {

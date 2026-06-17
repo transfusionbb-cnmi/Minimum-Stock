@@ -1141,12 +1141,8 @@
   async function getDashboard(options = {}) {
     if (!isConfigured()) return fallbackGetDashboard(options.gasWebAppUrl);
 
-    try {
-      const snapshot = await getLatestSnapshot({ full: false });
-      return toDashboard(snapshot);
-    } catch (err) {
-      return fallbackGetDashboard(options.gasWebAppUrl);
-    }
+    const snapshot = await getLatestSnapshot({ full: false });
+    return toDashboard(snapshot);
   }
 
   async function getMobilePlanning(options = {}) {
@@ -1157,40 +1153,33 @@
       return fallbackMobilePlanning(options.gasWebAppUrl, selectedDate, planDays);
     }
 
-    try {
-      const snapshot = await getLatestSnapshot({ full: true });
-      if (!snapshot) return fallbackMobilePlanning(options.gasWebAppUrl, selectedDate, planDays);
-      return buildMobilePlanningData(snapshot, selectedDate, planDays);
-    } catch (err) {
-      return fallbackMobilePlanning(options.gasWebAppUrl, selectedDate, planDays);
+    const snapshot = await getLatestSnapshot({ full: true });
+    if (!snapshot) {
+      return { ok: true, selectedDate, planDays, planningRows: [], stockRows: [], message: "ยังไม่มีข้อมูล Mobile Unit Planning" };
     }
+    return buildMobilePlanningData(snapshot, selectedDate, planDays);
   }
 
   async function uploadExcel(file, options = {}) {
     if (!isConfigured()) return fallbackUploadExcel(file, options.gasWebAppUrl);
 
-    try {
-      // ล้างข้อมูลเก่าก่อนจริง ๆ เพื่อให้รอบใหม่เริ่มเหมือนแอพใหม่
-      // ถ้า UI ล้างให้แล้ว สามารถส่ง skipClearBeforeUpload=true เข้ามาได้
-      if (!options.skipClearBeforeUpload) {
-        await clearAllSnapshots({ beforeUpload: true });
-      }
-      const parsed = await parseExcelFile(file);
-      await saveSnapshot(parsed, { skipClearBeforeSave: true });
-      return toDashboard({
-        file_name: parsed.fileName,
-        calculated_at: parsed.calculatedAt,
-        total_rows: parsed.totalRows,
-        released_rows: parsed.releasedRows,
-        result_rows: parsed.resultRows,
-        start_date: parsed.startDate,
-        end_date: parsed.endDate,
-        results: parsed.results
-      });
-    } catch (err) {
-      // ถ้าตั้ง Supabase ไว้แต่ตารางยังไม่พร้อม ระบบจะยังพยายามใช้ Apps Script เดิมก่อน เพื่อไม่ให้ใช้งานสะดุด
-      return fallbackUploadExcel(file, options.gasWebAppUrl);
+    // โหมด Supabase only: ถ้าตั้งค่า Supabase แล้ว ให้คำนวณและบันทึกลง Supabase เท่านั้น
+    // ไม่ fallback ไป Google Sheet/Apps Script เพื่อไม่ให้ช้าและไม่ให้มีข้อมูลซ้ำ
+    if (!options.skipClearBeforeUpload) {
+      await clearAllSnapshots({ beforeUpload: true });
     }
+    const parsed = await parseExcelFile(file);
+    await saveSnapshot(parsed, { skipClearBeforeSave: true });
+    return toDashboard({
+      file_name: parsed.fileName,
+      calculated_at: parsed.calculatedAt,
+      total_rows: parsed.totalRows,
+      released_rows: parsed.releasedRows,
+      result_rows: parsed.resultRows,
+      start_date: parsed.startDate,
+      end_date: parsed.endDate,
+      results: parsed.results
+    });
   }
 
   window.MinimumStockBackend = {
