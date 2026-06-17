@@ -70,6 +70,13 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
         }
 
         showStatus("✅ คำนวณสำเร็จ: " + data.fileName, true);
+try {
+  localStorage.removeItem(MOBILE_CACHE_KEY);
+  localStorage.removeItem(EXPIRY_CACHE_KEY);
+} catch (err) {
+  console.warn("clear derived cache failed", err);
+}
+saveDashboardCache(data);
 renderDashboard(data);
 
 if (document.getElementById("page-mobile")?.classList.contains("active")) {
@@ -113,6 +120,98 @@ showModal("success", "คำนวณสำเร็จ", `อ่านข้อ
     let currentDashboardData = null;
 let currentTab = "LPRC / LDPRC";
 let currentMobilePlanningData = null;
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260617-resetfresh-v2-3";
+const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
+const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
+const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
+
+function saveDashboardCache(data) {
+  try {
+    if (!data || !Array.isArray(data.results) || data.results.length === 0) return;
+    const slim = {
+      ok: true,
+      message: data.message || "โหลดจาก cache",
+      fileName: data.fileName || "",
+      calculatedAt: data.calculatedAt || "",
+      startDate: data.startDate || "",
+      endDate: data.endDate || "",
+      totalRows: Number(data.totalRows || 0),
+      releasedRows: Number(data.releasedRows || 0),
+      resultRows: Number(data.resultRows || (data.results || []).length || 0),
+      results: data.results || [],
+      cachedAt: new Date().toISOString()
+    };
+    localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(slim));
+  } catch (err) {
+    console.warn("saveDashboardCache failed", err);
+  }
+}
+
+function readDashboardCache() {
+  try {
+    const raw = localStorage.getItem(DASHBOARD_CACHE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || !Array.isArray(data.results) || data.results.length === 0) return null;
+    return data;
+  } catch (err) {
+    console.warn("readDashboardCache failed", err);
+    return null;
+  }
+}
+
+
+function saveLightCache(key, data) {
+  try {
+    if (!key || !data || !data.ok) return;
+    const payload = {
+      ...data,
+      cachedAt: new Date().toISOString()
+    };
+    localStorage.setItem(key, JSON.stringify(payload));
+  } catch (err) {
+    // ถ้าข้อมูลใหญ่เกิน localStorage ให้ข้าม ไม่ให้เว็บพัง
+    console.warn("saveLightCache failed", err);
+  }
+}
+
+function readLightCache(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || !data.ok) return null;
+    return data;
+  } catch (err) {
+    console.warn("readLightCache failed", err);
+    return null;
+  }
+}
+
+function clearMinimumStockCacheNow() {
+  try {
+    if (typeof window.resetMinimumStockAppCache === "function") {
+      window.resetMinimumStockAppCache();
+      return;
+    }
+    Object.keys(localStorage)
+      .filter(key => key.startsWith("minimumStock.") || key.includes("minimum_stock"))
+      .forEach(key => localStorage.removeItem(key));
+    sessionStorage.clear();
+    location.reload();
+  } catch (err) {
+    console.warn("clearMinimumStockCacheNow failed", err);
+    location.reload();
+  }
+}
+
+function isSameDashboardData(a, b) {
+  if (!a || !b) return false;
+  return String(a.fileName || "") === String(b.fileName || "") &&
+    String(a.calculatedAt || "") === String(b.calculatedAt || "") &&
+    Number(a.totalRows || 0) === Number(b.totalRows || 0) &&
+    Number(a.releasedRows || 0) === Number(b.releasedRows || 0);
+}
 
 function renderDashboard(data) {
   currentDashboardData = data;
@@ -146,7 +245,10 @@ function renderDashboard(data) {
             อัปเดตล่าสุด: <b>${formatDisplayDateTime(data.calculatedAt) || "-"}</b>
           </div>
         </div>
-        <button class="btn btn-main" onclick="scrollToUpload()">อัปโหลดไฟล์ใหม่</button>
+        <div class="d-flex flex-wrap gap-2">
+          <button class="btn btn-main" onclick="scrollToUpload()">อัปโหลดไฟล์ใหม่</button>
+          <button class="btn btn-outline-secondary" onclick="clearMinimumStockCacheNow()">ล้าง Cache แอพนี้</button>
+        </div>
       </div>
 
       <div class="summary-grid mb-4">
@@ -220,13 +322,20 @@ function closeModal() {
 
     async function loadDashboardOnStart() {
   const topDashboard = document.getElementById("topDashboard");
+  const cachedData = readDashboardCache();
 
-  topDashboard.innerHTML = `
-    <div class="hero-card">
-      <div class="fw-bold">กำลังโหลด Dashboard ล่าสุด...</div>
-      <div class="small-muted">ระบบกำลังดึงค่า Minimum Stock ล่าสุดจาก ข้อมูลที่อัพโหลดไว้</div>
-    </div>
-  `;
+  // Instant mode: แสดงข้อมูลสรุปล่าสุดจากเครื่องก่อน แล้วค่อย sync Supabase เบื้องหลัง
+  // ทำให้การเปิดหน้า Minimum Stock กลับมาไวเหมือนช่วงก่อนย้ายฐานข้อมูล
+  if (cachedData) {
+    renderDashboard(cachedData);
+  } else {
+    topDashboard.innerHTML = `
+      <div class="hero-card">
+        <div class="fw-bold">กำลังโหลด Dashboard ล่าสุด...</div>
+        <div class="small-muted">ระบบกำลังดึงค่า Minimum Stock ล่าสุดจากข้อมูลที่อัปโหลดไว้</div>
+      </div>
+    `;
+  }
 
   try {
     const data = await MinimumStockBackend.getDashboard({
@@ -238,18 +347,28 @@ function closeModal() {
     }
 
     if (!data.results || data.results.length === 0) {
-      topDashboard.innerHTML = `
-        <div class="hero-card">
-          <h4 class="fw-bold mb-2">ยังไม่มีข้อมูล Minimum Stock</h4>
-          <div class="small-muted">กรุณาอัปโหลดไฟล์ Excel เพื่อคำนวณครั้งแรก</div>
-        </div>
-      `;
+      if (!cachedData) {
+        topDashboard.innerHTML = `
+          <div class="hero-card">
+            <h4 class="fw-bold mb-2">ยังไม่มีข้อมูล Minimum Stock</h4>
+            <div class="small-muted">กรุณาอัปโหลดไฟล์ Excel เพื่อคำนวณครั้งแรก</div>
+          </div>
+        `;
+      }
       return;
     }
 
-    renderDashboard(data);
+    saveDashboardCache(data);
+    if (!cachedData || !isSameDashboardData(cachedData, data)) {
+      renderDashboard(data);
+    }
 
   } catch (err) {
+    if (cachedData) {
+      showStatus("แสดงข้อมูลล่าสุดที่เคยโหลดไว้ก่อน ระบบจะ Sync ใหม่เมื่อเชื่อมต่อได้", true);
+      return;
+    }
+
     topDashboard.innerHTML = `
       <div class="hero-card">
         <h4 class="fw-bold mb-2">โหลด Dashboard ไม่สำเร็จ</h4>
@@ -443,13 +562,21 @@ async function loadMobilePlanning(targetMobileDate) {
     getTodayYmd();
 
   const targetPlanDays = diffDaysFromToday(selectedMobileDate);
+  const cachedMobile = readLightCache(MOBILE_CACHE_KEY);
 
-  holder.innerHTML = `
-    <div class="hero-card">
-      <div class="fw-bold">กำลังโหลดแผนออกหน่วย...</div>
-      <div class="small-muted">ระบบกำลังคำนวณจากวันที่คาดว่าจะออกหน่วย เทียบกับ stock ปัจจุบันและข้อมูลย้อนหลัง 2 ปี</div>
-    </div>
-  `;
+  if (cachedMobile) {
+    cachedMobile.targetMobileDate = selectedMobileDate;
+    cachedMobile.targetPlanDays = targetPlanDays;
+    currentMobilePlanningData = cachedMobile;
+    renderMobilePlanning(cachedMobile);
+  } else {
+    holder.innerHTML = `
+      <div class="hero-card">
+        <div class="fw-bold">กำลังโหลดแผนออกหน่วย...</div>
+        <div class="small-muted">ระบบกำลังคำนวณจากวันที่คาดว่าจะออกหน่วย เทียบกับ stock ปัจจุบันและข้อมูลย้อนหลัง 2 ปี</div>
+      </div>
+    `;
+  }
 
   try {
     const data = await MinimumStockBackend.getMobilePlanning({
@@ -465,6 +592,7 @@ async function loadMobilePlanning(targetMobileDate) {
     data.targetMobileDate = selectedMobileDate;
     data.targetPlanDays = targetPlanDays;
 
+    saveLightCache(MOBILE_CACHE_KEY, data);
     currentMobilePlanningData = data;
     renderMobilePlanning(data);
 
@@ -799,13 +927,18 @@ function renderMobilePlanningRows(rows) {
   if (!holder) return;
 
   const targetDays = Number(days || document.querySelector(".expiry-day-btn.active")?.dataset.days || 7);
+  const cachedExpiry = readLightCache(EXPIRY_CACHE_KEY);
 
-  holder.innerHTML = `
-    <div class="hero-card">
-      <div class="fw-bold">กำลังโหลด Expiry Risk...</div>
-      <div class="small-muted">ระบบกำลังดึงรายการเลือดใกล้หมดอายุ</div>
-    </div>
-  `;
+  if (cachedExpiry) {
+    renderExpiryRisk(cachedExpiry, targetDays);
+  } else {
+    holder.innerHTML = `
+      <div class="hero-card">
+        <div class="fw-bold">กำลังโหลด Expiry Risk...</div>
+        <div class="small-muted">ระบบกำลังดึงรายการเลือดใกล้หมดอายุ</div>
+      </div>
+    `;
+  }
 
   try {
     const data = await MinimumStockBackend.getMobilePlanning({
@@ -818,6 +951,7 @@ function renderMobilePlanningRows(rows) {
       throw new Error(data.message || "โหลด Expiry Risk ไม่สำเร็จ");
     }
 
+    saveLightCache(EXPIRY_CACHE_KEY, data);
     renderExpiryRisk(data, targetDays);
 
   } catch (err) {
