@@ -282,15 +282,25 @@
   }
 
   function matchProductGroup(productType) {
-    const p = String(productType || "").toLowerCase();
+    const p = String(productType || "").trim().toLowerCase();
     const groups = buildMinimumStockGroups();
 
-    if (
+    // กลุ่ม PRC ของแอปนี้ต้องนับเฉพาะ LPRC / LDPRC เท่านั้น
+    // ห้ามใช้คำกว้าง ๆ ว่า "pack red cell" เพราะจะดึง PRC ชนิดอื่นเข้ามารวม
+    // และทำให้ยอด LPRC/LDPRC สูงกว่าจำนวนถุงจริง
+    const isLprcOrLdprc =
       p.includes("leukocyte poor prc") ||
+      p.includes("leukocyte-poor prc") ||
+      p.includes("leukocyte poor packed red cell") ||
+      p.includes("leukocyte-poor packed red cell") ||
       p.includes("leukocyte depleted prc") ||
+      p.includes("leukocyte-depleted prc") ||
       p.includes("leukocyte depleted pack red cell") ||
-      p.includes("pack red cell")
-    ) {
+      p.includes("leukocyte depleted packed red cell") ||
+      /(^|[^a-z0-9])lprc([^a-z0-9]|$)/i.test(p) ||
+      /(^|[^a-z0-9])ldprc([^a-z0-9]|$)/i.test(p);
+
+    if (isLprcOrLdprc) {
       return groups.find(g => g.key === "PRC");
     }
 
@@ -316,9 +326,103 @@
       return groups.find(g => g.key === "LDPPC");
     }
 
+    // Cryo-Removed Plasma เป็น plasma ที่เอา cryoprecipitate ออกแล้ว ไม่ใช่ Cryoprecipitate
+    if (p.includes("cryo-removed plasma") || p.includes("cryo removed plasma")) return null;
+
     if (p.includes("cryo")) return groups.find(g => g.key === "CRYO");
 
     return null;
+  }
+
+  function normalizeBagKey(value) {
+    return String(value || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "");
+  }
+
+  function isSplitSubunitBagNumber(value) {
+    // ถุงย่อย/แบ่งส่วน เช่น .S1, .S2, .S10 ไม่ถือเป็น 1 standard unit
+    // ส่วน suffix อื่น เช่น .P5 ของ pooled product ยังนับตามปกติ
+    return /\.S\d+$/i.test(normalizeBagKey(value));
+  }
+
+  function normalizeCurrentStockLocation(value) {
+    const text = String(value || "").trim().toLowerCase();
+
+    if (text === "blood bank" || text.includes("คลังเลือด")) return "BLOOD_BANK";
+    if (text === "lr" || /(^|[^a-z])lr([^a-z]|$)/.test(text)) return "LR";
+    if (text.includes("patient") || text.includes("ผู้ป่วย")) return "PATIENT";
+
+    return "OTHER";
+  }
+
+  function currentStockStatusPriority(status) {
+    if (status === "ReadyToIssue") return 4;
+    if (status === "Quarantine") return 3;
+    if (status === "In Screening Process") return 3;
+    if (status === "Available") return 2;
+    return 0;
+  }
+
+  function currentStockLocationPriority(location) {
+    const category = normalizeCurrentStockLocation(location);
+    if (category === "PATIENT") return 4;
+    if (category === "LR") return 3;
+    if (category === "BLOOD_BANK") return 2;
+    return 1;
+  }
+
+  function collectUniqueCurrentStockRows(dataRows) {
+    const unique = new Map();
+
+    dataRows.forEach((row, rowIndex) => {
+      const bagNumber = row[EXCEL_COL.bagNumber];
+      const productType = String(row[EXCEL_COL.productType] || "").trim();
+      const bloodGroup = String(row[EXCEL_COL.bloodGroup] || "").trim();
+      const location = String(row[EXCEL_COL.location] || "").trim();
+      const status = String(row[EXCEL_COL.status] || "").trim();
+
+      const isCurrentStock =
+        status === "Available" ||
+        status === "In Screening Process" ||
+        status === "Quarantine" ||
+        status === "ReadyToIssue";
+      if (!isCurrentStock) return;
+
+      const matchedGroup = matchProductGroup(productType);
+      if (!matchedGroup) return;
+
+      const targetBloodGroup = matchedGroup.useBloodGroup ? bloodGroup : "ไม่แยกหมู่";
+      const normalizedBag = normalizeBagKey(bagNumber);
+      // De-duplicate เฉพาะเลขถุงที่ตรงกันทั้งข้อความเท่านั้น
+      // suffix .S ยังเก็บเป็นรายการแยกเพื่อรายงานจำนวนที่ถูกตัดออก แต่จะไม่รวมใน standard unit
+      // ถ้าไม่มีเลขถุง ห้ามรวมหลายแถวเป็นถุงเดียวกัน จึงใช้เลขแถวเป็น fallback
+      const key = matchedGroup.key + "||" + targetBloodGroup + "||" + (normalizedBag || "ROW_" + rowIndex);
+      const candidate = { row, matchedGroup, targetBloodGroup, status, location };
+      const existing = unique.get(key);
+
+      if (!existing) {
+        unique.set(key, candidate);
+        return;
+      }
+
+      // ถ้าถุงเดียวซ้ำหลายแถว ให้เลือกสถานะที่จำกัดการใช้งานมากกว่า
+      // เพื่อไม่ให้ถุงเดียวถูกนับซ้ำทั้ง Available และ ReadyToIssue/Quarantine
+      const candidateStatusPriority = currentStockStatusPriority(status);
+      const existingStatusPriority = currentStockStatusPriority(existing.status);
+      if (
+        candidateStatusPriority > existingStatusPriority ||
+        (
+          candidateStatusPriority === existingStatusPriority &&
+          currentStockLocationPriority(location) > currentStockLocationPriority(existing.location)
+        )
+      ) {
+        unique.set(key, candidate);
+      }
+    });
+
+    return Array.from(unique.values());
   }
 
   function calculateMinimumStock(dataRows) {
@@ -330,6 +434,7 @@
 
     const groups = buildMinimumStockGroups();
     const bucket = {};
+    const uniqueCurrentStockRows = collectUniqueCurrentStockRows(dataRows);
 
     groups.forEach(g => {
       if (!bucket[g.key]) {
@@ -349,12 +454,15 @@
           lrSpare: 0,
           patientManual: 0,
           pendingScreening: 0,
-          readyToIssue: 0
+          readyToIssue: 0,
+          excludedOtherLocation: 0,
+          splitSubunitExcluded: 0
         };
       });
     });
 
     dataRows.forEach(row => {
+      const bagNumber = row[EXCEL_COL.bagNumber];
       const productType = String(row[EXCEL_COL.productType] || "").trim();
       const bloodGroup = String(row[EXCEL_COL.bloodGroup] || "").trim();
       const location = String(row[EXCEL_COL.location] || "").trim();
@@ -370,26 +478,9 @@
 
       const item = bucket[matchedGroup.key].bloodGroups[targetBloodGroup];
       const releasedMultiplier = matchedGroup.unitMultiplier || 1;
-      const stockMultiplier = 1;
 
-      if (status === "Available") {
-        item.available += stockMultiplier;
-        const locText = String(location || "").toLowerCase();
-        if (locText.includes("lr")) item.lrSpare += stockMultiplier;
-        if (locText.includes("patient")) item.patientManual += stockMultiplier;
-        return;
-      }
-
-      if (status === "In Screening Process" || status === "Quarantine") {
-        item.pendingScreening += stockMultiplier;
-        return;
-      }
-
-      if (status === "ReadyToIssue") {
-        item.readyToIssue += stockMultiplier;
-        return;
-      }
-
+      // Current stock จะนับจากรายการที่ de-duplicate ตามเลขถุงด้านล่าง
+      // ใน loop นี้ใช้เฉพาะประวัติ Released เพื่อคำนวณ Minimum Stock
       if (status !== "Released") return;
 
       const cleanDateText = normalizeDateStockOut(dateStockOut);
@@ -401,6 +492,51 @@
 
       item.totalUsed += releasedMultiplier;
       item.daily[cleanDateText] = (item.daily[cleanDateText] || 0) + releasedMultiplier;
+    });
+
+    uniqueCurrentStockRows.forEach(record => {
+      const { matchedGroup, targetBloodGroup, status, location } = record;
+      const item = bucket[matchedGroup.key]?.bloodGroups?.[targetBloodGroup];
+      if (!item) return;
+
+      const bagNumber = record.row[EXCEL_COL.bagNumber];
+      const locationCategory = normalizeCurrentStockLocation(location);
+
+      if (isSplitSubunitBagNumber(bagNumber)) {
+        item.splitSubunitExcluded += 1;
+        return;
+      }
+
+      if (status === "Available") {
+        if (locationCategory === "BLOOD_BANK") {
+          item.available += 1;
+        } else if (locationCategory === "LR") {
+          item.lrSpare += 1;
+        } else if (locationCategory === "PATIENT") {
+          item.patientManual += 1;
+        } else {
+          // Donor / Test / ER / ค่าว่าง และ Location อื่น ไม่ใช่ stock พร้อมใช้ในคลังเลือด
+          item.excludedOtherLocation += 1;
+        }
+        return;
+      }
+
+      if (status === "In Screening Process" || status === "Quarantine") {
+        if (locationCategory === "BLOOD_BANK") {
+          item.pendingScreening += 1;
+        } else {
+          item.excludedOtherLocation += 1;
+        }
+        return;
+      }
+
+      if (status === "ReadyToIssue") {
+        if (locationCategory === "BLOOD_BANK") {
+          item.readyToIssue += 1;
+        } else {
+          item.excludedOtherLocation += 1;
+        }
+      }
     });
 
     const results = [];
@@ -421,8 +557,12 @@
         const patientManual = item.patientManual;
         const pendingScreening = item.pendingScreening;
         const readyToIssue = item.readyToIssue;
-        const netAvailableRaw = available - lrSpare - patientManual - readyToIssue;
-        const netAvailable = Math.max(0, netAvailableRaw);
+        const excludedOtherLocation = item.excludedOtherLocation;
+        const splitSubunitExcluded = item.splitSubunitExcluded;
+
+        // available ถูกจำกัดให้เป็น Status=Available และ Location=Blood Bank แล้ว
+        // LR / Patient / ReadyToIssue เป็นคนละกลุ่ม จึงห้ามนำมาหักซ้ำ
+        const netAvailable = available;
         const gap = netAvailable - minimumStock;
 
         let alertLevel = "Normal";
@@ -460,6 +600,8 @@
           patientManual,
           pendingScreening,
           readyToIssue,
+          excludedOtherLocation,
+          splitSubunitExcluded,
           netAvailable,
           gap,
           suggestion,
@@ -495,8 +637,10 @@
 
   function buildLatestStockDetail(dataRows) {
     const output = [];
+    const uniqueCurrentStockRows = collectUniqueCurrentStockRows(dataRows);
 
-    dataRows.forEach(row => {
+    uniqueCurrentStockRows.forEach(record => {
+      const row = record.row;
       const bagNumber = row[EXCEL_COL.bagNumber];
       const productType = String(row[EXCEL_COL.productType] || "").trim();
       const bloodGroupRaw = String(row[EXCEL_COL.bloodGroup] || "").trim();
@@ -510,17 +654,9 @@
       const dateStockOut = row[EXCEL_COL.dateStockOut];
 
       if (!bagNumber && !productType && !status) return;
+      if (isSplitSubunitBagNumber(bagNumber)) return;
 
-      const matchedGroup = matchProductGroup(productType);
-      if (!matchedGroup) return;
-
-      const isCurrentStock =
-        status === "Available" ||
-        status === "In Screening Process" ||
-        status === "Quarantine" ||
-        status === "ReadyToIssue";
-
-      if (!isCurrentStock) return;
+      const matchedGroup = record.matchedGroup;
       if (isExcludedDonateSource(donateSourceRaw)) return;
 
       output.push({
@@ -553,12 +689,14 @@
     const bucket = {};
 
     dataRows.forEach(row => {
+      const bagNumber = row[EXCEL_COL.bagNumber];
       const productType = String(row[EXCEL_COL.productType] || "").trim();
       const bloodGroup = String(row[EXCEL_COL.bloodGroup] || "").trim();
       const status = String(row[EXCEL_COL.status] || "").trim();
       const dateStockOut = row[EXCEL_COL.dateStockOut];
 
       if (status !== "Released") return;
+      if (isSplitSubunitBagNumber(bagNumber)) return;
 
       const matchedGroup = matchProductGroup(productType);
       if (!matchedGroup || matchedGroup.type !== "LPRC / LDPRC") return;
@@ -598,6 +736,7 @@
     const bucket = {};
 
     dataRows.forEach(row => {
+      const bagNumber = row[EXCEL_COL.bagNumber];
       const productType = String(row[EXCEL_COL.productType] || "").trim();
       const bloodGroup = String(row[EXCEL_COL.bloodGroup] || "").trim();
       const donateSourceRaw = String(row[EXCEL_COL.donateSource] || "").trim();
@@ -605,6 +744,7 @@
 
       const matchedGroup = matchProductGroup(productType);
       if (!matchedGroup || matchedGroup.type !== "LPRC / LDPRC") return;
+      if (isSplitSubunitBagNumber(bagNumber)) return;
       if (isExcludedDonateSource(donateSourceRaw)) return;
       if (mapDonateSource(donateSourceRaw) !== "CNMI") return;
 
@@ -1195,7 +1335,12 @@
       buildLatestInHistory,
       buildMobilePlanningData,
       isConfigured,
-      clearAllSnapshots
+      clearAllSnapshots,
+      matchProductGroup,
+      collectUniqueCurrentStockRows,
+      normalizeBagKey,
+      normalizeCurrentStockLocation,
+      isSplitSubunitBagNumber
     }
   };
 })();

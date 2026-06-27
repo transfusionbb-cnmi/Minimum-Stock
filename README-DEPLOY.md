@@ -107,3 +107,35 @@ supabase-clear-before-upload.sql
 ใช้เมื่อต้องการล้าง snapshot เดิมและ cache ก่อนอัปโหลดไฟล์ใหม่เอง
 
 ข้อควรระวัง: ตอนนี้เว็บเป็น static GitHub Pages และใช้ anon key จึงเหมาะกับการใช้งานภายในทีมที่ไว้ใจกัน หากต้องการกันคนกดล้างข้อมูล ควรเพิ่ม Login/Admin role ภายหลัง
+
+
+## v2.5.4 Stock Count Fix
+- แก้การจัดกลุ่ม LPRC/LDPRC ไม่ให้รวมคำกว้าง `Pack Red Cell` ชนิดอื่น
+- นับ Current Stock แบบเลขถุงไม่ซ้ำ ลดปัญหาถุงเดียวปรากฏหลายแถว
+- ถ้าถุงเดียวมีหลายสถานะ จะเลือกสถานะที่จำกัดการใช้งานมากกว่า
+
+
+## v2.5.4 — Current Stock Location Audit Fix
+
+- `BagNumber` ที่ลงท้าย `.S1`, `.S2`, `.S3`, ... เป็นถุงย่อยและไม่นับเป็น 1 standard unit ใน Minimum Stock
+- ช่อง `พร้อมใช้` นับเฉพาะ `Status = Available` และ `Location = Blood Bank`
+- `Location = LR` และ `Location = Patient` แสดงแยก ไม่ถูกนับซ้ำในพร้อมใช้
+- `Donor`, `Test`, `ER`, ค่าว่าง และ Location อื่น แสดงรวมใน `อื่น/ไม่รวม`
+- `ReadyToIssue` เป็นคนละสถานะกับ Available จึงไม่ถูกหักซ้ำจากยอดพร้อมใช้
+- ตัด `Cryo-Removed Plasma` ออกจากกลุ่ม Cryoprecipitate
+
+### ผลตรวจไฟล์ 2.xlsx
+
+LPRC/LDPRC หมู่ O ที่ `Status = Available` มี 27 รายการในทุก Location:
+
+- Blood Bank 21
+- LR 2
+- Patient 3
+- Donor 1
+
+หลังตัด Location อื่นและไม่นับ `CN6901109.S1` ยอด LPRC/LDPRC หมู่ O พร้อมใช้ใน Blood Bank = **20 units** ตรงกับหน้างาน
+
+
+### การตรวจ suffix กับผลิตภัณฑ์อื่น
+
+ระบบใช้กติกาเดียวกันกับทุกผลิตภัณฑ์มาตรฐาน: suffix `.S` ตามด้วยตัวเลขจะไม่ถูกนับใน Current Stock, Expiry Risk, Mobile Unit Planning และประวัติใช้สำหรับคำนวณ Minimum Stock ส่วน suffix `.P` ของผลิตภัณฑ์ pooled ยังนับตามปกติ
