@@ -824,7 +824,7 @@ function renderMobilePlanning(data) {
       </div>
     </div>
 
-    <div class="mobile-table-card table-responsive">
+    <div class="mobile-table-card table-responsive desktop-data-table" aria-label="ตารางสรุปแผนออกหน่วยตามหมู่เลือด">
       <table class="table table-hover align-middle mb-0">
         <thead>
           <tr>
@@ -842,6 +842,10 @@ function renderMobilePlanning(data) {
           ${renderMobilePlanningRows(prcRows)}
         </tbody>
       </table>
+    </div>
+
+    <div class="mobile-data-cards" aria-label="สรุปแผนออกหน่วยสำหรับมือถือ">
+      ${renderMobilePlanningCards(prcRows)}
     </div>
   `;
 }
@@ -978,7 +982,71 @@ function renderMiniCompareBar(label, value, maxValue, fillClass) {
   `;
 }
 
-    
+
+function renderMobilePlanningCards(rows) {
+  if (!rows || rows.length === 0) {
+    return `
+      <div class="mobile-empty-card">
+        <div class="fw-bold">ยังไม่มีข้อมูล</div>
+        <div class="small-muted">ยังไม่มีข้อมูล LPRC / LDPRC สำหรับประเมินแผนออกหน่วย</div>
+      </div>
+    `;
+  }
+
+  const orderBlood = { O: 1, A: 2, B: 3, AB: 4 };
+  const sorted = [...rows].sort((a, b) =>
+    (orderBlood[a.bloodGroup] || 99) - (orderBlood[b.bloodGroup] || 99)
+  );
+
+  return sorted.map(r => {
+    const needToCollect = Number(r.needToCollect || 0);
+    const projectedBalance = Number(r.projectedBalance || 0);
+    const statusClass = projectedBalance < 0 ? "danger" : needToCollect > 0 ? "warning" : "normal";
+    const statusText = projectedBalance < 0
+      ? "เสี่ยงขาด"
+      : needToCollect > 0
+        ? `ควรออกเพิ่ม ${needToCollect}`
+        : "เพียงพอ";
+
+    return `
+      <article class="responsive-data-card planning-card ${statusClass}">
+        <div class="responsive-card-head">
+          <div>
+            <div class="responsive-card-eyebrow">หมู่เลือด</div>
+            <h3>Group ${r.bloodGroup}</h3>
+          </div>
+          <span class="responsive-status-pill ${statusClass}">${statusText}</span>
+        </div>
+
+        <div class="responsive-metric-grid">
+          <div class="responsive-metric primary">
+            <span>ใช้ได้ตอนนี้</span>
+            <strong>${r.netAvailable || 0}</strong>
+          </div>
+          <div class="responsive-metric">
+            <span>คาดว่าจะใช้</span>
+            <strong>${r.forecastUse || 0}</strong>
+          </div>
+          <div class="responsive-metric">
+            <span>หาได้เอง</span>
+            <strong>${r.lastYearCnmiIn || 0}</strong>
+          </div>
+          <div class="responsive-metric ${projectedBalance < 0 ? "negative" : ""}">
+            <span>คาดว่าจะเหลือ</span>
+            <strong>${r.projectedBalance || 0}</strong>
+          </div>
+        </div>
+
+        <div class="responsive-card-footer">
+          <span>ควรออกเพิ่ม <b>${needToCollect}</b></span>
+          <span>CNMI <b>${r.cnmi || 0}</b></span>
+          <span>TRC <b>${r.trc || 0}</b></span>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
 function renderMobilePlanningRows(rows) {
   if (!rows || rows.length === 0) {
     return `
@@ -1146,7 +1214,7 @@ function renderExpiryRisk(data, days) {
       </div>
     </div>
 
-    <div class="mobile-table-card table-responsive">
+    <div class="mobile-table-card table-responsive desktop-data-table" aria-label="ตารางเลือดใกล้หมดอายุ">
       <table class="table table-hover align-middle mb-0">
         <thead>
           <tr>
@@ -1162,6 +1230,10 @@ function renderExpiryRisk(data, days) {
           ${renderExpiryGroupedRows(groupedRows)}
         </tbody>
       </table>
+    </div>
+
+    <div class="mobile-data-cards expiry-mobile-cards" aria-label="เลือดใกล้หมดอายุสำหรับมือถือ">
+      ${renderExpiryCards(groupedRows)}
     </div>
   `;
 }
@@ -1206,6 +1278,56 @@ function getExpiryActionText(row) {
   if (d <= 3) return "จัดลำดับใช้ก่อน และติดตามทุกวัน";
   if (d <= 7) return "เฝ้าระวังและวางแผนใช้ก่อน";
   return "ติดตามตามรอบ";
+}
+
+function getExpiryCardClass(daysToExpire) {
+  const d = Number(daysToExpire);
+  if (d <= 1) return "critical";
+  if (d <= 3) return "urgent";
+  if (d <= 7) return "watch";
+  return "follow";
+}
+
+function renderExpiryCards(rows) {
+  if (!rows || rows.length === 0) {
+    return `
+      <div class="mobile-empty-card">
+        <div class="fw-bold">ไม่มีรายการใกล้หมดอายุ</div>
+        <div class="small-muted">ไม่พบรายการในช่วงวันที่เลือก</div>
+      </div>
+    `;
+  }
+
+  return rows.map(r => {
+    const urgencyClass = getExpiryCardClass(r.daysToExpire);
+    return `
+      <article class="responsive-data-card expiry-card ${urgencyClass}">
+        <div class="responsive-card-head">
+          <div>
+            <span class="mobile-product-badge ${getTypeClass(r.type)}">${r.type}</span>
+            <h3 class="mt-2 mb-0">Group ${r.bloodGroup}</h3>
+          </div>
+          <span class="expiry-urgency-badge ${urgencyClass}">${getExpiryUrgency(r.daysToExpire)}</span>
+        </div>
+
+        <div class="expiry-card-summary">
+          <div>
+            <span>จำนวน</span>
+            <strong>${r.count} unit</strong>
+          </div>
+          <div>
+            <span>หมดอายุใน</span>
+            <strong>${r.daysToExpire} วัน</strong>
+          </div>
+        </div>
+
+        <div class="expiry-action-box">
+          <span>ควรทำ</span>
+          <strong>${getExpiryActionText(r)}</strong>
+        </div>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderExpiryGroupedRows(rows) {
