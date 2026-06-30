@@ -1,21 +1,38 @@
 {
+  "id": "./",
   "name": "Minimum Stock Blood Bank",
-  "short_name": "Blood Stock",
-  "description": "Minimum Stock, Expiry Risk, and Mobile Unit Planning for Blood Bank.",
-  "start_url": "./?source=pwa",
+  "short_name": "Minimum Stock",
+  "description": "ระบบคำนวณ Minimum Stock, Expiry Risk และวางแผนออกหน่วย",
+  "lang": "th",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#f7fbff",
-  "theme_color": "#d8efff",
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "background_color": "#eef7ff",
+  "theme_color": "#1887d9",
+  "orientation": "any",
   "icons": [
     {
       "src": "icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

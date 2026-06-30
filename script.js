@@ -155,7 +155,7 @@ showModal("success", "คำนวณสำเร็จ", `อ่านข้อ
     let currentDashboardData = null;
 let currentTab = "LPRC / LDPRC";
 let currentMobilePlanningData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260627-v2-5-4-split-location-fix";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260630-v2-5-5-pwa-install";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -1304,3 +1304,143 @@ function toggleSidebar(force) {
   sideMenu.classList.toggle("open", shouldOpen);
   overlay.classList.toggle("show", shouldOpen);
 }
+
+
+/* ---------------- PWA install ---------------- */
+let deferredInstallPrompt = null;
+const INSTALL_HELP_DISMISSED_KEY = "minimumStock.installHelpDismissed";
+
+function isStandaloneMode() {
+  return window.matchMedia("(display-mode: standalone)").matches ||
+    window.navigator.standalone === true;
+}
+
+function isIOSDevice() {
+  return /iphone|ipad|ipod/i.test(window.navigator.userAgent) ||
+    (window.navigator.platform === "MacIntel" && window.navigator.maxTouchPoints > 1);
+}
+
+function isIOSSafari() {
+  const ua = window.navigator.userAgent;
+  return isIOSDevice() && /safari/i.test(ua) && !/crios|fxios|edgios|opios/i.test(ua);
+}
+
+function getInstallElements() {
+  return {
+    button: document.getElementById("installAppBtn"),
+    overlay: document.getElementById("installOverlay"),
+    title: document.getElementById("installTitle"),
+    message: document.getElementById("installMessage"),
+    close: document.getElementById("installCloseBtn"),
+    dismissWrap: document.getElementById("installDismissWrap"),
+    dismissCheck: document.getElementById("installDismissCheck")
+  };
+}
+
+function hideInstallButtonWhenInstalled() {
+  const { button } = getInstallElements();
+  if (!button) return;
+  button.classList.toggle("is-installed", isStandaloneMode());
+}
+
+function closeInstallModal() {
+  const { overlay, dismissCheck } = getInstallElements();
+  if (!overlay) return;
+  if (dismissCheck?.checked) {
+    try { localStorage.setItem(INSTALL_HELP_DISMISSED_KEY, "1"); } catch (_) {}
+  }
+  overlay.style.display = "none";
+}
+
+function showInstallModal(mode = "ios", autoShown = false) {
+  const { overlay, title, message, close, dismissWrap, dismissCheck } = getInstallElements();
+  if (!overlay || !title || !message || !close) return;
+
+  if (mode === "ios") {
+    title.textContent = "ติดตั้งบน iPhone / iPad";
+    message.innerHTML = `
+      <div class="install-step"><span class="install-step-number">1</span><span>กดปุ่มแชร์ <strong>⬆️</strong> ใน Safari</span></div>
+      <div class="install-step"><span class="install-step-number">2</span><span>เลือก <strong>เพิ่มไปยังหน้าจอโฮม</strong></span></div>
+      <div class="install-step"><span class="install-step-number">3</span><span>กด <strong>เพิ่ม</strong></span></div>
+    `;
+  } else {
+    title.textContent = "ติดตั้งแอป";
+    message.innerHTML = `
+      <div class="install-step"><span class="install-step-number">1</span><span>เปิดเมนู Chrome <strong>⋮</strong></span></div>
+      <div class="install-step"><span class="install-step-number">2</span><span>เลือก <strong>ติดตั้งแอป</strong> หรือ <strong>เพิ่มไปยังหน้าจอหลัก</strong></span></div>
+    `;
+  }
+
+  if (dismissWrap) dismissWrap.style.display = autoShown ? "flex" : "none";
+  if (dismissCheck) dismissCheck.checked = false;
+  close.onclick = closeInstallModal;
+  overlay.onclick = (event) => {
+    if (event.target === overlay) closeInstallModal();
+  };
+  overlay.style.display = "flex";
+}
+
+async function handleInstallAppClick() {
+  if (isStandaloneMode()) {
+    hideInstallButtonWhenInstalled();
+    return;
+  }
+
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    const choice = await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    if (choice?.outcome === "accepted") {
+      hideInstallButtonWhenInstalled();
+    }
+    return;
+  }
+
+  showInstallModal(isIOSDevice() ? "ios" : "android", false);
+}
+
+function setupPWAInstall() {
+  const { button } = getInstallElements();
+  hideInstallButtonWhenInstalled();
+
+  if (button) {
+    button.addEventListener("click", handleInstallAppClick);
+  }
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    hideInstallButtonWhenInstalled();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    hideInstallButtonWhenInstalled();
+    showModal("success", "ติดตั้งสำเร็จ", "เพิ่ม Minimum Stock ไปยังหน้าจอแอปแล้ว");
+  });
+
+  window.matchMedia("(display-mode: standalone)").addEventListener?.("change", hideInstallButtonWhenInstalled);
+
+  if (isIOSSafari() && !isStandaloneMode()) {
+    let dismissed = false;
+    try { dismissed = localStorage.getItem(INSTALL_HELP_DISMISSED_KEY) === "1"; } catch (_) {}
+    if (!dismissed) {
+      window.setTimeout(() => showInstallModal("ios", true), 900);
+    }
+  }
+}
+
+async function registerMinimumStockServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  try {
+    const registration = await navigator.serviceWorker.register("./service-worker.js", { scope: "./" });
+    registration.update().catch(() => {});
+  } catch (error) {
+    console.warn("Service Worker registration failed", error);
+  }
+}
+
+window.addEventListener("load", () => {
+  setupPWAInstall();
+  registerMinimumStockServiceWorker();
+});

@@ -645,494 +645,65 @@ body {
 }
 
 
-.side-title { display:flex; align-items:center; gap:10px; }
-.side-logo { width:32px; height:32px; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.12); flex:0 0 auto; }
-
-/* =========================================================
-   v2.5.3 Responsive app layout
-   - Mobile/tablet cards instead of wide data tables
-   - Scrollable desktop tables
-   - Safe mobile top bar that does not cover page content
-   ========================================================= */
-
-* {
-  box-sizing: border-box;
+/* PWA install */
+.install-app-btn {
+  margin-top: 10px;
+  background: linear-gradient(135deg, #0f7fc9, #43b0f1);
+  color: #fff;
+  border-color: transparent;
 }
 
-html,
-body {
-  max-width: 100%;
-  overflow-x: hidden;
+.install-app-btn:hover,
+.install-app-btn:focus {
+  color: #fff;
+  transform: translateY(-1px);
 }
 
-main {
-  min-width: 0;
+.install-app-btn.is-installed {
+  display: none !important;
 }
 
-.mobile-topbar {
-  display: none;
-}
-
-/* Keep full tables usable on desktop when the content is wider than the panel. */
-.mobile-table-card.table-responsive,
-.desktop-data-table {
-  width: 100%;
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain;
-  touch-action: pan-x pan-y;
-}
-
-.desktop-data-table table {
-  margin-bottom: 0;
-}
-
-.mobile-data-cards {
-  display: none;
-}
-
-.responsive-data-card {
-  background: #ffffff;
+.install-steps {
+  text-align: left;
+  line-height: 1.75;
+  background: #f5faff;
   border: 1px solid #d8ecff;
-  border-radius: 22px;
-  padding: 18px;
-  box-shadow: 0 12px 30px rgba(30, 90, 150, 0.08);
-  min-width: 0;
+  border-radius: 18px;
+  padding: 14px 16px;
 }
 
-.responsive-data-card.planning-card.warning {
-  border-color: #ffd995;
-  background: linear-gradient(180deg, #fffdf8 0%, #ffffff 60%);
-}
-
-.responsive-data-card.planning-card.danger {
-  border-color: #ffb6b6;
-  background: linear-gradient(180deg, #fff7f7 0%, #ffffff 60%);
-}
-
-.responsive-card-head {
+.install-step {
   display: flex;
+  gap: 10px;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
+  margin: 6px 0;
 }
 
-.responsive-card-head h3 {
-  margin: 0;
-  color: #16324f;
-  font-size: 23px;
-  font-weight: 900;
-}
-
-.responsive-card-eyebrow {
-  color: #6b8298;
-  font-size: 13px;
-  font-weight: 700;
-  margin-bottom: 2px;
-}
-
-.responsive-status-pill,
-.expiry-urgency-badge {
+.install-step-number {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
-  padding: 7px 11px;
-  font-size: 13px;
-  font-weight: 900;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.responsive-status-pill.normal {
-  color: #087443;
-  background: #e8fff3;
-}
-
-.responsive-status-pill.warning {
-  color: #9a6700;
-  background: #fff4d6;
-}
-
-.responsive-status-pill.danger {
-  color: #b42323;
-  background: #ffe1e1;
-}
-
-.responsive-metric-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.responsive-metric {
-  min-width: 0;
-  border: 1px solid #e2effb;
-  border-radius: 17px;
-  padding: 12px;
-  background: #f7fbff;
-}
-
-.responsive-metric.primary {
-  border-color: #bfe3ff;
-  background: #eef8ff;
-}
-
-.responsive-metric.negative {
-  border-color: #ffc9c9;
-  background: #fff2f2;
-}
-
-.responsive-metric span,
-.expiry-card-summary span,
-.expiry-action-box span {
-  display: block;
-  color: #6b8298;
-  font-size: 13px;
-  line-height: 1.25;
-}
-
-.responsive-metric strong {
-  display: block;
-  color: #16324f;
-  font-size: 25px;
-  font-weight: 900;
-  line-height: 1.2;
-  margin-top: 4px;
-}
-
-.responsive-card-footer {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.responsive-card-footer span {
-  min-width: 0;
-  color: #536f89;
-  background: #f8fbfe;
-  border-radius: 12px;
-  padding: 8px;
-  font-size: 12px;
-  text-align: center;
-}
-
-.responsive-card-footer b {
-  color: #16324f;
-}
-
-.expiry-card {
-  position: relative;
-  overflow: hidden;
-}
-
-.expiry-card::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 6px;
   background: #1887d9;
+  color: #fff;
+  font-weight: 800;
+  line-height: 1;
 }
 
-.expiry-card.critical::before { background: #d92d20; }
-.expiry-card.urgent::before { background: #f59f00; }
-.expiry-card.watch::before { background: #e3b341; }
-.expiry-card.follow::before { background: #1887d9; }
-
-.expiry-urgency-badge.critical {
-  color: #b42323;
-  background: #ffe1e1;
-}
-
-.expiry-urgency-badge.urgent {
-  color: #9a6700;
-  background: #fff0cf;
-}
-
-.expiry-urgency-badge.watch {
-  color: #7a5d00;
-  background: #fff8d8;
-}
-
-.expiry-urgency-badge.follow {
-  color: #0969a8;
-  background: #eaf6ff;
-}
-
-.expiry-card-summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.expiry-card-summary > div {
-  border: 1px solid #e2effb;
-  border-radius: 16px;
-  padding: 12px;
-  background: #f7fbff;
-}
-
-.expiry-card-summary strong {
-  display: block;
-  color: #16324f;
-  font-size: 21px;
-  font-weight: 900;
-  margin-top: 3px;
-}
-
-.expiry-action-box {
-  margin-top: 10px;
-  border-radius: 16px;
-  padding: 12px;
-  background: #f8fbfe;
-  border: 1px solid #e2effb;
-}
-
-.expiry-action-box strong {
-  display: block;
-  color: #31506f;
+.install-dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #6b8298;
   font-size: 14px;
-  line-height: 1.45;
-  margin-top: 3px;
 }
 
-.mobile-empty-card {
-  background: #ffffff;
-  border: 1px dashed #bfe0fb;
-  border-radius: 20px;
-  padding: 24px;
-  text-align: center;
-}
-
-/* Tablets: use cards before the side panel makes the table too narrow. */
-@media (max-width: 1100px) {
-  .desktop-data-table,
-  .result-table {
-    display: none;
-  }
-
-  .mobile-data-cards {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
-  }
-
-  .mobile-stock-cards {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
-  }
-
-  .stock-mobile-card {
-    margin-bottom: 0;
-  }
-}
-
-@media (max-width: 900px) {
-  .mobile-topbar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 9998;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-height: 68px;
-    padding: calc(8px + env(safe-area-inset-top)) 14px 8px;
-    background: rgba(244, 250, 255, 0.96);
-    border-bottom: 1px solid #d8ecff;
-    box-shadow: 0 8px 24px rgba(30, 90, 150, 0.10);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-  }
-
-  .mobile-menu-btn {
-    position: static;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    flex: 0 0 auto;
-    min-height: 44px;
-    padding: 9px 13px;
-    border-radius: 14px;
-    box-shadow: 0 8px 20px rgba(24, 135, 217, 0.22);
-  }
-
-  .mobile-menu-icon {
-    font-size: 19px;
-    line-height: 1;
-  }
-
-  .mobile-brand {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    min-width: 0;
-  }
-
-  .mobile-brand-logo {
-    width: 42px;
-    height: 42px;
-    border-radius: 13px;
-    flex: 0 0 auto;
-    box-shadow: 0 4px 12px rgba(30, 90, 150, 0.16);
-  }
-
-  .mobile-brand-text {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    line-height: 1.15;
-  }
-
-  .mobile-brand-text strong {
-    color: #16324f;
-    font-size: 16px;
-    font-weight: 900;
-  }
-
-  .mobile-brand-text span {
-    color: #6b8298;
-    font-size: 11px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .app-layout {
-    padding: calc(84px + env(safe-area-inset-top)) 14px calc(24px + env(safe-area-inset-bottom));
-  }
-
-  .side-menu {
-    height: 100dvh;
-    padding-top: calc(16px + env(safe-area-inset-top));
-    padding-bottom: calc(16px + env(safe-area-inset-bottom));
-  }
-
-  .forecast-hero,
-  .hero-card,
-  .mobile-filter-card {
-    border-radius: 22px;
-  }
-
-  .forecast-hero h1,
-  .hero-card h1 {
-    font-size: clamp(1.65rem, 6vw, 2.25rem);
-    line-height: 1.2;
-  }
-}
-
-@media (max-width: 768px) {
-  .mobile-data-cards,
-  .mobile-stock-cards {
-    grid-template-columns: 1fr;
-  }
-
-  .summary-grid,
-  .mobile-kpi-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-  }
-
-  .summary-card {
-    border-radius: 18px;
-    padding: 14px;
-  }
-
-  .summary-card .fs-3 {
-    font-size: 1.7rem !important;
-  }
-
-  .forecast-hero,
-  .hero-card,
-  .mobile-filter-card,
-  .mobile-chart-card,
-  .mobile-note-box {
-    padding: 16px;
-  }
-
-  .plan-button-row {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 9px;
-  }
-
-  .plan-btn {
-    width: 100%;
-    padding: 10px 8px;
-  }
-
-  .mobile-date-input {
-    width: 100%;
-  }
-
-  .forecast-hero .btn-main {
-    width: 100%;
-  }
-
-  .group-forecast-kpi {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 7px;
-  }
-
-  .group-forecast-item {
-    padding: 9px 6px;
-  }
-
-  .group-forecast-item .value {
-    font-size: 21px;
-  }
-}
-
-@media (max-width: 430px) {
-  .mobile-topbar {
-    gap: 9px;
-    padding-left: 10px;
-    padding-right: 10px;
-  }
-
-  .mobile-menu-btn {
-    padding-left: 11px;
-    padding-right: 11px;
-  }
-
-  .mobile-brand-logo {
-    width: 38px;
-    height: 38px;
-  }
-
-  .mobile-brand-text strong {
-    font-size: 15px;
-  }
-
-  .responsive-data-card {
-    padding: 15px;
-    border-radius: 19px;
-  }
-
-  .responsive-card-head {
-    align-items: center;
-  }
-
-  .responsive-card-head h3 {
-    font-size: 21px;
-  }
-
-  .responsive-status-pill,
-  .expiry-urgency-badge {
-    max-width: 48%;
-    white-space: normal;
-    line-height: 1.2;
-  }
-
-  .responsive-metric strong {
-    font-size: 23px;
+@media (display-mode: standalone) {
+  #installAppBtn {
+    display: none !important;
   }
 }
