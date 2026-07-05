@@ -155,7 +155,7 @@ showModal("success", "คำนวณสำเร็จ", `อ่านข้อ
     let currentDashboardData = null;
 let currentTab = "LPRC / LDPRC";
 let currentMobilePlanningData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260630-v2-5-5-pwa-install";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260705-v2-5-6-readytoissue-fix";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -494,7 +494,7 @@ function renderTabContent() {
   tabContent.innerHTML = `
     <div class="summary-card mb-3">
       <div class="small-muted">
-        พร้อมใช้ = Available ที่ Blood Bank เท่านั้น | ถุงย่อย suffix .S1, .S2, ... ไม่นับเป็น standard unit | LR / Patient / Location อื่นแยกต่างหาก
+        พร้อมใช้ = Available ที่ Blood Bank เท่านั้น | คล้องกับผู้ป่วย = ReadyToIssue ทุก Location | ถุงย่อย suffix .S1, .S2, ... ไม่นับเป็น standard unit | LR / Patient / Location อื่นแยกต่างหาก
       </div>
 
     <div class="result-table table-responsive">

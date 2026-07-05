@@ -531,11 +531,11 @@
       }
 
       if (status === "ReadyToIssue") {
-        if (locationCategory === "BLOOD_BANK") {
-          item.readyToIssue += 1;
-        } else {
-          item.excludedOtherLocation += 1;
-        }
+        // "คล้องกับผู้ป่วย" อ้างอิงจากสถานะ ReadyToIssue โดยตรง
+        // ไม่จำกัด Location เพราะรายการที่เตรียมให้ผู้ป่วยอาจถูกบันทึกเป็น
+        // Blood Bank, Patient, LR หรือ Location อื่นตาม workflow หน้างาน
+        // หากกรองเฉพาะ Blood Bank จะทำให้ยอดคล้องจริงขาดไปบางถุง
+        item.readyToIssue += 1;
       }
     });
 

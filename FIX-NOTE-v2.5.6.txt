@@ -1,0 +1,15 @@
+Minimum Stock v2.5.6 — ReadyToIssue Fix
+
+สาเหตุที่พบ
+- โค้ดเดิมนับช่อง “คล้องกับผู้ป่วย” เฉพาะ Status = ReadyToIssue ที่ Location = Blood Bank
+- ถ้ามี 1 ถุงเป็น ReadyToIssue แต่ Location เป็น Patient/LR/ค่าอื่น ระบบจะไม่นับในช่องคล้อง และย้ายไปอื่น/ไม่รวม
+
+จุดแก้
+- supabase-backend.js: เงื่อนไข Status = ReadyToIssue เปลี่ยนให้นับทุก Location
+- script.js: เพิ่มคำอธิบายหน้าจอว่า “คล้องกับผู้ป่วย = ReadyToIssue ทุก Location”
+- index.html, script.js, service-worker.js: bump cache/version เป็น v2.5.6 เพื่อให้เครื่องผู้ใช้โหลดโค้ดใหม่
+
+สิ่งที่ไม่เปลี่ยน
+- พร้อมใช้ยังนับเฉพาะ Available + Blood Bank
+- ถุง suffix .S1, .S2, ... ยังไม่นับเป็น standard unit
+- การคำนวณ Minimum Stock และผลิตภัณฑ์อื่นไม่เปลี่ยน
