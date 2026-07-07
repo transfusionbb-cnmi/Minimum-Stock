@@ -82,16 +82,30 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
           throw new Error(data.message || "อัปโหลดไม่สำเร็จ");
         }
 
-        showStatus("✅ คำนวณสำเร็จ: " + data.fileName, true);
-clearMinimumStockLocalCaches({ keepVersion: true });
-saveDashboardCache(data);
-renderDashboard(data);
+        // หลังบันทึกสำเร็จ ให้ล้าง cache ของ Dashboard แล้วอ่าน snapshot ล่าสุด
+        // กลับจาก Supabase จริงอีกครั้ง เพื่อไม่แสดงผลคำนวณหรือ snapshot รอบก่อนหน้า
+        clearMinimumStockLocalCaches({ keepVersion: true });
+        uploadBtn.textContent = "กำลังโหลดข้อมูลล่าสุดจาก Supabase...";
+        showStatus("บันทึกสำเร็จ กำลังโหลด snapshot ล่าสุดจาก Supabase", true);
 
-if (document.getElementById("page-mobile")?.classList.contains("active")) {
-  loadMobilePlanning();
-}
+        const refreshedData = await MinimumStockBackend.getDashboard({
+          gasWebAppUrl: WEB_APP_URL,
+          forceRefresh: true
+        });
 
-showModal("success", "คำนวณสำเร็จ", `อ่านข้อมูล ${data.totalRows} รายการ พบ Released ${data.releasedRows} รายการ`);
+        if (!refreshedData || !refreshedData.ok) {
+          throw new Error((refreshedData && refreshedData.message) || "โหลด snapshot ล่าสุดหลังอัปโหลดไม่สำเร็จ");
+        }
+
+        showStatus("✅ คำนวณและโหลดข้อมูลล่าสุดสำเร็จ: " + refreshedData.fileName, true);
+        saveDashboardCache(refreshedData);
+        renderDashboard(refreshedData);
+
+        if (document.getElementById("page-mobile")?.classList.contains("active")) {
+          loadMobilePlanning();
+        }
+
+        showModal("success", "คำนวณสำเร็จ", `อ่านข้อมูล ${refreshedData.totalRows} รายการ พบ Released ${refreshedData.releasedRows} รายการ`);
 
       } catch (err) {
         showStatus("❌ " + err.message, false);
@@ -155,7 +169,7 @@ showModal("success", "คำนวณสำเร็จ", `อ่านข้อ
     let currentDashboardData = null;
 let currentTab = "LPRC / LDPRC";
 let currentMobilePlanningData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260705-v2-5-6-readytoissue-fix";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260707-v2-5-7-post-upload-refresh";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;

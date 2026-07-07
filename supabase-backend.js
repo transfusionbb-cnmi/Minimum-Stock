@@ -1197,9 +1197,14 @@
 
   async function getLatestSnapshot(options = {}) {
     const full = Boolean(options.full);
+    const forceRefresh = Boolean(options.forceRefresh);
 
-    if (full && cachedFullSnapshot) return cachedFullSnapshot;
-    if (!full && cachedSummarySnapshot) return cachedSummarySnapshot;
+    // ใช้หลังอัปโหลดเพื่อบังคับอ่าน snapshot ล่าสุดจาก Supabase จริง
+    // ไม่คืนค่าจากตัวแปร cache ที่อาจยังเป็นข้อมูลรอบก่อนหน้า
+    if (forceRefresh) clearCachedSnapshotState();
+
+    if (!forceRefresh && full && cachedFullSnapshot) return cachedFullSnapshot;
+    if (!forceRefresh && !full && cachedSummarySnapshot) return cachedSummarySnapshot;
 
     const client = getClient();
     if (!client) return null;
@@ -1281,7 +1286,10 @@
   async function getDashboard(options = {}) {
     if (!isConfigured()) return fallbackGetDashboard(options.gasWebAppUrl);
 
-    const snapshot = await getLatestSnapshot({ full: false });
+    const snapshot = await getLatestSnapshot({
+      full: false,
+      forceRefresh: Boolean(options.forceRefresh)
+    });
     return toDashboard(snapshot);
   }
 
