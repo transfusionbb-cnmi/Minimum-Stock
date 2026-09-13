@@ -61,17 +61,47 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
       if (!selectedFile) return;
 
       uploadBtn.disabled = true;
-      uploadBtn.textContent = "กำลังล้างข้อมูลเดิม...";
-      showStatus("กำลังล้างข้อมูลเดิมก่อนอัปโหลดรอบใหม่", true);
+      uploadBtn.textContent = "กำลังตรวจสอบไฟล์...";
+      showStatus("กำลังตรวจสอบคอลัมน์ BagNumber, Status, DonateSource และวันที่ก่อนคำนวณ", true);
       loadingBox.style.display = "block";
       dashboard.style.display = "none";
 
       try {
+        const preflight = await MinimumStockBackend.preflightOutreachFile(selectedFile);
+        const validation = preflight.validation || {};
+
+        if (!preflight.ok || validation.blocking) {
+          throw new Error("ไฟล์ขาดคอลัมน์สำคัญ: " + (validation.missingHeaders || []).join(", "));
+        }
+
+        if (Number(validation.issueCount || 0) > 0) {
+          const previewIssues = (validation.issues || []).slice(0, 6).map(item => "• " + item.message).join("\n");
+          const moreText = Number(validation.issueCount || 0) > 6 ? `\n• และอีก ${Number(validation.issueCount) - 6} รายการ` : "";
+          const ok = await showConfirmModal(
+            "พบข้อมูลที่ต้องตรวจสอบก่อนคำนวณ",
+            `พบรายการต้องตรวจสอบ ${validation.issueCount} รายการ\n` +
+            `BagNumber ซ้ำ ${validation.duplicateBagCount || 0} กลุ่ม | วันที่ผิด ${validation.invalidDateCount || 0} | Status ไม่รู้จัก ${validation.unknownStatusCount || 0} | DonateSource ต้องตรวจ ${validation.unknownSourceCount || 0} | ผลลัพธ์ขัดแย้ง ${validation.outcomeConflictCount || 0}\n\n` +
+            `${previewIssues}${moreText}\n\n` +
+            "ระบบจะไม่นับซ้ำ และรายการที่จัดกลุ่มไม่ได้จะไม่ถูกรวมในยอดจนกว่าจะตรวจสอบ ต้องการดำเนินการต่อหรือไม่?"
+          );
+          if (!ok) {
+            showStatus("ยกเลิกการอัปโหลด ข้อมูลเดิมใน Supabase ยังไม่ถูกล้าง", true);
+            return;
+          }
+        }
+
+        uploadBtn.textContent = "กำลังตรวจสอบ Supabase...";
+        showStatus("กำลังตรวจสอบว่าระบบพร้อมสำหรับรายงานใหม่ ก่อนล้างข้อมูลเดิม", true);
+        await MinimumStockBackend.ensureOutreachSchema();
+
+        uploadBtn.textContent = "กำลังล้างข้อมูลเดิม...";
+        showStatus("ตรวจสอบไฟล์และ Supabase แล้ว กำลังล้าง snapshot เดิมก่อนอัปโหลดรอบใหม่", true);
         await MinimumStockBackend.clearAllSnapshots({ gasWebAppUrl: WEB_APP_URL });
         clearMinimumStockLocalCaches({ keepVersion: true });
+        currentOutreachAnalysisData = null;
 
         uploadBtn.textContent = "กำลังอ่านไฟล์และคำนวณ...";
-        showStatus("ล้างข้อมูลเดิมแล้ว กำลังอ่าน Excel, คำนวณ และบันทึกไฟล์ใหม่", true);
+        showStatus("ล้างข้อมูลเดิมแล้ว กำลังคำนวณ Minimum Stock และวิเคราะห์ผลถุงเลือดออกหน่วยจากไฟล์เดียวกัน", true);
 
         const data = await MinimumStockBackend.uploadExcel(selectedFile, {
           gasWebAppUrl: WEB_APP_URL,
@@ -83,7 +113,6 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
         }
 
         // หลังบันทึกสำเร็จ ให้ล้าง cache ของ Dashboard แล้วอ่าน snapshot ล่าสุด
-        // กลับจาก Supabase จริงอีกครั้ง เพื่อไม่แสดงผลคำนวณหรือ snapshot รอบก่อนหน้า
         clearMinimumStockLocalCaches({ keepVersion: true });
         uploadBtn.textContent = "กำลังโหลดข้อมูลล่าสุดจาก Supabase...";
         showStatus("บันทึกสำเร็จ กำลังโหลด snapshot ล่าสุดจาก Supabase", true);
@@ -104,8 +133,12 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
         if (document.getElementById("page-mobile")?.classList.contains("active")) {
           loadMobilePlanning();
         }
+        if (document.getElementById("page-outreach")?.classList.contains("active")) {
+          loadOutreachAnalysis(true);
+        }
 
-        showModal("success", "คำนวณสำเร็จ", `อ่านข้อมูล ${refreshedData.totalRows} รายการ พบ Released ${refreshedData.releasedRows} รายการ`);
+        const reviewText = Number(validation.issueCount || 0) > 0 ? ` | มี ${validation.issueCount} รายการให้ตรวจสอบในเมนูวิเคราะห์ออกหน่วย` : "";
+        showModal("success", "คำนวณสำเร็จ", `อ่านข้อมูล ${refreshedData.totalRows} รายการ พบ Released ${refreshedData.releasedRows} รายการ${reviewText}`);
 
       } catch (err) {
         showStatus("❌ " + err.message, false);
@@ -131,7 +164,13 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
           clearMinimumStockLocalCaches({ keepVersion: true });
           currentDashboardData = null;
           currentMobilePlanningData = null;
+          currentOutreachAnalysisData = null;
+          currentOutreachFilteredRows = [];
+          currentOutreachSourceSummary = [];
           renderEmptyDashboardAfterClear();
+          if (document.getElementById("page-outreach")?.classList.contains("active")) {
+            renderOutreachAnalysis();
+          }
           showStatus("✅ ล้างข้อมูลเดิมแล้ว พร้อมอัปโหลดไฟล์ใหม่", true);
           showModal("success", "ล้างข้อมูลเดิมแล้ว", "ระบบล้าง snapshot เดิมและ cache ของแอพนี้แล้ว");
         } catch (err) {
@@ -169,7 +208,10 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
     let currentDashboardData = null;
 let currentTab = "LPRC / LDPRC";
 let currentMobilePlanningData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260707-v2-5-7-post-upload-refresh";
+let currentOutreachAnalysisData = null;
+let currentOutreachFilteredRows = [];
+let currentOutreachSourceSummary = [];
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260913-v2-6-0-outreach-outcome-analysis";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -417,7 +459,8 @@ function closeModal() {
 function showConfirmModal(title, message) {
   return new Promise((resolve) => {
     confirmTitle.textContent = title || "ยืนยัน";
-    confirmMessage.innerHTML = String(message || "").replace(/\n/g, "<br>");
+    confirmMessage.textContent = String(message || "");
+    confirmMessage.style.whiteSpace = "pre-line";
     confirmOverlay.style.display = "flex";
 
     const cleanup = (result) => {
@@ -1263,6 +1306,603 @@ function renderExpiryGroupedRows(rows) {
   `).join("");
 }
 
+
+/* ---------------- Outreach blood bag outcome analysis ---------------- */
+const OUTREACH_USED = "นำไปใช้/จ่ายออก";
+const OUTREACH_DESTROYED = "ทิ้ง/ทำลาย";
+const OUTREACH_UNKNOWN = "ยังไม่ทราบผล/คงเหลือ/สถานะอื่น";
+const OUTREACH_CONFLICT = "ข้อมูลขัดแย้ง ต้องตรวจสอบ";
+let outreachDetailPage = 1;
+let outreachDetailSourceIndex = -1;
+
+function escapeOutreachHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function outreachPercent(numerator, denominator) {
+  if (!denominator) return 0;
+  return Number(((Number(numerator || 0) / Number(denominator || 1)) * 100).toFixed(1));
+}
+
+function uniqueSorted(values) {
+  return Array.from(new Set((values || []).map(v => String(v || "").trim()).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, "th"));
+}
+
+function renderSelectOptions(values, selectedValue, allLabel) {
+  return `<option value="">${escapeOutreachHtml(allLabel)}</option>` +
+    values.map(value => `<option value="${escapeOutreachHtml(value)}" ${String(selectedValue || "") === value ? "selected" : ""}>${escapeOutreachHtml(value)}</option>`).join("");
+}
+
+async function loadOutreachAnalysis(forceRefresh = false) {
+  const container = document.getElementById("outreachOutcomeDashboard");
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="hero-card mt-4">
+      <div class="fw-bold">กำลังโหลดรายงานวิเคราะห์ผลถุงเลือดออกหน่วย...</div>
+      <div class="small-muted mt-1">ระบบจะอ่านเฉพาะข้อมูลรายงานจาก snapshot ล่าสุด</div>
+    </div>
+  `;
+
+  try {
+    const data = await MinimumStockBackend.getOutreachAnalysis({ forceRefresh });
+    currentOutreachAnalysisData = data;
+    renderOutreachAnalysis();
+  } catch (err) {
+    container.innerHTML = `
+      <div class="hero-card mt-4 outreach-error-card">
+        <h4 class="fw-bold mb-2">เปิดรายงานไม่ได้</h4>
+        <div class="small-muted mb-3">${escapeOutreachHtml(err.message)}</div>
+        <button class="btn btn-main" type="button" onclick="scrollToUpload()">ไปหน้า Upload File</button>
+      </div>
+    `;
+  }
+}
+
+function renderOutreachAnalysis() {
+  const container = document.getElementById("outreachOutcomeDashboard");
+  const data = currentOutreachAnalysisData;
+  if (!container) return;
+
+  if (!data || !Array.isArray(data.rows) || data.rows.length === 0) {
+    container.innerHTML = `
+      <div class="hero-card mt-4 text-center py-5">
+        <div class="fs-1 mb-2">📈</div>
+        <h3 class="fw-bold mb-2">ยังไม่มีข้อมูลสำหรับรายงานนี้</h3>
+        <div class="small-muted mb-3">หลังรัน SQL ของ v2.6.0 แล้ว ให้อัปโหลด Excel ล่าสุดอีก 1 ครั้ง ระบบจะสร้างรายงานนี้จากไฟล์เดียวกับ Minimum Stock อัตโนมัติ</div>
+        <button class="btn btn-main" type="button" onclick="scrollToUpload()">ไปหน้า Upload File</button>
+      </div>
+    `;
+    return;
+  }
+
+  const rows = data.rows || [];
+  const validDates = rows.map(r => r.dateStockIn).filter(Boolean).sort();
+  const minDate = validDates[0] || "";
+  const maxDate = validDates[validDates.length - 1] || "";
+  const sourceGroups = uniqueSorted(rows.filter(r => r.aggregateEligible).map(r => r.sourceGroup));
+  const sources = uniqueSorted(rows.filter(r => r.sourceGroup !== "ตัดออกตามระบบเดิม").map(r => r.donateSource));
+  const products = uniqueSorted(rows.map(r => r.productType));
+  const bloodGroups = uniqueSorted(rows.map(r => r.bloodGroup));
+  const rhs = uniqueSorted(rows.map(r => r.rh));
+  const validation = data.validation || {};
+
+  container.innerHTML = `
+    <div class="outreach-report-shell mt-4">
+      <div class="hero-card outreach-header-card mb-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+          <div>
+            <div class="forecast-pill mb-2">CQI รอบ 2</div>
+            <h1 class="fw-bold mb-1">วิเคราะห์ผลถุงเลือดจากการออกหน่วย</h1>
+            <div class="small-muted">ไฟล์ล่าสุด: <strong>${escapeOutreachHtml(data.fileName || "-")}</strong> · คำนวณ ${escapeOutreachHtml(formatDisplayDateTime(data.calculatedAt) || "-")}</div>
+            <div class="small-muted">ข้อมูลรายงานนี้แยกจาก logic Minimum Stock / Expiry Risk / Mobile Unit Planning</div>
+          </div>
+          <div class="d-flex flex-wrap gap-2 outreach-action-buttons no-print">
+            <button class="btn btn-light" type="button" onclick="exportOutreachCsv()">CSV</button>
+            <button class="btn btn-light" type="button" onclick="exportOutreachExcel()">Excel</button>
+            <button class="btn btn-main" type="button" onclick="printOutreachReport()">พิมพ์ / บันทึก PDF</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-card mb-3 no-print">
+        <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+          <div>
+            <div class="fw-bold">ตัวกรองรายงาน</div>
+            <div class="small-muted">ช่วงวันที่ใช้ DateStockIn เท่านั้น</div>
+          </div>
+          <button class="btn btn-light btn-sm" type="button" onclick="resetOutreachFilters()">ล้างตัวกรอง</button>
+        </div>
+        <div class="outreach-filter-grid">
+          <label class="outreach-filter-item">วันที่รับเข้า ตั้งแต่
+            <input id="outreachDateFrom" type="date" class="form-control" min="${minDate}" max="${maxDate}" onchange="applyOutreachFilters()" />
+          </label>
+          <label class="outreach-filter-item">ถึงวันที่
+            <input id="outreachDateTo" type="date" class="form-control" min="${minDate}" max="${maxDate}" onchange="applyOutreachFilters()" />
+          </label>
+          <label class="outreach-filter-item">เดือน / ปี
+            <input id="outreachMonth" type="month" class="form-control" onchange="applyOutreachMonthFilter()" />
+          </label>
+          <label class="outreach-filter-item">กลุ่มแหล่งรับเข้า
+            <select id="outreachSourceGroup" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(sourceGroups, "", "ทั้งหมด")}</select>
+          </label>
+          <label class="outreach-filter-item">จุดออกหน่วย / DonateSource
+            <select id="outreachSource" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(sources, "", "ทุกจุด")}</select>
+          </label>
+          <label class="outreach-filter-item">ProductType
+            <select id="outreachProduct" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(products, "", "ทุกชนิด")}</select>
+          </label>
+          <label class="outreach-filter-item">Blood Group
+            <select id="outreachBloodGroup" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(bloodGroups, "", "ทุกหมู่")}</select>
+          </label>
+          <label class="outreach-filter-item">Rh
+            <select id="outreachRh" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(rhs, "", "ทุก Rh")}</select>
+          </label>
+        </div>
+      </div>
+
+      <div id="outreachValidationBox"></div>
+      <div id="outreachSummaryCards"></div>
+      <div id="outreachCharts"></div>
+      <div id="outreachSourceTable"></div>
+    </div>
+  `;
+
+  renderOutreachValidation(validation);
+  applyOutreachFilters();
+}
+
+function renderOutreachValidation(validation) {
+  const box = document.getElementById("outreachValidationBox");
+  if (!box) return;
+  const issueCount = Number(validation?.issueCount || 0);
+  if (!issueCount) {
+    box.innerHTML = `
+      <div class="outreach-validation-card is-ok mb-3">
+        <strong>✓ ตรวจสอบไฟล์แล้ว</strong>
+        <span>ไม่พบ BagNumber ซ้ำ วันที่ผิด หรือค่าที่ต้องตรวจสอบจากกฎรายงานใหม่</span>
+      </div>
+    `;
+    return;
+  }
+
+  const issues = validation.issues || [];
+  const truncated = Boolean(validation.issuesTruncated);
+  const reviewRows = (currentOutreachAnalysisData?.rows || []).filter(row => row.needsReview).slice(0, 100);
+  box.innerHTML = `
+    <details class="outreach-validation-card mb-3 no-print">
+      <summary>
+        <strong>⚠ พบข้อมูลที่ต้องตรวจสอบ ${issueCount} รายการ</strong>
+        <span>BagNumber ซ้ำ ${validation.duplicateBagCount || 0} กลุ่ม · วันที่ผิด ${validation.invalidDateCount || 0} · Status ไม่รู้จัก ${validation.unknownStatusCount || 0} · DonateSource ต้องตรวจ ${validation.unknownSourceCount || 0} · ผลลัพธ์ขัดแย้ง ${validation.outcomeConflictCount || 0}</span>
+      </summary>
+      <div class="outreach-validation-list mt-3">
+        ${issues.map(item => `<div class="outreach-validation-item"><strong>${escapeOutreachHtml(item.bagNumber || "-")}</strong><span>${escapeOutreachHtml(item.message || "")}</span></div>`).join("")}
+        ${truncated ? `<div class="small-muted mt-2">แสดงเฉพาะ 500 รายการแรก เพื่อลดขนาดข้อมูลใน Supabase</div>` : ""}
+      </div>
+      ${reviewRows.length ? `
+        <div class="fw-bold mt-3 mb-2">ตัวอย่างถุงที่ถูกทำเครื่องหมาย “ต้องตรวจสอบ”</div>
+        <div class="table-responsive outreach-review-table-wrap">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>BagNumber</th><th>DonateSource</th><th>กลุ่ม</th><th>ผลลัพธ์</th></tr></thead>
+            <tbody>${reviewRows.map(row => `<tr><td class="fw-bold">${escapeOutreachHtml(row.bagNumber)}</td><td>${escapeOutreachHtml(row.donateSource || "-")}</td><td>${escapeOutreachHtml(row.sourceGroup)}</td><td>${escapeOutreachHtml(row.finalOutcome)}</td></tr>`).join("")}</tbody>
+          </table>
+        </div>
+        <div class="small-muted mt-2">แสดงไม่เกิน 100 ถุงในหน้าจอนี้ รายการที่จัดกลุ่มไม่ได้จะไม่ถูกรวมในยอดสรุป</div>
+      ` : ""}
+    </details>
+  `;
+}
+
+function getOutreachFilterValues() {
+  const read = id => document.getElementById(id)?.value || "";
+  return {
+    dateFrom: read("outreachDateFrom"),
+    dateTo: read("outreachDateTo"),
+    month: read("outreachMonth"),
+    sourceGroup: read("outreachSourceGroup"),
+    source: read("outreachSource"),
+    productType: read("outreachProduct"),
+    bloodGroup: read("outreachBloodGroup"),
+    rh: read("outreachRh")
+  };
+}
+
+function applyOutreachMonthFilter() {
+  const month = document.getElementById("outreachMonth")?.value || "";
+  const from = document.getElementById("outreachDateFrom");
+  const to = document.getElementById("outreachDateTo");
+  if (month && from && to) {
+    const [year, monthNumber] = month.split("-").map(Number);
+    const lastDay = new Date(year, monthNumber, 0).getDate();
+    from.value = `${year}-${String(monthNumber).padStart(2, "0")}-01`;
+    to.value = `${year}-${String(monthNumber).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  }
+  applyOutreachFilters();
+}
+
+function resetOutreachFilters() {
+  ["outreachDateFrom", "outreachDateTo", "outreachMonth", "outreachSourceGroup", "outreachSource", "outreachProduct", "outreachBloodGroup", "outreachRh"].forEach(id => {
+    const element = document.getElementById(id);
+    if (element) element.value = "";
+  });
+  applyOutreachFilters();
+}
+
+function applyOutreachFilters() {
+  if (!currentOutreachAnalysisData?.rows) return;
+  const f = getOutreachFilterValues();
+  currentOutreachFilteredRows = currentOutreachAnalysisData.rows.filter(row => {
+    if (!row.aggregateEligible) return false;
+    if (f.dateFrom && String(row.dateStockIn || "") < f.dateFrom) return false;
+    if (f.dateTo && String(row.dateStockIn || "") > f.dateTo) return false;
+    if (f.sourceGroup && row.sourceGroup !== f.sourceGroup) return false;
+    if (f.source && row.donateSource !== f.source) return false;
+    if (f.productType && row.productType !== f.productType) return false;
+    if (f.bloodGroup && row.bloodGroup !== f.bloodGroup) return false;
+    if (f.rh && row.rh !== f.rh) return false;
+    return true;
+  });
+
+  currentOutreachSourceSummary = buildOutreachSourceSummary(currentOutreachFilteredRows);
+  renderOutreachSummaryCards(currentOutreachFilteredRows);
+  renderOutreachCharts(currentOutreachFilteredRows, currentOutreachSourceSummary);
+  renderOutreachSourceTable(currentOutreachSourceSummary);
+}
+
+function buildOutreachSourceSummary(rows) {
+  const bucket = new Map();
+  rows.forEach(row => {
+    const key = `${row.sourceGroup}||${row.donateSource}`;
+    if (!bucket.has(key)) {
+      bucket.set(key, {
+        donateSource: row.donateSource || "ไม่ระบุ",
+        sourceGroup: row.sourceGroup || "ไม่ระบุ/ต้องตรวจสอบ",
+        received: 0,
+        used: 0,
+        destroyed: 0,
+        unresolved: 0,
+        conflicts: 0
+      });
+    }
+    const item = bucket.get(key);
+    item.received += 1;
+    if (row.finalOutcome === OUTREACH_USED) item.used += 1;
+    else if (row.finalOutcome === OUTREACH_DESTROYED) item.destroyed += 1;
+    else {
+      item.unresolved += 1;
+      if (row.finalOutcome === OUTREACH_CONFLICT) item.conflicts += 1;
+    }
+  });
+
+  return Array.from(bucket.values())
+    .map(item => ({
+      ...item,
+      usePercent: outreachPercent(item.used, item.received),
+      destroyPercent: outreachPercent(item.destroyed, item.received)
+    }))
+    .sort((a, b) => b.received - a.received || a.donateSource.localeCompare(b.donateSource, "th"));
+}
+
+function summarizeOutreachRows(rows) {
+  const total = rows.length;
+  const self = rows.filter(r => r.sourceGroup === "หาเอง/ออกหน่วย").length;
+  const trc = rows.filter(r => r.sourceGroup === "กาชาดไทย").length;
+  const used = rows.filter(r => r.finalOutcome === OUTREACH_USED).length;
+  const destroyed = rows.filter(r => r.finalOutcome === OUTREACH_DESTROYED).length;
+  const conflict = rows.filter(r => r.finalOutcome === OUTREACH_CONFLICT).length;
+  const unresolved = total - used - destroyed;
+  return {
+    total, self, trc, used, destroyed, unresolved, conflict,
+    usePercent: outreachPercent(used, total),
+    destroyPercent: outreachPercent(destroyed, total)
+  };
+}
+
+function renderOutreachSummaryCards(rows) {
+  const box = document.getElementById("outreachSummaryCards");
+  if (!box) return;
+  const s = summarizeOutreachRows(rows);
+  const cards = [
+    ["รับเข้าทั้งหมด", s.total, "ถุง"],
+    ["หาเอง/ออกหน่วย", s.self, "ถุง"],
+    ["กาชาดไทย", s.trc, "ถุง"],
+    ["นำไปใช้/จ่ายออก", s.used, "ถุง"],
+    ["ทิ้ง/ทำลาย", s.destroyed, "ถุง"],
+    ["ยังไม่ทราบผล/คงเหลือ", s.unresolved, "ถุง"],
+    ["ร้อยละนำไปใช้", s.usePercent.toFixed(1), "%"],
+    ["ร้อยละทิ้ง", s.destroyPercent.toFixed(1), "%"]
+  ];
+
+  box.innerHTML = `
+    <div class="outreach-summary-grid mb-3">
+      ${cards.map(([label, value, unit]) => `
+        <div class="outreach-summary-card">
+          <div class="small-muted">${escapeOutreachHtml(label)}</div>
+          <div class="outreach-summary-value">${escapeOutreachHtml(value)}</div>
+          <div class="outreach-summary-unit">${unit}</div>
+        </div>
+      `).join("")}
+    </div>
+    ${s.conflict ? `<div class="outreach-conflict-note mb-3">มี <strong>${s.conflict}</strong> ถุงที่ Status / DestroyReason หรือข้อมูลซ้ำขัดแย้ง ระบบจัดไว้ใน “ยังไม่ทราบผล/คงเหลือ” และไม่เอาไปนับซ้ำเป็นใช้หรือทิ้ง</div>` : ""}
+  `;
+}
+
+function renderOutreachCharts(rows, sourceSummary) {
+  const box = document.getElementById("outreachCharts");
+  if (!box) return;
+
+  const groupNames = ["หาเอง/ออกหน่วย", "กาชาดไทย"];
+  const groupData = groupNames.map(name => {
+    const groupRows = rows.filter(row => row.sourceGroup === name);
+    return { name, ...summarizeOutreachRows(groupRows) };
+  });
+  const maxGroup = Math.max(1, ...groupData.map(item => item.total));
+  const topSources = sourceSummary.slice(0, 12);
+  const maxSource = Math.max(1, ...topSources.map(item => item.received));
+  const topDiscard = [...sourceSummary].sort((a, b) => b.destroyPercent - a.destroyPercent || b.received - a.received).slice(0, 12);
+
+  box.innerHTML = `
+    <div class="outreach-chart-grid mb-3">
+      <div class="hero-card outreach-chart-card">
+        <h5 class="fw-bold mb-1">เปรียบเทียบแหล่งรับเข้า</h5>
+        <div class="small-muted mb-3">หาเอง/ออกหน่วย เทียบกับกาชาดไทย</div>
+        ${groupData.map(item => `
+          <div class="outreach-chart-row">
+            <div class="outreach-chart-label">${escapeOutreachHtml(item.name)} <strong>${item.total}</strong></div>
+            <div class="outreach-stacked-bar">
+              <span class="bar-used" style="width:${item.total ? (item.used / maxGroup) * 100 : 0}%" title="ใช้ ${item.used}"></span>
+              <span class="bar-destroyed" style="width:${item.total ? (item.destroyed / maxGroup) * 100 : 0}%" title="ทิ้ง ${item.destroyed}"></span>
+              <span class="bar-unresolved" style="width:${item.total ? (item.unresolved / maxGroup) * 100 : 0}%" title="ยังไม่ทราบ ${item.unresolved}"></span>
+            </div>
+            <div class="small-muted">ใช้ ${item.used} · ทิ้ง ${item.destroyed} · อื่น ${item.unresolved}</div>
+          </div>
+        `).join("")}
+        <div class="outreach-legend"><span><i class="legend-used"></i> ใช้/จ่ายออก</span><span><i class="legend-destroyed"></i> ทิ้ง/ทำลาย</span><span><i class="legend-unresolved"></i> ยังไม่ทราบผล</span></div>
+      </div>
+
+      <div class="hero-card outreach-chart-card">
+        <h5 class="fw-bold mb-1">รับเข้า / ใช้ / ทิ้ง ตามจุดออกหน่วย</h5>
+        <div class="small-muted mb-3">แสดง 12 จุดที่มีจำนวนรับเข้าสูงสุด</div>
+        <div class="outreach-bars-list">
+          ${topSources.map(item => `
+            <div class="outreach-source-bar-row">
+              <div class="outreach-source-bar-name" title="${escapeOutreachHtml(item.donateSource)}">${escapeOutreachHtml(item.donateSource)}</div>
+              <div class="outreach-mini-bars">
+                <span class="bar-received" style="width:${(item.received / maxSource) * 100}%">รับ ${item.received}</span>
+                <span class="bar-used" style="width:${(item.used / maxSource) * 100}%">ใช้ ${item.used}</span>
+                <span class="bar-destroyed" style="width:${(item.destroyed / maxSource) * 100}%">ทิ้ง ${item.destroyed}</span>
+              </div>
+            </div>
+          `).join("") || `<div class="small-muted">ไม่มีข้อมูลตามตัวกรอง</div>`}
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-card outreach-chart-card mb-3">
+      <h5 class="fw-bold mb-1">ร้อยละทิ้ง/ทำลายของแต่ละจุด</h5>
+      <div class="small-muted mb-3">เรียงจากอัตราทิ้งสูงสุด เพื่อใช้ค้นหาจุดที่ควรทบทวน</div>
+      <div class="outreach-percent-bars">
+        ${topDiscard.map(item => `
+          <div class="outreach-percent-row">
+            <div class="outreach-percent-name" title="${escapeOutreachHtml(item.donateSource)}">${escapeOutreachHtml(item.donateSource)}</div>
+            <div class="outreach-percent-track"><span style="width:${Math.min(100, item.destroyPercent)}%"></span></div>
+            <div class="outreach-percent-value">${item.destroyPercent.toFixed(1)}%</div>
+          </div>
+        `).join("") || `<div class="small-muted">ไม่มีข้อมูลตามตัวกรอง</div>`}
+      </div>
+    </div>
+  `;
+}
+
+function renderOutreachSourceTable(sourceSummary) {
+  const box = document.getElementById("outreachSourceTable");
+  if (!box) return;
+  box.innerHTML = `
+    <div class="hero-card mb-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+        <div>
+          <h5 class="fw-bold mb-1">สรุปตามจุดออกหน่วย</h5>
+          <div class="small-muted">เรียงจากจำนวนรับเข้าสูงสุด · กดที่แถวเพื่อดูรายละเอียดรายถุง</div>
+        </div>
+        <div class="small-muted">${sourceSummary.length} จุด / แหล่งรับเข้า</div>
+      </div>
+      <div class="table-responsive outreach-summary-table-wrap">
+        <table class="table outreach-summary-table align-middle">
+          <thead>
+            <tr>
+              <th>จุดออกหน่วย</th>
+              <th>กลุ่มแหล่งรับเข้า</th>
+              <th class="text-end">รับเข้า</th>
+              <th class="text-end">นำไปใช้/จ่ายออก</th>
+              <th class="text-end">ทิ้ง/ทำลาย</th>
+              <th class="text-end">ยังไม่ทราบผล/คงเหลือ</th>
+              <th class="text-end">ร้อยละใช้</th>
+              <th class="text-end">ร้อยละทิ้ง</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sourceSummary.map((item, index) => `
+              <tr class="outreach-click-row" onclick="openOutreachSourceDetail(${index}, 1)">
+                <td class="fw-bold">${escapeOutreachHtml(item.donateSource)}</td>
+                <td><span class="outreach-source-badge">${escapeOutreachHtml(item.sourceGroup)}</span></td>
+                <td class="text-end fw-bold">${item.received}</td>
+                <td class="text-end">${item.used}</td>
+                <td class="text-end">${item.destroyed}</td>
+                <td class="text-end">${item.unresolved}</td>
+                <td class="text-end">${item.usePercent.toFixed(1)}%</td>
+                <td class="text-end">${item.destroyPercent.toFixed(1)}%</td>
+              </tr>
+            `).join("") || `<tr><td colspan="8" class="text-center small-muted py-4">ไม่มีข้อมูลตามตัวกรอง</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function openOutreachSourceDetail(index, page = 1) {
+  const item = currentOutreachSourceSummary[index];
+  if (!item) return;
+  outreachDetailSourceIndex = index;
+  outreachDetailPage = Math.max(1, Number(page || 1));
+
+  const rows = currentOutreachFilteredRows.filter(row => row.sourceGroup === item.sourceGroup && row.donateSource === item.donateSource);
+  const perPage = 100;
+  const totalPages = Math.max(1, Math.ceil(rows.length / perPage));
+  if (outreachDetailPage > totalPages) outreachDetailPage = totalPages;
+  const start = (outreachDetailPage - 1) * perPage;
+  const pageRows = rows.slice(start, start + perPage);
+
+  const overlay = document.getElementById("outreachDetailOverlay");
+  const title = document.getElementById("outreachDetailTitle");
+  const body = document.getElementById("outreachDetailBody");
+  if (!overlay || !title || !body) return;
+
+  title.textContent = `${item.donateSource} · ${rows.length} ถุง`;
+  body.innerHTML = `
+    <div class="small-muted mb-3">${escapeOutreachHtml(item.sourceGroup)} · หน้า ${outreachDetailPage}/${totalPages} · แสดงครั้งละ ${perPage} รายการ</div>
+    <div class="table-responsive outreach-detail-table-wrap">
+      <table class="table outreach-detail-table align-middle">
+        <thead><tr>
+          <th>BagNumber</th><th>ProductType</th><th>BloodGroup</th><th>Rh</th><th>DonateSource</th><th>DateStockIn</th><th>DateStockOut</th><th>Status</th><th>DestroyReason</th><th>ผลลัพธ์สุดท้าย</th>
+        </tr></thead>
+        <tbody>
+          ${pageRows.map(row => `
+            <tr>
+              <td class="fw-bold">${escapeOutreachHtml(row.bagNumber)}</td>
+              <td>${escapeOutreachHtml(row.productType)}</td>
+              <td>${escapeOutreachHtml(row.bloodGroup)}</td>
+              <td>${escapeOutreachHtml(row.rh)}</td>
+              <td>${escapeOutreachHtml(row.donateSource)}</td>
+              <td>${escapeOutreachHtml(row.dateStockIn)}</td>
+              <td>${escapeOutreachHtml(row.dateStockOut)}</td>
+              <td>${escapeOutreachHtml(row.status)}</td>
+              <td>${escapeOutreachHtml(row.destroyReason)}</td>
+              <td><span class="outreach-outcome-badge ${outreachOutcomeClass(row.finalOutcome)}">${escapeOutreachHtml(row.finalOutcome)}</span></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div class="d-flex justify-content-between align-items-center gap-2 mt-3">
+      <button class="btn btn-light" type="button" ${outreachDetailPage <= 1 ? "disabled" : ""} onclick="openOutreachSourceDetail(${index}, ${outreachDetailPage - 1})">← ก่อนหน้า</button>
+      <div class="small-muted">${start + 1}-${Math.min(start + perPage, rows.length)} จาก ${rows.length}</div>
+      <button class="btn btn-light" type="button" ${outreachDetailPage >= totalPages ? "disabled" : ""} onclick="openOutreachSourceDetail(${index}, ${outreachDetailPage + 1})">ถัดไป →</button>
+    </div>
+  `;
+  overlay.style.display = "flex";
+}
+
+function outreachOutcomeClass(outcome) {
+  if (outcome === OUTREACH_USED) return "is-used";
+  if (outcome === OUTREACH_DESTROYED) return "is-destroyed";
+  if (outcome === OUTREACH_CONFLICT) return "is-conflict";
+  return "is-unresolved";
+}
+
+function closeOutreachDetail() {
+  const overlay = document.getElementById("outreachDetailOverlay");
+  if (overlay) overlay.style.display = "none";
+}
+
+function getOutreachExportRows() {
+  return currentOutreachFilteredRows.map(row => ({
+    BagNumber: row.bagNumber,
+    ProductType: row.productType,
+    BloodGroup: row.bloodGroup,
+    Rh: row.rh,
+    DonateSource: row.donateSource,
+    SourceGroup: row.sourceGroup,
+    DateStockIn: row.dateStockIn,
+    DateStockOut: row.dateStockOut,
+    Status: row.status,
+    DestroyReason: row.destroyReason,
+    FinalOutcome: row.finalOutcome
+  }));
+}
+
+function exportOutreachCsv() {
+  const rows = getOutreachExportRows();
+  if (!rows.length) {
+    showModal("error", "ไม่มีข้อมูล", "ไม่มีข้อมูลตามตัวกรองสำหรับส่งออก");
+    return;
+  }
+  const headers = Object.keys(rows[0]);
+  const csvEscape = value => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  const csv = [headers.map(csvEscape).join(","), ...rows.map(row => headers.map(header => csvEscape(row[header])).join(","))].join("\r\n");
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `outreach-blood-outcome-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportOutreachExcel() {
+  if (!window.XLSX) {
+    showModal("error", "ส่งออกไม่ได้", "ไม่พบไลบรารี Excel");
+    return;
+  }
+  const detailRows = getOutreachExportRows();
+  if (!detailRows.length) {
+    showModal("error", "ไม่มีข้อมูล", "ไม่มีข้อมูลตามตัวกรองสำหรับส่งออก");
+    return;
+  }
+  const summary = summarizeOutreachRows(currentOutreachFilteredRows);
+  const summaryRows = [
+    { รายการ: "รับเข้าทั้งหมด", จำนวน: summary.total },
+    { รายการ: "หาเอง/ออกหน่วย", จำนวน: summary.self },
+    { รายการ: "กาชาดไทย", จำนวน: summary.trc },
+    { รายการ: "นำไปใช้/จ่ายออก", จำนวน: summary.used },
+    { รายการ: "ทิ้ง/ทำลาย", จำนวน: summary.destroyed },
+    { รายการ: "ยังไม่ทราบผล/คงเหลือ", จำนวน: summary.unresolved },
+    { รายการ: "ร้อยละนำไปใช้", จำนวน: summary.usePercent },
+    { รายการ: "ร้อยละทิ้ง", จำนวน: summary.destroyPercent }
+  ];
+  const sourceRows = currentOutreachSourceSummary.map(item => ({
+    จุดออกหน่วย: item.donateSource,
+    กลุ่มแหล่งรับเข้า: item.sourceGroup,
+    รับเข้า: item.received,
+    นำไปใช้จ่ายออก: item.used,
+    ทิ้งทำลาย: item.destroyed,
+    ยังไม่ทราบผลคงเหลือ: item.unresolved,
+    ร้อยละใช้: item.usePercent,
+    ร้อยละทิ้ง: item.destroyPercent
+  }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "Summary");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sourceRows), "By Source");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailRows), "Bag Detail");
+  XLSX.writeFile(wb, `outreach-blood-outcome-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+function printOutreachReport() {
+  window.print();
+}
+
+function bindOutreachDetailModal() {
+  const overlay = document.getElementById("outreachDetailOverlay");
+  const closeBtn = document.getElementById("outreachDetailCloseBtn");
+  if (closeBtn) closeBtn.addEventListener("click", closeOutreachDetail);
+  if (overlay) {
+    overlay.addEventListener("click", event => {
+      if (event.target === overlay) closeOutreachDetail();
+    });
+  }
+}
+
+document.addEventListener("DOMContentLoaded", bindOutreachDetailModal);
+
 function scrollToUpload() {
   const uploadBtn = document.querySelector("[onclick=\"showDashboardPage('upload', this)\"]");
   showDashboardPage("upload", uploadBtn);
@@ -1304,6 +1944,10 @@ function formatDisplayDateTime(value) {
 
 if (page === "expiry") {
   loadExpiryRisk(7);
+}
+
+if (page === "outreach") {
+  loadOutreachAnalysis(false);
 }
 }
 

@@ -20,6 +20,7 @@
   let cachedClient = null;
   let cachedSummarySnapshot = null;
   let cachedFullSnapshot = null;
+  let cachedOutreachSnapshot = null;
 
   const SUMMARY_SELECT = [
     "id",
@@ -34,7 +35,31 @@
     "results"
   ].join(",");
 
-  const FULL_SELECT = "*";
+  // ระบุเฉพาะคอลัมน์เดิม เพื่อไม่ดึง outreach_analysis ก้อนใหญ่ตอนเปิด Mobile Unit Planning
+  const FULL_SELECT = [
+    "id",
+    "created_at",
+    "file_name",
+    "calculated_at",
+    "total_rows",
+    "released_rows",
+    "result_rows",
+    "start_date",
+    "end_date",
+    "results",
+    "stock_rows",
+    "usage_history_rows",
+    "in_history_rows",
+    "raw_preview"
+  ].join(",");
+
+  const OUTREACH_SELECT = [
+    "id",
+    "created_at",
+    "file_name",
+    "calculated_at",
+    "outreach_analysis"
+  ].join(",");
 
   function getConfig() {
     return window.MINIMUM_STOCK_CONFIG || {};
@@ -75,6 +100,7 @@
   function clearCachedSnapshotState() {
     cachedSummarySnapshot = null;
     cachedFullSnapshot = null;
+    cachedOutreachSnapshot = null;
   }
 
   async function clearAllSnapshots(options = {}) {
@@ -798,7 +824,146 @@
     });
   }
 
-  async function parseExcelFile(file) {
+
+  const OUTREACH_REQUIRED_HEADERS = [
+    "BagNumber",
+    "ProductType",
+    "DonateSource",
+    "DateStockIn",
+    "DateStockOut",
+    "Status",
+    "DestroyReason"
+  ];
+
+  const OUTREACH_OPTIONAL_HEADERS = ["BloodGroup", "Rh"];
+
+  function normalizeHeaderName(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_\-()]+/g, "");
+  }
+
+  function buildHeaderMap(headers) {
+    const map = {};
+    (headers || []).forEach((header, index) => {
+      const key = normalizeHeaderName(header);
+      if (key && map[key] === undefined) map[key] = index;
+    });
+    return map;
+  }
+
+  function getHeaderIndex(headerMap, name) {
+    const key = normalizeHeaderName(name);
+    return headerMap[key] === undefined ? -1 : headerMap[key];
+  }
+
+  function getHeaderValue(row, headerMap, name) {
+    const index = getHeaderIndex(headerMap, name);
+    return index < 0 ? "" : row[index];
+  }
+
+  function normalizeAnyDateStrict(value) {
+    if (value === null || value === undefined || value === "") return "";
+
+    if (value instanceof Date && !isNaN(value)) {
+      return formatYmd(value);
+    }
+
+    if (typeof value === "number" && isFinite(value)) {
+      const d = excelSerialToDate(value);
+      return isNaN(d) ? "" : formatYmd(d);
+    }
+
+    const text = String(value).trim();
+    if (!text) return "";
+    const dateOnly = text.split(/[ T]/)[0];
+    const parts = dateOnly.split(/[\/\-]/);
+    if (parts.length !== 3) return "";
+
+    let d, m, y;
+    if (String(parts[0]).length === 4) {
+      y = Number(parts[0]);
+      m = Number(parts[1]);
+      d = Number(parts[2]);
+    } else {
+      d = Number(parts[0]);
+      m = Number(parts[1]);
+      y = Number(parts[2]);
+    }
+
+    if (![d, m, y].every(Number.isFinite)) return "";
+    if (y > 2400) y -= 543;
+    if (y < 1900 || y > 2200 || m < 1 || m > 12 || d < 1 || d > 31) return "";
+
+    const candidate = new Date(y, m - 1, d);
+    if (
+      isNaN(candidate) ||
+      candidate.getFullYear() !== y ||
+      candidate.getMonth() !== m - 1 ||
+      candidate.getDate() !== d
+    ) return "";
+
+    return formatYmd(candidate);
+  }
+
+  function classifyOutreachSource(value) {
+    const text = String(value || "").trim();
+    if (!text) {
+      return { group: "ไม่ระบุ/ต้องตรวจสอบ", eligible: false, excluded: false };
+    }
+    if (isExcludedDonateSource(text)) {
+      return { group: "ตัดออกตามระบบเดิม", eligible: false, excluded: true };
+    }
+    if (text === "ศูนย์บริการโลหิตแห่งชาติ สภากาชาดไทย") {
+      return { group: "กาชาดไทย", eligible: true, excluded: false };
+    }
+    return { group: "หาเอง/ออกหน่วย", eligible: true, excluded: false };
+  }
+
+  function textContainsDestroySignal(value) {
+    const text = String(value || "").trim().toLowerCase();
+    if (!text) return false;
+    const keywords = [
+      "destroy", "destroyed", "discard", "discarded", "disposed", "disposal", "expired", "expire",
+      "damage", "damaged", "reject", "rejected", "waste", "wasted",
+      "ทิ้ง", "ทำลาย", "หมดอายุ", "เสีย", "ชำรุด", "ไม่ผ่านเกณฑ์", "ไม่ผ่าน"
+    ];
+    return keywords.some(keyword => text.includes(keyword));
+  }
+
+  function isKnownOutreachStatus(value) {
+    const status = String(value || "").trim();
+    if (!status) return false;
+    const known = new Set([
+      "Released",
+      "Available",
+      "In Screening Process",
+      "Quarantine",
+      "ReadyToIssue",
+      "Destroyed",
+      "Discarded",
+      "Disposed",
+      "Expired",
+      "Rejected"
+    ]);
+    return known.has(status) || textContainsDestroySignal(status);
+  }
+
+  function classifyOutreachOutcome(statusValue, destroyReasonValue) {
+    const status = String(statusValue || "").trim();
+    const destroyReason = String(destroyReasonValue || "").trim();
+    const released = status === "Released";
+    // DestroyReason เป็น field ที่เกิดเมื่อมีการทิ้ง/ทำลาย จึงถือว่า non-empty เป็นหลักฐานของการทำลาย
+    const destroyed = textContainsDestroySignal(status) || Boolean(destroyReason);
+
+    if (released && destroyed) return "ข้อมูลขัดแย้ง ต้องตรวจสอบ";
+    if (released) return "นำไปใช้/จ่ายออก";
+    if (destroyed) return "ทิ้ง/ทำลาย";
+    return "ยังไม่ทราบผล/คงเหลือ/สถานะอื่น";
+  }
+
+  async function readExcelSheet(file) {
     if (!window.XLSX) {
       throw new Error("โหลดไลบรารีอ่าน Excel ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตหรือ CDN xlsx");
     }
@@ -820,14 +985,299 @@
       defval: ""
     });
 
-    if (!values || values.length < 3) throw new Error("ไม่พบข้อมูลในไฟล์ Excel");
+    if (!values || values.length < 2) throw new Error("ไม่พบข้อมูลในไฟล์ Excel");
 
     const headerRowIndex = values.findIndex(row => String(row[0] || "").trim() === "BagNumber");
     if (headerRowIndex === -1) throw new Error("หาแถวหัวตาราง BagNumber ไม่เจอ");
 
+    const headers = values[headerRowIndex].map(value => String(value || "").trim());
+    const headerMap = buildHeaderMap(headers);
+    // คง logic เดิมของ Minimum Stock: ใช้ตำแหน่งคอลัมน์เดิมในการตัดแถวว่าง
     const dataRows = values.slice(headerRowIndex + 1).filter(row => {
       return row && (row[EXCEL_COL.bagNumber] || row[EXCEL_COL.productType] || row[EXCEL_COL.status]);
     });
+
+    return { values, headerRowIndex, headers, headerMap, dataRows };
+  }
+
+  function buildOutreachValidation(dataRows, headerMap) {
+    const missingHeaders = OUTREACH_REQUIRED_HEADERS.filter(name => getHeaderIndex(headerMap, name) < 0);
+    const issues = [];
+    const duplicateMap = new Map();
+    const unknownStatuses = new Map();
+    const unknownSources = new Map();
+    let invalidDateCount = 0;
+    let missingBagCount = 0;
+    let outcomeConflictCount = 0;
+
+    if (missingHeaders.length) {
+      return {
+        ok: false,
+        blocking: true,
+        missingHeaders,
+        issueCount: missingHeaders.length,
+        duplicateBagCount: 0,
+        invalidDateCount: 0,
+        unknownStatusCount: 0,
+        unknownSourceCount: 0,
+        missingBagCount: 0,
+        outcomeConflictCount: 0,
+        issues: missingHeaders.map(name => ({ type: "missing_header", bagNumber: "", message: `ไม่พบคอลัมน์ ${name}` }))
+      };
+    }
+
+    dataRows.forEach((row, rowIndex) => {
+      const excelRow = rowIndex + 2;
+      const bagRaw = getHeaderValue(row, headerMap, "BagNumber");
+      const bagNumber = String(bagRaw || "").trim();
+      const bagKey = normalizeBagKey(bagRaw);
+      const status = String(getHeaderValue(row, headerMap, "Status") || "").trim();
+      const donateSource = String(getHeaderValue(row, headerMap, "DonateSource") || "").trim();
+      const dateStockInRaw = getHeaderValue(row, headerMap, "DateStockIn");
+      const dateStockOutRaw = getHeaderValue(row, headerMap, "DateStockOut");
+      const destroyReason = String(getHeaderValue(row, headerMap, "DestroyReason") || "").trim();
+
+      if (!bagKey) {
+        missingBagCount += 1;
+        issues.push({ type: "missing_bag", bagNumber: "", message: `แถว ${excelRow}: ไม่มี BagNumber` });
+      } else {
+        if (!duplicateMap.has(bagKey)) duplicateMap.set(bagKey, []);
+        duplicateMap.get(bagKey).push({ row: excelRow, bagNumber });
+      }
+
+      if (!dateStockInRaw) {
+        invalidDateCount += 1;
+        issues.push({ type: "invalid_date", bagNumber, message: `ไม่มี DateStockIn (แถว ${excelRow})` });
+      } else if (!normalizeAnyDateStrict(dateStockInRaw)) {
+        invalidDateCount += 1;
+        issues.push({ type: "invalid_date", bagNumber, message: `DateStockIn ไม่ถูกต้อง (แถว ${excelRow})` });
+      }
+      if (dateStockOutRaw && !normalizeAnyDateStrict(dateStockOutRaw)) {
+        invalidDateCount += 1;
+        issues.push({ type: "invalid_date", bagNumber, message: `DateStockOut ไม่ถูกต้อง (แถว ${excelRow})` });
+      }
+
+      if (!status) {
+        unknownStatuses.set("(ว่าง)", (unknownStatuses.get("(ว่าง)") || 0) + 1);
+      } else if (!isKnownOutreachStatus(status)) {
+        unknownStatuses.set(status, (unknownStatuses.get(status) || 0) + 1);
+      }
+
+      if (status === "Released" && destroyReason) {
+        outcomeConflictCount += 1;
+        issues.push({ type: "outcome_conflict", bagNumber, message: `Status = Released แต่มี DestroyReason (แถว ${excelRow})` });
+      }
+
+      const sourceInfo = classifyOutreachSource(donateSource);
+      if (!sourceInfo.excluded && !sourceInfo.eligible) {
+        const key = donateSource || "(ว่าง)";
+        unknownSources.set(key, (unknownSources.get(key) || 0) + 1);
+      }
+    });
+
+    const duplicateGroups = Array.from(duplicateMap.values()).filter(rows => rows.length > 1);
+    duplicateGroups.forEach(rows => {
+      issues.push({
+        type: "duplicate_bag",
+        bagNumber: rows[0].bagNumber,
+        message: `BagNumber ซ้ำ ${rows.length} แถว: ${rows.map(item => item.row).join(", ")}`
+      });
+    });
+
+    unknownStatuses.forEach((count, status) => {
+      issues.push({ type: "unknown_status", bagNumber: "", message: `Status ที่ยังไม่รู้จัก: ${status} (${count} รายการ)` });
+    });
+    unknownSources.forEach((count, source) => {
+      issues.push({ type: "unknown_source", bagNumber: "", message: `DonateSource ต้องตรวจสอบ: ${source} (${count} รายการ)` });
+    });
+
+    return {
+      ok: true,
+      blocking: false,
+      missingHeaders: [],
+      issueCount: issues.length,
+      duplicateBagCount: duplicateGroups.length,
+      invalidDateCount,
+      unknownStatusCount: Array.from(unknownStatuses.values()).reduce((a, b) => a + b, 0),
+      unknownSourceCount: Array.from(unknownSources.values()).reduce((a, b) => a + b, 0),
+      missingBagCount,
+      outcomeConflictCount,
+      issues
+    };
+  }
+
+  function chooseUniqueText(values) {
+    const unique = Array.from(new Set((values || []).map(v => String(v || "").trim()).filter(Boolean)));
+    return { value: unique[0] || "", conflict: unique.length > 1, values: unique };
+  }
+
+  function buildOutreachAnalysis(dataRows, headerMap) {
+    const validation = buildOutreachValidation(dataRows, headerMap);
+    if (validation.blocking) {
+      throw new Error("ไฟล์ขาดคอลัมน์สำคัญ: " + validation.missingHeaders.join(", "));
+    }
+
+    const bagGroups = new Map();
+    dataRows.forEach((row, rowIndex) => {
+      const bagRaw = getHeaderValue(row, headerMap, "BagNumber");
+      const bagKey = normalizeBagKey(bagRaw);
+      if (!bagKey) return;
+      if (!bagGroups.has(bagKey)) bagGroups.set(bagKey, []);
+      bagGroups.get(bagKey).push({ row, rowIndex });
+    });
+
+    const rows = [];
+    let excludedSourceRows = 0;
+
+    bagGroups.forEach((items, bagKey) => {
+      const mapped = items.map(item => {
+        const row = item.row;
+        const status = String(getHeaderValue(row, headerMap, "Status") || "").trim();
+        const destroyReason = String(getHeaderValue(row, headerMap, "DestroyReason") || "").trim();
+        const donateSource = String(getHeaderValue(row, headerMap, "DonateSource") || "").trim();
+        return {
+          bagNumber: String(getHeaderValue(row, headerMap, "BagNumber") || "").trim(),
+          productType: String(getHeaderValue(row, headerMap, "ProductType") || "").trim(),
+          bloodGroup: String(getHeaderValue(row, headerMap, "BloodGroup") || "").trim(),
+          rh: String(getHeaderValue(row, headerMap, "Rh") || "").trim(),
+          donateSource,
+          dateStockIn: normalizeAnyDateStrict(getHeaderValue(row, headerMap, "DateStockIn")),
+          dateStockOut: normalizeAnyDateStrict(getHeaderValue(row, headerMap, "DateStockOut")),
+          status,
+          destroyReason,
+          sourceInfo: classifyOutreachSource(donateSource),
+          outcome: classifyOutreachOutcome(status, destroyReason)
+        };
+      });
+
+      // ถ้าทุกแถวของ BagNumber นี้เป็นแหล่งที่ระบบเดิมตัดออก ให้ตัดออกจากรายงานใหม่ด้วย
+      if (mapped.every(item => item.sourceInfo.excluded)) {
+        excludedSourceRows += 1;
+        return;
+      }
+
+      const bagNumber = chooseUniqueText(mapped.map(item => item.bagNumber));
+      const productType = chooseUniqueText(mapped.map(item => item.productType));
+      const bloodGroup = chooseUniqueText(mapped.map(item => item.bloodGroup));
+      const rh = chooseUniqueText(mapped.map(item => item.rh));
+      const donateSource = chooseUniqueText(mapped.filter(item => !item.sourceInfo.excluded).map(item => item.donateSource));
+      const status = chooseUniqueText(mapped.map(item => item.status));
+      const destroyReason = chooseUniqueText(mapped.map(item => item.destroyReason));
+      const sourceGroups = Array.from(new Set(mapped.filter(item => !item.sourceInfo.excluded).map(item => item.sourceInfo.group)));
+      const outcomes = Array.from(new Set(mapped.map(item => item.outcome)));
+      const dateStockIns = mapped.map(item => item.dateStockIn).filter(Boolean).sort();
+      const dateStockOuts = mapped.map(item => item.dateStockOut).filter(Boolean).sort();
+
+      let sourceGroup = sourceGroups.length === 1 ? sourceGroups[0] : "ไม่ระบุ/ต้องตรวจสอบ";
+      let finalOutcome = outcomes.length === 1 ? outcomes[0] : "ข้อมูลขัดแย้ง ต้องตรวจสอบ";
+
+      const fieldConflict = [productType, bloodGroup, rh, donateSource].some(item => item.conflict);
+      if (fieldConflict) finalOutcome = "ข้อมูลขัดแย้ง ต้องตรวจสอบ";
+
+      // Released กับ DestroyReason ที่สื่อว่าทำลาย ต้องถือเป็น conflict เสมอ
+      if (mapped.some(item => item.status === "Released") && mapped.some(item => textContainsDestroySignal(item.status) || Boolean(item.destroyReason))) {
+        finalOutcome = "ข้อมูลขัดแย้ง ต้องตรวจสอบ";
+      }
+
+      const dateStockIn = dateStockIns[0] || "";
+      const dateStockOut = dateStockOuts[dateStockOuts.length - 1] || "";
+      const aggregateEligible = Boolean(
+        dateStockIn &&
+        sourceGroup !== "ไม่ระบุ/ต้องตรวจสอบ" &&
+        sourceGroup !== "ตัดออกตามระบบเดิม"
+      );
+
+      rows.push({
+        bagNumber: bagNumber.value || bagKey,
+        productType: productType.value,
+        bloodGroup: bloodGroup.value,
+        rh: rh.value,
+        donateSource: donateSource.value,
+        sourceGroup,
+        dateStockIn,
+        dateStockOut,
+        status: status.value,
+        destroyReason: destroyReason.value,
+        finalOutcome,
+        aggregateEligible,
+        duplicateCount: items.length,
+        needsReview: !aggregateEligible || finalOutcome === "ข้อมูลขัดแย้ง ต้องตรวจสอบ" || items.length > 1 || fieldConflict
+      });
+    });
+
+    rows.sort((a, b) =>
+      String(b.dateStockIn || "").localeCompare(String(a.dateStockIn || "")) ||
+      String(a.donateSource || "").localeCompare(String(b.donateSource || "")) ||
+      String(a.bagNumber || "").localeCompare(String(b.bagNumber || ""))
+    );
+
+    return {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      requiredHeaders: OUTREACH_REQUIRED_HEADERS,
+      optionalHeaders: OUTREACH_OPTIONAL_HEADERS,
+      totalUniqueBags: rows.length,
+      eligibleBags: rows.filter(row => row.aggregateEligible).length,
+      excludedSourceRows,
+      validation,
+      rows
+    };
+  }
+
+  function compactOutreachAnalysis(analysis) {
+    if (!analysis) return {};
+    const columns = [
+      "bagNumber", "productType", "bloodGroup", "rh", "donateSource", "sourceGroup",
+      "dateStockIn", "dateStockOut", "status", "destroyReason", "finalOutcome",
+      "aggregateEligible", "duplicateCount", "needsReview"
+    ];
+    return {
+      schemaVersion: analysis.schemaVersion || 1,
+      generatedAt: analysis.generatedAt || "",
+      requiredHeaders: analysis.requiredHeaders || OUTREACH_REQUIRED_HEADERS,
+      optionalHeaders: analysis.optionalHeaders || OUTREACH_OPTIONAL_HEADERS,
+      totalUniqueBags: analysis.totalUniqueBags || 0,
+      eligibleBags: analysis.eligibleBags || 0,
+      excludedSourceRows: analysis.excludedSourceRows || 0,
+      validation: analysis.validation ? {
+        ...analysis.validation,
+        issues: (analysis.validation.issues || []).slice(0, 500),
+        issuesTruncated: (analysis.validation.issues || []).length > 500
+      } : {},
+      columns,
+      rows: (analysis.rows || []).map(row => columns.map(column => row[column] ?? ""))
+    };
+  }
+
+  function expandOutreachAnalysis(value) {
+    if (!value || typeof value !== "object") return null;
+    if (!Array.isArray(value.rows)) return value;
+    if (!Array.isArray(value.columns)) return value;
+    const rows = value.rows.map(raw => {
+      const item = {};
+      value.columns.forEach((column, index) => { item[column] = raw[index]; });
+      item.aggregateEligible = Boolean(item.aggregateEligible);
+      item.needsReview = Boolean(item.needsReview);
+      item.duplicateCount = Number(item.duplicateCount || 1);
+      return item;
+    });
+    return { ...value, rows };
+  }
+
+  async function preflightOutreachFile(file) {
+    const sheetData = await readExcelSheet(file);
+    const validation = buildOutreachValidation(sheetData.dataRows, sheetData.headerMap);
+    return {
+      ok: !validation.blocking,
+      fileName: file.name,
+      totalRows: sheetData.dataRows.length,
+      validation
+    };
+  }
+
+  async function parseExcelFile(file) {
+    const sheetData = await readExcelSheet(file);
+    const { dataRows, headerMap } = sheetData;
 
     let totalRows = 0;
     let releasedRows = 0;
@@ -842,6 +1292,7 @@
     const stockRows = buildLatestStockDetail(dataRows);
     const usageHistoryRows = buildLatestUsageHistory(dataRows);
     const inHistoryRows = buildLatestInHistory(dataRows);
+    const outreachAnalysis = buildOutreachAnalysis(dataRows, headerMap);
 
     return {
       ok: true,
@@ -858,7 +1309,8 @@
       stockRows,
       usageHistoryRows,
       inHistoryRows,
-      rawPreview: buildRawPreview(dataRows)
+      rawPreview: buildRawPreview(dataRows),
+      outreachAnalysis
     };
   }
 
@@ -1268,7 +1720,8 @@
       stock_rows: parsed.stockRows || [],
       usage_history_rows: parsed.usageHistoryRows || [],
       in_history_rows: parsed.inHistoryRows || [],
-      raw_preview: parsed.rawPreview || []
+      raw_preview: parsed.rawPreview || [],
+      outreach_analysis: compactOutreachAnalysis(parsed.outreachAnalysis)
     };
 
     const { data, error } = await client
@@ -1277,7 +1730,13 @@
       .select(SUMMARY_SELECT)
       .single();
 
-    if (error) throw new Error("บันทึกลง Supabase ไม่สำเร็จ: " + error.message);
+    if (error) {
+      const message = String(error.message || "");
+      if (message.includes("outreach_analysis")) {
+        throw new Error("ยังไม่ได้เพิ่มคอลัมน์ outreach_analysis ใน Supabase กรุณารันไฟล์ supabase-outreach-analysis-v2.6.0.sql ใน SQL Editor ก่อนอัปโหลดไฟล์");
+      }
+      throw new Error("บันทึกลง Supabase ไม่สำเร็จ: " + message);
+    }
     cachedSummarySnapshot = data;
     cachedFullSnapshot = null;
     return data;
@@ -1308,6 +1767,65 @@
     return buildMobilePlanningData(snapshot, selectedDate, planDays);
   }
 
+  async function ensureOutreachSchema() {
+    if (!isConfigured()) {
+      throw new Error("รายงานวิเคราะห์ผลถุงเลือดออกหน่วยต้องใช้ Supabase");
+    }
+    const client = getClient();
+    const { error } = await client
+      .from(getTableName())
+      .select("id,outreach_analysis")
+      .limit(1);
+    if (error) {
+      const message = String(error.message || "");
+      if (message.includes("outreach_analysis")) {
+        throw new Error("ยังไม่ได้เพิ่มคอลัมน์ outreach_analysis ใน Supabase กรุณารันไฟล์ supabase-outreach-analysis-v2.6.0.sql ก่อน ระบบยังไม่ได้ล้างข้อมูลเดิม");
+      }
+      throw new Error("ตรวจสอบ Supabase ไม่สำเร็จ: " + message);
+    }
+    return { ok: true };
+  }
+
+  async function getOutreachAnalysis(options = {}) {
+    if (!isConfigured()) {
+      throw new Error("รายงานวิเคราะห์ผลถุงเลือดออกหน่วยต้องใช้ Supabase");
+    }
+
+    if (!options.forceRefresh && cachedOutreachSnapshot) return cachedOutreachSnapshot;
+    if (options.forceRefresh) cachedOutreachSnapshot = null;
+
+    const client = getClient();
+    const { data, error } = await client
+      .from(getTableName())
+      .select(OUTREACH_SELECT)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      const message = String(error.message || "");
+      if (message.includes("outreach_analysis")) {
+        throw new Error("ยังไม่ได้เปิดใช้รายงานใหม่ใน Supabase กรุณารันไฟล์ supabase-outreach-analysis-v2.6.0.sql ก่อน");
+      }
+      throw new Error("โหลดรายงานวิเคราะห์ผลถุงเลือดออกหน่วยไม่สำเร็จ: " + message);
+    }
+
+    if (!data) {
+      return { ok: true, message: "ยังไม่มีข้อมูลวิเคราะห์ผลถุงเลือดออกหน่วย", rows: [] };
+    }
+
+    const analysis = expandOutreachAnalysis(data.outreach_analysis) || { rows: [] };
+    cachedOutreachSnapshot = {
+      ok: true,
+      message: "โหลดรายงานวิเคราะห์ผลถุงเลือดออกหน่วยสำเร็จ",
+      id: data.id,
+      fileName: data.file_name || "",
+      calculatedAt: data.calculated_at || data.created_at || "",
+      ...analysis
+    };
+    return cachedOutreachSnapshot;
+  }
+
   async function uploadExcel(file, options = {}) {
     if (!isConfigured()) return fallbackUploadExcel(file, options.gasWebAppUrl);
 
@@ -1334,6 +1852,9 @@
     uploadExcel,
     getDashboard,
     getMobilePlanning,
+    getOutreachAnalysis,
+    ensureOutreachSchema,
+    preflightOutreachFile,
     clearAllSnapshots,
     _internal: {
       parseExcelFile,
@@ -1348,7 +1869,14 @@
       collectUniqueCurrentStockRows,
       normalizeBagKey,
       normalizeCurrentStockLocation,
-      isSplitSubunitBagNumber
+      isSplitSubunitBagNumber,
+      classifyOutreachSource,
+      classifyOutreachOutcome,
+      buildOutreachAnalysis,
+      buildOutreachValidation,
+      compactOutreachAnalysis,
+      expandOutreachAnalysis,
+      normalizeAnyDateStrict
     }
   };
 })();
