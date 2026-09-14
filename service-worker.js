@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-2-clean-auth-reset";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-3-modern-admin-ui";
 const APP_SHELL = [
   "./",
   "./index.html",
