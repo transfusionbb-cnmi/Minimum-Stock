@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "Minimum Stock Blood Bank",
-  "short_name": "Minimum Stock",
-  "description": "ระบบคำนวณ Minimum Stock, Expiry Risk และวางแผนออกหน่วย",
+  "name": "CNMI Blood Stock",
+  "short_name": "Blood Stock",
+  "description": "ระบบ Blood Stock: สต๊อกขั้นต่ำ ใกล้หมดอายุ วางแผนออกหน่วย และผลถุงเลือด",
   "lang": "th",
   "dir": "ltr",
   "start_url": "./",

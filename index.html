@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Minimum Stock Blood Bank</title>
+  <title>CNMI Blood Stock</title>
 
   <meta name="theme-color" content="#1887d9" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="Minimum Stock" />
-  <link rel="manifest" href="manifest.webmanifest?v=20260914-v2-6-2-confirm-modal-dom-fix" />
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260914-v2-6-2-confirm-modal-dom-fix" />
+  <meta name="apple-mobile-web-app-title" content="Blood Stock" />
+  <link rel="manifest" href="manifest.webmanifest?v=20260914-v2-7-0-simple-ui-lifetime-master" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260914-v2-7-0-simple-ui-lifetime-master" />
 
 
   <script>
@@ -19,7 +19,7 @@
       "use strict";
 
       // เปลี่ยนเลขนี้ทุกครั้งที่ออก ZIP ใหม่ เพื่อให้เครื่องผู้ใช้เริ่มเหมือนแอพใหม่
-      const APP_VERSION = "20260914-v2-6-2-confirm-modal-dom-fix";
+      const APP_VERSION = "20260914-v2-7-0-simple-ui-lifetime-master";
       const VERSION_KEY = "minimumStock.__appVersion";
       const FORCE_RESET = /[?&](fresh|reset|clearCache)=1/i.test(window.location.search);
 
@@ -77,7 +77,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="style.css?v=20260914-v2-6-2-confirm-modal-dom-fix">
+  <link rel="stylesheet" href="style.css?v=20260914-v2-7-0-simple-ui-lifetime-master">
 </head>
 
 <body>
@@ -86,80 +86,61 @@
 
 <div class="app-layout">
   <aside id="sideMenu" class="side-menu">
-    <div class="side-title">Blood Stock</div>
+    <div class="side-brand"><div class="brand-mark">B</div><div><strong>Blood Stock</strong><span>CNMI</span></div></div>
 
-    <button class="side-btn" onclick="showDashboardPage('upload', this)">
-      📤 Upload File
-    </button>
+    <button class="side-btn" onclick="showDashboardPage('upload', this)"><span>↻</span> อัปเดตข้อมูล LIS</button>
+    <button class="side-btn active" onclick="showDashboardPage('minimum', this)"><span>▦</span> สต๊อกขั้นต่ำ</button>
+    <button class="side-btn" onclick="showDashboardPage('expiry', this)"><span>◷</span> ใกล้หมดอายุ</button>
+    <button class="side-btn" onclick="showDashboardPage('mobile', this)"><span>▣</span> วางแผนออกหน่วย</button>
+    <button class="side-btn" onclick="showDashboardPage('outreach', this)"><span>↗</span> ผลถุงออกหน่วย</button>
 
-    <button class="side-btn active" onclick="showDashboardPage('minimum', this)">
-      📊 Minimum Stock
-    </button>
-
-    <button class="side-btn" onclick="showDashboardPage('expiry', this)">
-      ⏳ Expiry Risk
-    </button>
-
-    <button class="side-btn" onclick="showDashboardPage('mobile', this)">
-      🚌 Mobile Unit Planning
-    </button>
-
-    <button class="side-btn" onclick="showDashboardPage('outreach', this)">
-      📈 วิเคราะห์ผลถุงเลือดออกหน่วย
-    </button>
-
-    <button id="installAppBtn" class="side-btn install-app-btn" type="button">
-      📲 ติดตั้งแอป
-    </button>
+    <button id="installAppBtn" class="side-btn install-app-btn" type="button"><span>＋</span> ติดตั้งแอป</button>
   </aside>
 
   <main>
 
     <section id="page-upload" class="dashboard-page">
-  <div id="uploadSection" class="hero-card mt-4">
-      <div class="mb-4">
-        <h1 class="fw-bold mb-2">อัปโหลดไฟล์ใหม่จาก LIS</h1>
-        <div class="small-muted">
-          อัปโหลด CSV หรือ Excel ที่ Export จาก LIS เพื่อคำนวณ Minimum Stock และรายงานวิเคราะห์ผลถุงเลือดออกหน่วยจากไฟล์เดียวกัน
+      <div class="simple-page-head mt-2">
+        <div>
+          <div class="page-kicker">UPDATE DATA</div>
+          <h1>อัปเดตข้อมูลจาก LIS</h1>
+          <div class="page-subline">เลือกไฟล์ CSV จาก LIS ไฟล์เดียว ระบบจะอัปเดตทุก Dashboard ให้</div>
         </div>
       </div>
 
-      <div id="uploadZone" class="upload-zone">
-        <div class="fs-1 mb-2">📁</div>
-        <h5 class="fw-bold mb-2">ลากไฟล์ CSV / Excel จาก LIS มาวางตรงนี้</h5>
-        <div class="small-muted mb-3">รองรับ .csv, .xlsx และ .xls · CSV จาก LIS ที่มีหัวรายงานก่อนตารางอ่านได้โดยตรง</div>
-        <input id="fileInput" type="file" accept=".csv,.xlsx,.xls" hidden />
-        <button class="btn btn-main" type="button">เลือกไฟล์ CSV / Excel</button>
+      <div id="lisUploadGuide" class="upload-guide-card mb-3">
+        <div class="small-muted">กำลังตรวจสอบฐานข้อมูล...</div>
       </div>
 
-      <div class="mt-3">
-        <div class="small-muted">ไฟล์ที่เลือก</div>
-        <div id="fileName" class="fw-bold">ยังไม่ได้เลือกไฟล์</div>
-      </div>
-
-      <button id="uploadBtn" class="btn btn-main w-100 mt-4" disabled>
-        อัปโหลดและคำนวณ Minimum Stock
-      </button>
-
-      <button id="clearDataBtn" class="btn btn-outline-danger w-100 mt-2" type="button">
-        🧹 ล้างข้อมูลเดิมในระบบ
-      </button>
-      <div class="small-muted mt-2">
-        ปุ่มนี้จะลบทั้ง snapshot Minimum Stock และชุดข้อมูลวิเคราะห์ออกหน่วยล่าสุด ใช้เฉพาะเมื่อต้องการล้างข้อมูลทั้งหมดจริง ๆ
-      </div>
-
-      <div id="statusBox" class="status-box"></div>
-
-      <div id="loadingBox" class="status-box" style="display:none;">
-        <div class="fw-bold mb-1">⏳ กำลังประมวลผลไฟล์ใหญ่</div>
-        <div class="small-muted">ระบบกำลังอ่าน CSV/Excel, แปลงวันที่, คำนวณ Minimum Stock และบันทึกข้อมูลวิเคราะห์แบบเป็นชุด กรุณารอสักครู่</div>
-        <div class="progress mt-3" style="height: 10px;">
-          <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%;"></div>
+      <div id="uploadSection" class="simple-panel">
+        <div id="uploadZone" class="upload-zone simple-upload-zone">
+          <div class="upload-icon">↥</div>
+          <h3>วางไฟล์ LIS ตรงนี้</h3>
+          <p>หรือกดเพื่อเลือกไฟล์ .CSV / .XLSX / .XLS</p>
+          <input id="fileInput" type="file" accept=".csv,.xlsx,.xls" hidden />
+          <button class="btn btn-main" type="button">เลือกไฟล์</button>
         </div>
+
+        <div class="selected-file-row">
+          <span>ไฟล์ที่เลือก</span><strong id="fileName">ยังไม่ได้เลือกไฟล์</strong>
+        </div>
+
+        <button id="uploadBtn" class="btn btn-main w-100 mt-3" disabled>อัปเดตข้อมูลจาก LIS</button>
+        <div id="statusBox" class="status-box"></div>
+        <div id="loadingBox" class="status-box" style="display:none;">
+          <div class="fw-bold mb-1">กำลังอัปเดตข้อมูล</div>
+          <div class="small-muted">ไม่ต้องปิดหน้านี้ ระบบจะอัปเดตฐานย้อนหลังและ Dashboard ให้ทีละขั้น</div>
+          <div class="progress mt-3" style="height:8px;"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%;"></div></div>
+        </div>
+
+        <details class="simple-details danger-details mt-3">
+          <summary>ตัวเลือกสำหรับผู้ดูแลระบบ</summary>
+          <div class="pt-3 small-muted mb-2">การล้างข้อมูลจะลบฐานประวัติ LIS ทั้งหมด และต้องนำไฟล์ย้อนหลังทั้งหมดมาเป็นฐานใหม่</div>
+          <button id="clearDataBtn" class="btn btn-outline-danger" type="button">ล้างฐานข้อมูลทั้งหมด</button>
+        </details>
       </div>
-  </div>
-</section>
-    
+    </section>
+
     <section id="page-minimum" class="dashboard-page active">
       <div id="topDashboard" class="mb-4"></div>
     </section>
@@ -230,9 +211,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="supabase-config.js?v=20260914-v2-6-2-confirm-modal-dom-fix"></script>
-  <script src="supabase-backend.js?v=20260914-v2-6-2-confirm-modal-dom-fix"></script>
-  <script src="script.js?v=20260914-v2-6-2-confirm-modal-dom-fix"></script>
+  <script src="supabase-config.js?v=20260914-v2-7-0-simple-ui-lifetime-master"></script>
+  <script src="supabase-backend.js?v=20260914-v2-7-0-simple-ui-lifetime-master"></script>
+  <script src="script.js?v=20260914-v2-7-0-simple-ui-lifetime-master"></script>
 
 </body>
 </html>

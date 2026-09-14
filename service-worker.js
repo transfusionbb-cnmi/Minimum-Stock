@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-6-1-lis-csv-outreach-analysis";
+const CACHE_NAME = "minimum-stock-pwa-v2-7-0-simple-ui-lifetime-master";
 const APP_SHELL = [
   "./",
   "./index.html",

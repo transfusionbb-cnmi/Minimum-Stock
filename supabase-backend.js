@@ -1010,14 +1010,15 @@
   function classifyOutreachOutcome(statusValue, destroyReasonValue) {
     const status = normalizeOutreachStatus(statusValue);
     const destroyReason = String(destroyReasonValue || "").trim();
-    const released = status === "Released";
-    const transformed = status === "Be Transformed";
-    const destroyed = textContainsDestroySignal(status) || Boolean(destroyReason);
 
-    if ((released || transformed) && destroyed) return OUTREACH_OUTCOME.CONFLICT;
-    if (released) return OUTREACH_OUTCOME.USED;
-    if (transformed) return OUTREACH_OUTCOME.TRANSFORMED;
-    if (destroyed) return OUTREACH_OUTCOME.DESTROYED;
+    // v2.7.0: Status ใน LIS เป็นตัวหลัก เพราะ DestroyReason บางครั้งติดมากับ
+    // component อื่นของ BagNumber เดียวกัน แม้รายการนี้จะ Released/Be Transformed แล้ว
+    if (status === "Released" || status === "Dedicated") return OUTREACH_OUTCOME.USED;
+    if (status === "Be Transformed") return OUTREACH_OUTCOME.TRANSFORMED;
+    if (textContainsDestroySignal(status)) return OUTREACH_OUTCOME.DESTROYED;
+
+    // ใช้ DestroyReason ช่วยตัดสินเฉพาะกรณี Status ไม่ได้บอกผลปลายทางชัดเจน
+    if (destroyReason && textContainsDestroySignal(destroyReason)) return OUTREACH_OUTCOME.DESTROYED;
     return OUTREACH_OUTCOME.UNRESOLVED;
   }
 
@@ -1093,6 +1094,98 @@
     return rows;
   }
 
+  function parseLisReportDate(text) {
+    const match = String(text || "").trim().match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+    if (!match) return "";
+    const months = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, oct:10, nov:11, dec:12 };
+    const d = Number(match[1]);
+    const m = months[match[2].toLowerCase()];
+    let y = Number(match[3]);
+    if (!m || !d || !y) return "";
+    if (y > 2400) y -= 543;
+    const candidate = new Date(y, m - 1, d);
+    if (isNaN(candidate) || candidate.getFullYear() !== y || candidate.getMonth() !== m - 1 || candidate.getDate() !== d) return "";
+    return formatYmd(candidate);
+  }
+
+  function extractLisReportRange(values, headerRowIndex) {
+    const lines = (values || []).slice(0, Math.max(0, headerRowIndex)).map(row => (row || []).join(" "));
+    for (const line of lines) {
+      const match = String(line || "").match(/ระหว่างวันที่\s+(\d{1,2}-[A-Za-z]{3}-\d{4})\s+ถึง\s+(\d{1,2}-[A-Za-z]{3}-\d{4})/i);
+      if (!match) continue;
+      const startDate = parseLisReportDate(match[1]);
+      const endDate = parseLisReportDate(match[2]);
+      if (startDate && endDate) return { startDate, endDate, source: "lis-report-header" };
+    }
+    return { startDate: "", endDate: "", source: "" };
+  }
+
+  function subtractCalendarYears(ymd, years) {
+    const parts = String(ymd || "").split("-").map(Number);
+    if (parts.length !== 3 || parts.some(v => !Number.isFinite(v))) return "";
+    const [y, m, d] = parts;
+    const candidate = new Date(y - Number(years || 0), m - 1, d);
+    // 29 Feb -> 28 Feb in non-leap year
+    if (candidate.getMonth() !== m - 1) candidate.setDate(0);
+    return formatYmd(candidate);
+  }
+
+  function daysBetweenYmd(a, b) {
+    const da = new Date(String(a || "") + "T00:00:00");
+    const db = new Date(String(b || "") + "T00:00:00");
+    if (isNaN(da) || isNaN(db)) return NaN;
+    return Math.round((db.getTime() - da.getTime()) / 86400000);
+  }
+
+  function validateLisUploadCoverage(reportRange, state = {}) {
+    const baselineEstablished = Boolean(state?.baselineEstablished);
+    const startDate = reportRange?.startDate || "";
+    const endDate = reportRange?.endDate || "";
+
+    if (!baselineEstablished) {
+      return {
+        ok: Boolean(startDate && endDate),
+        mode: "baseline",
+        startDate,
+        endDate,
+        message: startDate && endDate
+          ? "ไฟล์นี้จะใช้สร้างฐานย้อนหลังครั้งแรก"
+          : "ไม่พบช่วงวันที่จากหัวรายงาน LIS"
+      };
+    }
+
+    if (!startDate || !endDate) {
+      return {
+        ok: false,
+        mode: "rolling_2y",
+        startDate,
+        endDate,
+        message: "หลังมีฐานข้อมูลแล้ว ต้อง Export CSV จาก LIS แบบย้อนหลัง 2 ปี และให้ไฟล์มีหัวรายงานช่วงวันที่"
+      };
+    }
+
+    const expectedStart = subtractCalendarYears(endDate, 2);
+    const startDiff = Math.abs(daysBetweenYmd(startDate, expectedStart));
+    const endAge = daysBetweenYmd(endDate, todayYmd());
+    const spanDays = daysBetweenYmd(startDate, endDate);
+    const startOk = Number.isFinite(startDiff) && startDiff <= 7;
+    const endOk = Number.isFinite(endAge) && endAge >= -1 && endAge <= 14;
+    const spanOk = Number.isFinite(spanDays) && spanDays >= 720 && spanDays <= 745;
+    const ok = startOk && endOk && spanOk;
+
+    return {
+      ok,
+      mode: "rolling_2y",
+      startDate,
+      endDate,
+      expectedStart,
+      spanDays,
+      message: ok
+        ? `ช่วงไฟล์ถูกต้อง: ${startDate} ถึง ${endDate} (ย้อนหลังประมาณ 2 ปี)`
+        : `ไฟล์อัปเดตต้องเป็นช่วงย้อนหลัง 2 ปีเท่านั้น โดยอิงวันสิ้นสุดของรายงาน (คาดว่าเริ่มประมาณ ${expectedStart || "-"} ถึง ${endDate || "วันนี้"})`
+    };
+  }
+
   async function readExcelSheet(file) {
     const lowerName = String(file?.name || "").toLowerCase();
     let values = [];
@@ -1133,7 +1226,8 @@
       return row && (row[EXCEL_COL.bagNumber] || row[EXCEL_COL.productType] || row[EXCEL_COL.status]);
     });
 
-    return { values, headerRowIndex, headers, headerMap, dataRows };
+    const reportRange = extractLisReportRange(values, headerRowIndex);
+    return { values, headerRowIndex, headers, headerMap, dataRows, reportRange };
   }
 
   function chooseUniqueText(values) {
@@ -1334,7 +1428,6 @@
           outcomeCode === OUTREACH_OUTCOME.CONFLICT ||
           sourceConflict ||
           fieldConflict ||
-          statuses.conflict ||
           !isKnownOutreachStatus(statuses.value)
         )
       });
@@ -1409,14 +1502,14 @@
     };
   }
 
-  // v2.6.1 stores detailed outreach rows in a dedicated table instead of one huge JSONB snapshot.
+  // v2.7.0 stores outreach history in a lifetime master table; snapshot keeps only a small pointer.
   // This function now returns only small metadata when a caller still expects outreach_analysis.
-  function compactOutreachAnalysis(analysis, batchId = "") {
+  function compactOutreachAnalysis(analysis, uploadId = "") {
     if (!analysis) return {};
     return {
-      schemaVersion: 2,
-      storage: "minimum_stock_outreach_rows",
-      batchId: batchId || "",
+      schemaVersion: 3,
+      storage: "minimum_stock_outreach_master",
+      uploadId: uploadId || "",
       generatedAt: analysis.generatedAt || "",
       rawRowCount: analysis.rawRowCount || 0,
       componentRowCount: analysis.componentRowCount || 0,
@@ -1433,12 +1526,27 @@
   async function preflightOutreachFile(file) {
     const sheetData = await readExcelSheet(file);
     const analysis = analyzeOutreachData(sheetData.dataRows, sheetData.headerMap);
+    const state = isConfigured() ? await getLisDataState() : { baselineEstablished: false };
+    const coverage = validateLisUploadCoverage(sheetData.reportRange, state);
+    const validation = { ...analysis.validation };
+    validation.uploadCoverage = coverage;
+    if (!coverage.ok) {
+      validation.blocking = true;
+      validation.issueCount = Number(validation.issueCount || 0) + 1;
+      validation.issues = [
+        { type: "upload_range", bagNumber: "", message: coverage.message },
+        ...(validation.issues || [])
+      ];
+    }
     return {
-      ok: !analysis.validation.blocking,
+      ok: !validation.blocking,
       fileName: file.name,
       totalRows: sheetData.dataRows.length,
       componentRows: analysis.rows.length,
-      validation: analysis.validation
+      validation,
+      reportRange: sheetData.reportRange,
+      uploadMode: coverage.mode,
+      dataState: state
     };
   }
 
@@ -1478,6 +1586,7 @@
       usageHistoryRows,
       inHistoryRows,
       rawPreview: buildRawPreview(dataRows),
+      sourceReportRange: sheetData.reportRange || { startDate: "", endDate: "" },
       outreachAnalysis
     };
   }
@@ -2031,7 +2140,7 @@
     if (error) {
       const message = String(error.message || "");
       if (message.includes("outreach_analysis")) {
-        throw new Error("Supabase ยังไม่พร้อมสำหรับ v2.6.1 กรุณารันไฟล์ supabase-outreach-analysis-v2.6.1.sql ก่อน");
+        throw new Error("Supabase ยังไม่พร้อมสำหรับ v2.7.0 กรุณารันไฟล์ supabase-outreach-analysis-v2.7.0.sql ก่อน");
       }
       throw new Error("บันทึกลง Supabase ไม่สำเร็จ: " + message);
     }
@@ -2071,28 +2180,21 @@
     }
     const client = getClient();
     const { error } = await client
-      .from("minimum_stock_outreach_batches")
-      .select("id")
+      .from("minimum_stock_outreach_master")
+      .select("component_key")
       .limit(1);
     if (error) {
-      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.6.1 กรุณารันไฟล์ supabase-outreach-analysis-v2.6.1.sql ใน SQL Editor ก่อน");
+      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.7.0 กรุณารันไฟล์ supabase-outreach-analysis-v2.7.0.sql ใน SQL Editor ก่อน");
     }
     return { ok: true };
   }
 
-  async function getActiveOutreachBatch(forceRefresh = false) {
-    if (!forceRefresh && cachedOutreachSnapshot?.batchMeta) return cachedOutreachSnapshot.batchMeta;
+  async function getLisDataState() {
+    if (!isConfigured()) return { baselineEstablished: false, masterCount: 0, uniqueBags: 0, latestUpload: {} };
     const client = getClient();
-    const { data, error } = await client
-      .from("minimum_stock_outreach_batches")
-      .select("id,file_name,calculated_at,completed_at,source_start_date,source_end_date,raw_row_count,component_row_count,unique_bag_count,excluded_component_count,validation,filter_options")
-      .eq("is_active", true)
-      .eq("status", "complete")
-      .order("completed_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (error) throw new Error("โหลดชุดข้อมูลวิเคราะห์ล่าสุดไม่สำเร็จ: " + error.message);
-    return data || null;
+    const { data, error } = await client.rpc("minimum_stock_lis_data_state");
+    if (error) throw new Error("โหลดสถานะฐาน LIS ไม่สำเร็จ: " + error.message);
+    return data || { baselineEstablished: false, masterCount: 0, uniqueBags: 0, latestUpload: {} };
   }
 
   function normalizeOutreachFilters(filters = {}) {
@@ -2107,11 +2209,10 @@
     };
   }
 
-  async function runOutreachReport(batchId, filters = {}) {
+  async function runOutreachReport(filters = {}) {
     const client = getClient();
     const f = normalizeOutreachFilters(filters);
-    const { data, error } = await client.rpc("minimum_stock_outreach_report", {
-      p_batch_id: batchId,
+    const { data, error } = await client.rpc("minimum_stock_outreach_master_report", {
       p_date_from: f.dateFrom || null,
       p_date_to: f.dateTo || null,
       p_source_group: f.sourceGroup || null,
@@ -2124,12 +2225,18 @@
     return data || { summary: {}, groups: [], sources: [] };
   }
 
-  async function getOutreachReviewRows(batchId, limit = 100) {
+  async function getOutreachFilterOptions() {
+    const client = getClient();
+    const { data, error } = await client.rpc("minimum_stock_outreach_filter_options");
+    if (error) throw new Error("โหลดตัวกรองรายงานไม่สำเร็จ: " + error.message);
+    return data || {};
+  }
+
+  async function getOutreachReviewRows(limit = 100) {
     const client = getClient();
     const { data, error } = await client
-      .from("minimum_stock_outreach_rows")
-      .select("id,component_key,bag_number,product_type,blood_group,rh,donate_source,source_group,date_stock_in,date_stock_out,status,destroy_reason,outcome_code,aggregate_eligible,needs_review,duplicate_count")
-      .eq("batch_id", batchId)
+      .from("minimum_stock_outreach_master")
+      .select("component_key,bag_number,product_type,blood_group,rh,donate_source,source_group,date_stock_in,date_stock_out,status,destroy_reason,outcome_code,aggregate_eligible,needs_review,duplicate_count")
       .eq("needs_review", true)
       .order("date_stock_in", { ascending: false, nullsFirst: false })
       .limit(Math.max(1, Math.min(500, Number(limit || 100))));
@@ -2137,47 +2244,62 @@
     return (data || []).map(fromOutreachDbRow);
   }
 
-  async function getOutreachAnalysis(options = {}) {
-    if (!isConfigured()) {
-      throw new Error("รายงานวิเคราะห์ผลถุงเลือดออกหน่วยต้องใช้ Supabase");
-    }
+  async function getLatestLisUpload() {
+    const client = getClient();
+    const { data, error } = await client
+      .from("minimum_stock_lis_uploads")
+      .select("id,created_at,file_name,upload_mode,source_start_date,source_end_date,raw_row_count,component_row_count,unique_bag_count,excluded_component_count,upserted_count,validation")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error("โหลดข้อมูลอัปเดต LIS ล่าสุดไม่สำเร็จ: " + error.message);
+    return data || null;
+  }
 
+  async function getOutreachAnalysis(options = {}) {
+    if (!isConfigured()) throw new Error("รายงานวิเคราะห์ผลถุงเลือดออกหน่วยต้องใช้ Supabase");
     if (options.forceRefresh) cachedOutreachSnapshot = null;
-    const batch = await getActiveOutreachBatch(Boolean(options.forceRefresh));
-    if (!batch) {
-      return { ok: true, message: "ยังไม่มีข้อมูลวิเคราะห์ผลถุงเลือดออกหน่วย", batchId: "", report: { summary: {}, groups: [], sources: [] } };
-    }
 
     const filters = normalizeOutreachFilters(options.filters || {});
-    const report = await runOutreachReport(batch.id, filters);
-    let reviewRows = [];
-    if (!Object.values(filters).some(Boolean)) {
-      reviewRows = await getOutreachReviewRows(batch.id, 100);
-    } else if (cachedOutreachSnapshot?.batchMeta?.id === batch.id) {
-      reviewRows = cachedOutreachSnapshot.reviewRows || [];
+    const hasFilters = Object.values(filters).some(Boolean);
+    if (!hasFilters && !options.forceRefresh && cachedOutreachSnapshot) return cachedOutreachSnapshot;
+
+    const [state, latestUpload, filterOptions, report] = await Promise.all([
+      getLisDataState(),
+      getLatestLisUpload(),
+      getOutreachFilterOptions(),
+      runOutreachReport(filters)
+    ]);
+
+    if (!state.baselineEstablished) {
+      return { ok: true, message: "ยังไม่มีข้อมูลวิเคราะห์ผลถุงเลือดออกหน่วย", report: { summary: {}, groups: [], sources: [] }, filterOptions: {} };
     }
+
+    let reviewRows = [];
+    if (!hasFilters) reviewRows = await getOutreachReviewRows(100);
 
     const result = {
       ok: true,
       message: "โหลดรายงานวิเคราะห์ผลถุงเลือดออกหน่วยสำเร็จ",
-      batchId: batch.id,
-      fileName: batch.file_name || "",
-      calculatedAt: batch.calculated_at || batch.completed_at || "",
-      sourceStartDate: batch.source_start_date || "",
-      sourceEndDate: batch.source_end_date || "",
-      rawRowCount: Number(batch.raw_row_count || 0),
-      componentRowCount: Number(batch.component_row_count || 0),
-      totalUniqueBags: Number(batch.unique_bag_count || 0),
-      excludedComponentCount: Number(batch.excluded_component_count || 0),
-      validation: batch.validation || {},
-      filterOptions: batch.filter_options || {},
+      batchId: "master",
+      fileName: latestUpload?.file_name || "",
+      calculatedAt: latestUpload?.created_at || "",
+      sourceStartDate: state.masterMinDate || filterOptions.minDate || "",
+      sourceEndDate: state.masterMaxDate || filterOptions.maxDate || "",
+      rawRowCount: Number(latestUpload?.raw_row_count || 0),
+      componentRowCount: Number(state.masterCount || 0),
+      totalUniqueBags: Number(state.uniqueBags || 0),
+      excludedComponentCount: Number(latestUpload?.excluded_component_count || 0),
+      validation: { ...(latestUpload?.validation || {}), masterReviewCount: Number(state.reviewCount || 0) },
+      filterOptions,
       reviewRows,
       report,
       filters,
-      batchMeta: batch
+      dataState: state,
+      latestUpload
     };
 
-    if (!Object.values(filters).some(Boolean)) cachedOutreachSnapshot = result;
+    if (!hasFilters) cachedOutreachSnapshot = result;
     return result;
   }
 
@@ -2195,11 +2317,8 @@
 
   async function getOutreachRows(options = {}) {
     if (!isConfigured()) throw new Error("รายงานวิเคราะห์ออกหน่วยต้องใช้ Supabase");
-    const batch = options.batchId ? { id: options.batchId } : await getActiveOutreachBatch(false);
-    if (!batch?.id) return { rows: [], count: 0, page: 1, perPage: Number(options.perPage || 100) };
-
     const client = getClient();
-    const selectFields = "id,component_key,bag_number,product_type,blood_group,rh,donate_source,source_group,date_stock_in,date_stock_out,status,destroy_reason,outcome_code,aggregate_eligible,needs_review,duplicate_count";
+    const selectFields = "component_key,bag_number,product_type,blood_group,rh,donate_source,source_group,date_stock_in,date_stock_out,status,destroy_reason,outcome_code,aggregate_eligible,needs_review,duplicate_count";
     const perPage = Math.max(1, Math.min(1000, Number(options.perPage || 100)));
     const page = Math.max(1, Number(options.page || 1));
     const extraFilters = { ...(options.filters || {}) };
@@ -2208,9 +2327,8 @@
 
     const buildQuery = (withCount = false) => {
       let query = client
-        .from("minimum_stock_outreach_rows")
-        .select(selectFields, withCount ? { count: "exact" } : undefined)
-        .eq("batch_id", batch.id);
+        .from("minimum_stock_outreach_master")
+        .select(selectFields, withCount ? { count: "exact" } : undefined);
       if (!options.includeIneligible) query = query.eq("aggregate_eligible", true);
       query = applyOutreachRowQueryFilters(query, extraFilters);
       return query.order("date_stock_in", { ascending: false, nullsFirst: false })
@@ -2241,45 +2359,77 @@
     return { rows, count: rows.length, page: 1, perPage: rows.length };
   }
 
+  async function mergeOutreachBatchToMaster(batchId, parsed, coverage) {
+    const client = getClient();
+    const analysis = parsed.outreachAnalysis || {};
+    const { data, error } = await client.rpc("minimum_stock_outreach_merge_batch_to_master", {
+      p_batch_id: batchId,
+      p_file_name: parsed.fileName || "",
+      p_upload_mode: coverage?.mode || "rolling_2y",
+      p_source_start_date: coverage?.startDate || null,
+      p_source_end_date: coverage?.endDate || null,
+      p_raw_row_count: Number(analysis.rawRowCount || parsed.totalRows || 0),
+      p_component_row_count: Number(analysis.componentRowCount || 0),
+      p_unique_bag_count: Number(analysis.totalUniqueBags || 0),
+      p_excluded_component_count: Number(analysis.excludedComponentCount || 0),
+      p_validation: analysis.validation || {}
+    });
+    if (error) throw new Error("อัปเดตฐานประวัติ LIS ไม่สำเร็จ: " + error.message);
+    return data || { ok: true };
+  }
+
+  async function clearAllOutreachBatches() {
+    if (!isConfigured()) return { ok: true };
+    const client = getClient();
+    const { data, error } = await client.rpc("minimum_stock_outreach_clear_all_v270");
+    if (error) throw new Error("ล้างฐานประวัติ LIS ไม่สำเร็จ: " + error.message);
+    cachedOutreachSnapshot = null;
+    return data || { ok: true };
+  }
+
   async function uploadExcel(file, options = {}) {
     if (!isConfigured()) return fallbackUploadExcel(file, options.gasWebAppUrl);
 
-    // v2.6.1 safe replace:
-    // - parse + stage outreach first while old data is still active
-    // - save the new Minimum Stock snapshot
-    // - activate the new outreach batch atomically
-    // - delete old snapshots only after the new snapshot exists
+    // v2.7.0:
+    // - ฐานย้อนหลังเดิมอยู่ใน minimum_stock_outreach_master
+    // - ไฟล์ประจำวันต้องย้อนหลัง 2 ปี และจะ UPSERT เฉพาะ component ที่อยู่ในไฟล์
+    // - ประวัติเก่ากว่า 2 ปีไม่ถูกลบ
     const parsed = await parseExcelFile(file);
+    const state = await getLisDataState();
+    const coverage = validateLisUploadCoverage(parsed.sourceReportRange, state);
+    if (!coverage.ok) throw new Error(coverage.message);
+
     let batchId = "";
+    let merged = false;
     let snapshot = null;
-    let activated = false;
 
     try {
-      emitOutreachProgress(options, "outreach-batch", 0, parsed.outreachAnalysis?.componentRowCount || 0, "กำลังเตรียมพื้นที่ข้อมูลวิเคราะห์ออกหน่วย");
+      emitOutreachProgress(options, "outreach-batch", 0, parsed.outreachAnalysis?.componentRowCount || 0, "กำลังเตรียมข้อมูลอัปเดต LIS");
       batchId = await createOutreachBatch(parsed);
       await stageOutreachRows(batchId, parsed.outreachAnalysis, options);
 
-      emitOutreachProgress(options, "snapshot", 0, 1, "กำลังบันทึก Minimum Stock / Expiry Risk / Mobile Unit Planning");
-      snapshot = await saveSnapshot(parsed, { outreachBatchId: batchId });
-      emitOutreachProgress(options, "snapshot", 1, 1, "บันทึก snapshot ใหม่สำเร็จ");
+      emitOutreachProgress(options, "outreach-merge", 0, parsed.outreachAnalysis?.componentRowCount || 0, "กำลังอัปเดตสถานะถุงในฐานย้อนหลัง");
+      const mergeResult = await mergeOutreachBatchToMaster(batchId, parsed, coverage);
+      merged = true;
+      batchId = ""; // RPC ลบ staging batch แล้ว
 
-      await activateOutreachBatch(batchId);
-      activated = true;
+      emitOutreachProgress(options, "snapshot", 0, 1, "กำลังอัปเดต Minimum Stock / ใกล้หมดอายุ / แผนออกหน่วย");
+      snapshot = await saveSnapshot(parsed, { outreachBatchId: mergeResult.upload_id || "" });
+      emitOutreachProgress(options, "snapshot", 1, 1, "อัปเดตข้อมูลล่าสุดสำเร็จ");
+
       try {
         await cleanupOldSnapshots(snapshot.id);
       } catch (cleanupErr) {
-        // Latest snapshot is still selected by created_at, so cleanup failure must not invalidate a successful upload.
         console.warn("cleanup old snapshots failed", cleanupErr);
       }
       clearCachedSnapshotState();
-
       return toDashboard(snapshot);
     } catch (err) {
-      // If activation did not happen yet, remove staged rows so a failed upload does not consume storage.
-      if (batchId && !activated) await discardOutreachBatch(batchId);
+      if (batchId && !merged) await discardOutreachBatch(batchId);
       throw err;
     }
   }
+
 
 
   window.MinimumStockBackend = {
@@ -2290,6 +2440,7 @@
     getOutreachRows,
     clearAllOutreachBatches,
     ensureOutreachSchema,
+    getLisDataState,
     preflightOutreachFile,
     clearAllSnapshots,
     _internal: {
@@ -2314,7 +2465,9 @@
       parseCsvTextToRows,
       compactOutreachAnalysis,
       expandOutreachAnalysis,
-      normalizeAnyDateStrict
+      normalizeAnyDateStrict,
+      validateLisUploadCoverage,
+      extractLisReportRange
     }
   };
 })();
