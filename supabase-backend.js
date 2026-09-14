@@ -2507,34 +2507,34 @@
     return data || {};
   }
 
-  async function getBootstrapUser(username) {
-    const client = getClient();
-    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
-    const normalized = normalizeAuthUsername(username);
-    const { data, error } = await client.rpc("minimum_stock_can_bootstrap_user", {
-      p_username: normalized
-    });
-    if (error) throw new Error("ตรวจสอบบัญชีเริ่มต้นไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.8.1");
-    return data || { allowed: false, username: normalized };
-  }
-
-  async function authBootstrapFirstLogin(username, password) {
+  async function authRegistrationStatus(username) {
     const client = getClient();
     if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
     const normalized = normalizeAuthUsername(username);
     if (!normalized) throw new Error("กรุณากรอก Username");
+    const { data, error } = await client.rpc("minimum_stock_can_bootstrap_user", {
+      p_username: normalized
+    });
+    if (error) throw new Error("ตรวจสอบบัญชีไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.0");
+    return data || { allowed: false, username: normalized, hasAccount: false };
+  }
 
-    const info = await getBootstrapUser(normalized);
-    if (!info.allowed) throw new Error("Username นี้ไม่ได้รับสิทธิ์ใช้งาน หรือถูก Admin ปิดใช้งาน");
-    if (info.hasAccount) throw new Error("รหัสผ่านไม่ถูกต้อง หากเคยเปลี่ยนรหัสแล้วให้ใช้รหัสล่าสุดของตนเอง");
-    if (String(password || "") !== normalized) {
-      throw new Error("เข้าใช้ครั้งแรก รหัสผ่านเริ่มต้นต้องเหมือน Username");
-    }
+  async function authRegisterAllowlistedUser(username, password) {
+    const client = getClient();
+    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+    const normalized = normalizeAuthUsername(username);
+    const pwd = String(password || "");
+    if (!normalized) throw new Error("กรุณากรอก Username");
+    if (pwd.length < 8) throw new Error("รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร");
+
+    const info = await authRegistrationStatus(normalized);
+    if (!info.allowed) throw new Error("Username นี้ไม่ได้รับสิทธิ์ Blood Stock หรือถูก Admin ปิดใช้งาน");
+    if (info.hasAccount) throw new Error("Username นี้มีบัญชี Supabase อยู่แล้ว กรุณา Login ด้วยรหัสเดิมหรือใช้ลืมรหัสผ่าน");
 
     const email = String(info.email || usernameToMahidolEmail(normalized)).toLowerCase();
     const { data, error } = await client.auth.signUp({
       email,
-      password: normalized,
+      password: pwd,
       options: {
         data: {
           display_name: info.displayName || normalized,
@@ -2545,7 +2545,24 @@
       }
     });
     if (error) throw new Error("เปิดบัญชีครั้งแรกไม่สำเร็จ: " + error.message);
-    return { ...(data || {}), bootstrapInfo: info };
+    return data || {};
+  }
+
+  async function authSendPasswordReset(username) {
+    const client = getClient();
+    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+    const normalized = normalizeAuthUsername(username);
+    if (!normalized) throw new Error("กรุณากรอก Username");
+
+    const info = await authRegistrationStatus(normalized);
+    if (!info.allowed) throw new Error("Username นี้ไม่มีสิทธิ์ Blood Stock หรือถูกปิดใช้งาน");
+    if (!info.hasAccount) throw new Error("Username นี้ยังไม่มีบัญชีกลาง กรุณาเลือก “เปิดบัญชีครั้งแรก”");
+
+    const email = String(info.email || usernameToMahidolEmail(normalized)).toLowerCase();
+    const redirectTo = window.location.origin + window.location.pathname + "?recovery=1";
+    const { data, error } = await client.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) throw new Error("ส่งอีเมลตั้งรหัสใหม่ไม่สำเร็จ: " + error.message);
+    return data || { ok: true };
   }
 
   async function authUpdatePassword(newPassword) {
@@ -2592,7 +2609,7 @@
 
     const { data, error } = await client.rpc("minimum_stock_current_user_access");
     if (error) {
-      throw new Error("ระบบสิทธิ์ผู้ใช้งานยังไม่พร้อม: " + error.message + " | กรุณารัน SQL v2.8.1");
+      throw new Error("ระบบสิทธิ์ผู้ใช้งานยังไม่พร้อม: " + error.message + " | กรุณารัน SQL v2.9.0");
     }
     return data || { authenticated: true, active: false, role: "", mustChangePassword: false };
   }
@@ -2644,7 +2661,9 @@
   window.MinimumStockBackend = {
     authGetSession,
     authSignIn,
-    authBootstrapFirstLogin,
+    authRegistrationStatus,
+    authRegisterAllowlistedUser,
+    authSendPasswordReset,
     authUpdatePassword,
     markPasswordChanged,
     authSignOut,

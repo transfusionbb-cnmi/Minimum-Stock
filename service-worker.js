@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-8-1-roster-login-trend";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-0-shared-auth";
 const APP_SHELL = [
   "./",
   "./index.html",

@@ -5,6 +5,7 @@
   let currentAccess = null;
   let appStarted = false;
   let accessTimer = null;
+  let recoveryMode = /[?&]recovery=1\b/i.test(window.location.search) || /type=recovery/i.test(window.location.hash);
 
   function el(id) { return document.getElementById(id); }
 
@@ -13,7 +14,7 @@
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
+      .replace(/\"/g, "&quot;")
       .replace(/'/g, "&#039;");
   }
 
@@ -22,6 +23,10 @@
       .trim()
       .toLowerCase()
       .replace(/@mahidol\.ac\.th$/i, "");
+  }
+
+  function validUsername(username) {
+    return /^[a-z0-9._-]+$/i.test(username || "");
   }
 
   function formatDateTime(value) {
@@ -72,6 +77,8 @@
   function showAuthPanel(mode) {
     const panels = {
       login: el("authLoginPanel"),
+      register: el("authRegisterPanel"),
+      forgot: el("authForgotPanel"),
       password: el("authChangePasswordPanel"),
       pending: el("authPendingPanel")
     };
@@ -108,7 +115,7 @@
   }
 
   async function applyAccess(access) {
-    currentAccess = access || { authenticated: false, active: false, role: "", mustChangePassword: false };
+    currentAccess = access || { authenticated: false, active: false, role: "" };
     window.MinimumStockAccess = currentAccess;
 
     const authShell = el("authShell");
@@ -117,7 +124,7 @@
     if (!currentAccess.authenticated) {
       if (app) app.style.display = "none";
       if (authShell) authShell.style.display = "grid";
-      showAuthPanel("login");
+      if (!recoveryMode) showAuthPanel("login");
       toggleAdminUI(false);
       return;
     }
@@ -129,15 +136,18 @@
       if (authShell) authShell.style.display = "grid";
       showAuthPanel("pending");
       if (el("authPendingMessage")) {
-        el("authPendingMessage").textContent = `${currentAccess.email || "บัญชีนี้"} ถูกปิดใช้งาน หรือไม่ได้อยู่ในรายชื่อ Blood Bank กรุณาติดต่อ Admin`;
+        el("authPendingMessage").textContent = `${currentAccess.email || "บัญชีนี้"} ไม่มีสิทธิ์ Blood Stock หรือถูก Admin ปิดใช้งาน`;
       }
       toggleAdminUI(false);
       return;
     }
 
-    if (currentAccess.mustChangePassword) {
+    if (recoveryMode) {
       if (app) app.style.display = "none";
       if (authShell) authShell.style.display = "grid";
+      if (el("changePasswordHelp")) {
+        el("changePasswordHelp").textContent = "ตั้งรหัสใหม่อย่างน้อย 8 ตัวอักษร · รหัสนี้เป็นบัญชี Supabase กลางและอาจใช้กับแอป CNMI อื่นด้วย";
+      }
       showAuthPanel("password");
       toggleAdminUI(false);
       return;
@@ -163,7 +173,7 @@
         showAuthPanel("pending");
         if (el("authPendingMessage")) el("authPendingMessage").textContent = err.message;
       } else {
-        await applyAccess({ authenticated: false, active: false, role: "", mustChangePassword: false });
+        await applyAccess({ authenticated: false, active: false, role: "" });
         setAuthMessage(err.message, false);
       }
       if (!options.silent) console.error(err);
@@ -180,9 +190,10 @@
       clearMinimumStockCaches();
       scrubProtectedData();
       appStarted = false;
+      recoveryMode = false;
       currentAccess = null;
       window.MinimumStockAccess = null;
-      await applyAccess({ authenticated: false, active: false, role: "", mustChangePassword: false });
+      await applyAccess({ authenticated: false, active: false, role: "" });
     } catch (err) {
       setAuthMessage(err.message, false);
     } finally {
@@ -192,8 +203,8 @@
 
   function friendlyLoginError(err) {
     const text = String(err?.message || err || "");
-    if (/email not confirmed/i.test(text)) return "บัญชีถูกสร้างแล้ว กรุณายืนยันอีเมล Mahidol ก่อน แล้วกลับมา Login อีกครั้ง";
-    if (/invalid login credentials/i.test(text)) return "Username หรือรหัสผ่านไม่ถูกต้อง";
+    if (/email not confirmed/i.test(text)) return "กรุณายืนยันอีเมล Mahidol ก่อน แล้วกลับมา Login อีกครั้ง";
+    if (/invalid login credentials/i.test(text)) return "Username หรือรหัสผ่านไม่ถูกต้อง หากจำรหัสไม่ได้ให้กด “ลืมรหัสผ่าน”";
     return text;
   }
 
@@ -203,7 +214,7 @@
     const username = normalizeUsername(el("loginUsername")?.value || "");
     const password = String(el("loginPassword")?.value || "");
 
-    if (!/^[a-z0-9._-]+$/i.test(username)) {
+    if (!validUsername(username)) {
       setAuthMessage("กรุณากรอกเฉพาะ Username เช่น parichat.ink", false);
       return;
     }
@@ -215,21 +226,65 @@
     setBusy(button, true, "กำลังเข้าสู่ระบบ...");
     setAuthMessage("", true);
     try {
-      try {
-        await backend.authSignIn(username, password);
-      } catch (signInErr) {
-        if (password !== username) throw signInErr;
-        const bootstrap = await backend.authBootstrapFirstLogin(username, password);
-        if (!bootstrap?.session) {
-          setAuthMessage("เปิดบัญชีครั้งแรกแล้ว กรุณายืนยันอีเมล Mahidol จากนั้นกลับมา Login ด้วยรหัสเริ่มต้นอีกครั้ง", true);
-          return;
-        }
-      }
-
+      await backend.authSignIn(username, password);
       try { await backend.logAudit("LOGIN", { device: navigator.userAgent.slice(0, 180) }); } catch (_) {}
       await refreshAccess();
     } catch (err) {
       setAuthMessage(friendlyLoginError(err), false);
+    } finally {
+      setBusy(button, false, "");
+    }
+  }
+
+  async function handleRegister(event) {
+    event.preventDefault();
+    const button = el("registerBtn");
+    const username = normalizeUsername(el("registerUsername")?.value || "");
+    const password = String(el("registerPassword")?.value || "");
+    const confirm = String(el("registerPasswordConfirm")?.value || "");
+
+    if (!validUsername(username)) return setAuthMessage("กรุณากรอก Username เช่น aripat.mit", false);
+    if (password.length < 8) return setAuthMessage("รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร", false);
+    if (password !== confirm) return setAuthMessage("ยืนยันรหัสผ่านไม่ตรงกัน", false);
+
+    setBusy(button, true, "กำลังเปิดบัญชี...");
+    setAuthMessage("", true);
+    try {
+      const info = await backend.authRegistrationStatus(username);
+      if (!info?.allowed) throw new Error("Username นี้ไม่มีสิทธิ์ Blood Stock หรือถูกปิดใช้งาน");
+      if (info?.hasAccount) {
+        throw new Error("Username นี้มีบัญชี Supabase อยู่แล้ว กรุณากลับไป Login ด้วยรหัสเดิม หรือใช้ “ลืมรหัสผ่าน”");
+      }
+
+      const result = await backend.authRegisterAllowlistedUser(username, password);
+      if (result?.session) {
+        try { await backend.logAudit("ACCOUNT_REGISTER", { source: "blood-stock" }); } catch (_) {}
+        await refreshAccess();
+      } else {
+        showAuthPanel("login");
+        if (el("loginUsername")) el("loginUsername").value = username;
+        setAuthMessage("เปิดบัญชีแล้ว กรุณาตรวจอีเมล Mahidol เพื่อยืนยันบัญชี จากนั้นกลับมา Login", true);
+      }
+    } catch (err) {
+      setAuthMessage(String(err?.message || err), false);
+    } finally {
+      setBusy(button, false, "");
+    }
+  }
+
+  async function handleForgotPassword(event) {
+    event.preventDefault();
+    const button = el("forgotSendBtn");
+    const username = normalizeUsername(el("forgotUsername")?.value || "");
+    if (!validUsername(username)) return setAuthMessage("กรุณากรอก Username เช่น parichat.ink", false);
+
+    setBusy(button, true, "กำลังส่งอีเมล...");
+    setAuthMessage("", true);
+    try {
+      await backend.authSendPasswordReset(username);
+      setAuthMessage("ส่งลิงก์ตั้งรหัสใหม่ไปที่อีเมล Mahidol แล้ว กรุณาเปิดอีเมลและกดลิงก์จากอุปกรณ์นี้", true);
+    } catch (err) {
+      setAuthMessage(String(err?.message || err), false);
     } finally {
       setBusy(button, false, "");
     }
@@ -240,28 +295,19 @@
     const button = el("changePasswordBtn");
     const password = String(el("newPassword")?.value || "");
     const confirm = String(el("confirmNewPassword")?.value || "");
-    const username = normalizeUsername(currentAccess?.username || currentAccess?.email || "");
 
-    if (password.length < 8) {
-      setAuthMessage("รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร", false);
-      return;
-    }
-    if (password !== confirm) {
-      setAuthMessage("ยืนยันรหัสผ่านไม่ตรงกัน", false);
-      return;
-    }
-    if (password.toLowerCase() === username.toLowerCase()) {
-      setAuthMessage("กรุณาตั้งรหัสใหม่ที่ไม่เหมือนรหัสเริ่มต้น", false);
-      return;
-    }
+    if (password.length < 8) return setAuthMessage("รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร", false);
+    if (password !== confirm) return setAuthMessage("ยืนยันรหัสผ่านไม่ตรงกัน", false);
 
     setBusy(button, true, "กำลังบันทึก...");
     setAuthMessage("", true);
     try {
       await backend.authUpdatePassword(password);
-      await backend.markPasswordChanged();
+      try { await backend.logAudit(recoveryMode ? "PASSWORD_RESET" : "PASSWORD_CHANGED", { sharedAuth: true }); } catch (_) {}
       if (el("newPassword")) el("newPassword").value = "";
       if (el("confirmNewPassword")) el("confirmNewPassword").value = "";
+      recoveryMode = false;
+      if (history.replaceState) history.replaceState({}, document.title, window.location.pathname);
       await refreshAccess();
     } catch (err) {
       setAuthMessage(err.message, false);
@@ -271,9 +317,8 @@
   }
 
   function userStatusText(user) {
-    if (!user.is_active) return '<span class="access-badge is-disabled">ปิดใช้งาน</span>';
-    if (!user.user_id) return '<span class="access-badge is-never">ยังไม่เคยเข้า</span>';
-    if (user.must_change_password) return '<span class="access-badge is-pending">รอเปลี่ยนรหัสครั้งแรก</span>';
+    if (!user.is_active) return '<span class="access-badge is-disabled">ปิดสิทธิ์ Blood Stock</span>';
+    if (!user.user_id) return '<span class="access-badge is-never">ยังไม่มีบัญชีกลาง</span>';
     return '<span class="access-badge is-active">ใช้งานได้</span>';
   }
 
@@ -281,9 +326,11 @@
     const labels = {
       LOGIN: "เข้าสู่ระบบ",
       LOGOUT: "ออกจากระบบ",
-      PASSWORD_CHANGED: "เปลี่ยนรหัสผ่านครั้งแรก",
+      ACCOUNT_REGISTER: "เปิดบัญชีกลางครั้งแรก",
+      PASSWORD_RESET: "ตั้งรหัสผ่านใหม่",
+      PASSWORD_CHANGED: "เปลี่ยนรหัสผ่าน",
       LIS_UPLOAD: "อัปเดตข้อมูล LIS",
-      USER_ACCESS_CHANGE: "เปิด/ปิดบัญชี",
+      USER_ACCESS_CHANGE: "เปิด/ปิดสิทธิ์ Blood Stock",
       CLEAR_SNAPSHOTS: "ล้าง Dashboard",
       CLEAR_LIS_MASTER: "ล้างฐานประวัติ LIS"
     };
@@ -304,7 +351,7 @@
   }
 
   async function loadAdminPanel() {
-    if (currentAccess?.role !== "admin" || !currentAccess?.active || currentAccess?.mustChangePassword) return;
+    if (currentAccess?.role !== "admin" || !currentAccess?.active) return;
     const usersBox = el("adminUsersList");
     const auditBox = el("adminAuditList");
     const summaryBox = el("adminSummary");
@@ -323,9 +370,9 @@
       const adminCount = users.filter(x => x.role === "admin").length;
       if (summaryBox) {
         summaryBox.innerHTML = `
-          <div class="admin-stat"><span>เปิดใช้งาน</span><strong>${activeCount}</strong></div>
-          <div class="admin-stat"><span>ปิดใช้งาน</span><strong>${disabledCount}</strong></div>
-          <div class="admin-stat"><span>ยังไม่เคย Login</span><strong>${neverCount}</strong></div>
+          <div class="admin-stat"><span>มีสิทธิ์ Blood Stock</span><strong>${activeCount}</strong></div>
+          <div class="admin-stat"><span>ปิดสิทธิ์</span><strong>${disabledCount}</strong></div>
+          <div class="admin-stat"><span>ยังไม่มีบัญชีกลาง</span><strong>${neverCount}</strong></div>
           <div class="admin-stat"><span>Admin</span><strong>${adminCount}</strong></div>
         `;
       }
@@ -335,7 +382,7 @@
           const isSelf = String(user.email || "").toLowerCase() === String(currentAccess.email || "").toLowerCase();
           const safeEmail = escapeHtml(user.email || "");
           const title = `${user.display_name || user.username || "ผู้ใช้งาน"}${user.nickname ? ` (${user.nickname})` : ""}`;
-          const loginMeta = user.last_login_at ? ` · Login ล่าสุด ${formatDateTime(user.last_login_at)}` : " · ยังไม่เคย Login";
+          const loginMeta = user.last_login_at ? ` · Login ล่าสุด ${formatDateTime(user.last_login_at)}` : " · ยังไม่เคย Login Blood Stock";
           return `
             <div class="admin-user-row" data-email="${safeEmail}">
               <div class="admin-user-main">
@@ -393,7 +440,23 @@
 
   function bindUI() {
     el("loginForm")?.addEventListener("submit", handleLogin);
+    el("registerForm")?.addEventListener("submit", handleRegister);
+    el("forgotPasswordForm")?.addEventListener("submit", handleForgotPassword);
     el("changePasswordForm")?.addEventListener("submit", handleChangePassword);
+
+    el("forgotPasswordBtn")?.addEventListener("click", () => {
+      const username = normalizeUsername(el("loginUsername")?.value || "");
+      if (el("forgotUsername")) el("forgotUsername").value = username;
+      showAuthPanel("forgot");
+    });
+    el("openAccountBtn")?.addEventListener("click", () => {
+      const username = normalizeUsername(el("loginUsername")?.value || "");
+      if (el("registerUsername")) el("registerUsername").value = username;
+      showAuthPanel("register");
+    });
+    el("forgotBackBtn")?.addEventListener("click", () => showAuthPanel("login"));
+    el("registerBackBtn")?.addEventListener("click", () => showAuthPanel("login"));
+
     el("logoutBtn")?.addEventListener("click", doLogout);
     el("pendingLogoutBtn")?.addEventListener("click", doLogout);
     el("changePasswordLogoutBtn")?.addEventListener("click", doLogout);
@@ -407,17 +470,22 @@
       return;
     }
     bindUI();
-    showAuthPanel("login");
-    await refreshAccess({ silent: true });
+    showAuthPanel(recoveryMode ? "password" : "login");
 
     backend.onAuthStateChange?.((event) => {
-      if (event === "SIGNED_OUT") {
+      if (event === "PASSWORD_RECOVERY") {
+        recoveryMode = true;
+        setTimeout(() => refreshAccess({ silent: true }), 0);
+      } else if (event === "SIGNED_OUT") {
         appStarted = false;
-        applyAccess({ authenticated: false, active: false, role: "", mustChangePassword: false });
+        recoveryMode = false;
+        applyAccess({ authenticated: false, active: false, role: "" });
       }
     });
 
+    await refreshAccess({ silent: true });
     accessTimer = window.setInterval(() => refreshAccess({ silent: true }), 60000);
+
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) refreshAccess({ silent: true });
     });

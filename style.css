@@ -1625,3 +1625,18 @@ main { min-width:0; }
 .admin-user-position { color:#60778b; font-size:12px; margin-top:2px; }
 .access-badge.is-never { background:#eef4f8; color:#60778b; }
 @media (max-width:560px) { .username-domain { padding:0 9px; font-size:12px; } }
+
+/* v2.9.0 Shared Auth */
+.auth-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+}
+.auth-actions-row .auth-link-btn { margin: 0; }
+.admin-access-note { border-color: #d8eaf7; background: #f8fcff; }
+@media (max-width: 520px) {
+  .auth-actions-row { align-items: stretch; flex-direction: column; gap: 2px; }
+  .auth-actions-row .auth-link-btn { text-align: left; }
+}

@@ -10,8 +10,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Blood Stock" />
-  <link rel="manifest" href="manifest.webmanifest?v=20260914-v2-8-2-admin-initial-password" />
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260914-v2-8-2-admin-initial-password" />
+  <link rel="manifest" href="manifest.webmanifest?v=20260914-v2-9-0-shared-auth" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260914-v2-9-0-shared-auth" />
 
 
   <script>
@@ -19,7 +19,7 @@
       "use strict";
 
       // เปลี่ยนเลขนี้ทุกครั้งที่ออก ZIP ใหม่ เพื่อให้เครื่องผู้ใช้เริ่มเหมือนแอพใหม่
-      const APP_VERSION = "20260914-v2-8-2-admin-initial-password";
+      const APP_VERSION = "20260914-v2-9-0-shared-auth";
       const VERSION_KEY = "minimumStock.__appVersion";
       const FORCE_RESET = /[?&](fresh|reset|clearCache)=1/i.test(window.location.search);
 
@@ -77,7 +77,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="style.css?v=20260914-v2-8-2-admin-initial-password">
+  <link rel="stylesheet" href="style.css?v=20260914-v2-9-0-shared-auth">
 </head>
 
 <body>
@@ -90,7 +90,7 @@
 
     <div id="authLoginPanel">
       <h1>เข้าสู่ระบบ</h1>
-      <p class="auth-help">กรอก Username มหิดล ไม่ต้องพิมพ์ @mahidol.ac.th</p>
+      <p class="auth-help">ใช้บัญชี Mahidol เดิมที่เคยใช้กับระบบ CNMI ใน Supabase นี้</p>
       <form id="loginForm" class="auth-form">
         <label>Username
           <div class="username-input-wrap">
@@ -101,14 +101,54 @@
         <label>รหัสผ่าน
           <input id="loginPassword" type="password" autocomplete="current-password" minlength="8" required />
         </label>
-        <div class="auth-first-login-note">เข้าใช้ครั้งแรก: ใช้รหัสผ่านเริ่มต้นที่ <b>Admin กำหนดให้</b> และระบบจะให้เปลี่ยนรหัสใหม่หลังเข้าสู่ระบบ</div>
         <button id="loginBtn" class="btn btn-main w-100" type="submit">เข้าสู่ระบบ</button>
       </form>
+      <div class="auth-actions-row">
+        <button id="forgotPasswordBtn" class="auth-link-btn" type="button">ลืมรหัสผ่าน</button>
+        <button id="openAccountBtn" class="auth-link-btn" type="button">เปิดบัญชีครั้งแรก</button>
+      </div>
+      <div class="auth-first-login-note">ถ้าเคยมีบัญชีในระบบ CNMI อื่นแล้ว <b>ใช้รหัสเดิมได้เลย</b> · Admin ของ Blood Stock จัดการเฉพาะสิทธิ์เข้าแอป ไม่ได้เปลี่ยนรหัสผ่านของบัญชีกลาง</div>
+    </div>
+
+    <div id="authRegisterPanel" style="display:none;">
+      <h1>เปิดบัญชีครั้งแรก</h1>
+      <p class="auth-help">ใช้เฉพาะเจ้าหน้าที่ Blood Bank ที่อยู่ในรายชื่ออนุญาต และยังไม่มีบัญชี Supabase ในโปรเจกต์นี้</p>
+      <form id="registerForm" class="auth-form">
+        <label>Username
+          <div class="username-input-wrap">
+            <input id="registerUsername" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="username.sur" required />
+            <span class="username-domain">@mahidol.ac.th</span>
+          </div>
+        </label>
+        <label>ตั้งรหัสผ่าน
+          <input id="registerPassword" type="password" autocomplete="new-password" minlength="8" required />
+        </label>
+        <label>ยืนยันรหัสผ่าน
+          <input id="registerPasswordConfirm" type="password" autocomplete="new-password" minlength="8" required />
+        </label>
+        <button id="registerBtn" class="btn btn-main w-100" type="submit">เปิดบัญชี</button>
+      </form>
+      <button id="registerBackBtn" class="auth-link-btn" type="button">← กลับหน้าเข้าสู่ระบบ</button>
+    </div>
+
+    <div id="authForgotPanel" style="display:none;">
+      <h1>ลืมรหัสผ่าน</h1>
+      <p class="auth-help">ระบบจะส่งลิงก์ตั้งรหัสใหม่ไปที่อีเมล @mahidol.ac.th ของบัญชีนี้ รหัสใหม่จะใช้กับแอปอื่นที่ใช้บัญชี Supabase เดียวกันด้วย</p>
+      <form id="forgotPasswordForm" class="auth-form">
+        <label>Username
+          <div class="username-input-wrap">
+            <input id="forgotUsername" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="username.sur" required />
+            <span class="username-domain">@mahidol.ac.th</span>
+          </div>
+        </label>
+        <button id="forgotSendBtn" class="btn btn-main w-100" type="submit">ส่งลิงก์ตั้งรหัสใหม่</button>
+      </form>
+      <button id="forgotBackBtn" class="auth-link-btn" type="button">← กลับหน้าเข้าสู่ระบบ</button>
     </div>
 
     <div id="authChangePasswordPanel" style="display:none;">
       <h1>ตั้งรหัสผ่านใหม่</h1>
-      <p class="auth-help">ครั้งแรกต้องเปลี่ยนรหัสก่อนเข้าแอป ใช้อย่างน้อย 8 ตัวอักษร</p>
+      <p id="changePasswordHelp" class="auth-help">ตั้งรหัสผ่านใหม่อย่างน้อย 8 ตัวอักษร</p>
       <form id="changePasswordForm" class="auth-form">
         <label>รหัสผ่านใหม่
           <input id="newPassword" type="password" autocomplete="new-password" minlength="8" required />
@@ -230,22 +270,8 @@
         <button id="adminRefreshBtn" class="btn btn-light" type="button">รีเฟรช</button>
       </div>
       <div class="admin-summary-grid" id="adminSummary"></div>
-      <div id="adminInitialPasswordPanel" class="simple-panel mb-3 admin-only" style="display:none;">
-        <div class="panel-heading-row"><div><h3>กำหนดรหัสเริ่มต้น</h3><div class="small-muted">ใช้เฉพาะเจ้าหน้าที่ที่ยังไม่เคยเปิดบัญชี · อย่างน้อย 8 ตัวอักษร · ระบบไม่เก็บรหัสจริง</div></div></div>
-        <div class="row g-2 align-items-end mt-1">
-          <div class="col-12 col-md-5">
-            <label class="form-label">ผู้ใช้งาน</label>
-            <select id="adminInitialPasswordUser" class="form-select"><option value="">กำลังโหลดรายชื่อ...</option></select>
-          </div>
-          <div class="col-12 col-md-4">
-            <label class="form-label">รหัสเริ่มต้น</label>
-            <input id="adminInitialPasswordValue" class="form-control" type="password" minlength="8" autocomplete="new-password" placeholder="อย่างน้อย 8 ตัวอักษร" />
-          </div>
-          <div class="col-12 col-md-3 d-grid">
-            <button id="adminInitialPasswordSaveBtn" class="btn btn-main" type="button">บันทึกรหัสเริ่มต้น</button>
-          </div>
-        </div>
-        <div id="adminInitialPasswordStatus" class="small-muted mt-2"></div>
+      <div class="simple-panel mb-3 admin-access-note">
+        <div class="panel-heading-row"><div><h3>สิทธิ์เฉพาะ Blood Stock</h3><div class="small-muted">หน้านี้เปิด/ปิดสิทธิ์เข้า Blood Stock เท่านั้น ไม่ลบ Supabase Account และไม่เปลี่ยนรหัสผ่านที่อาจใช้ร่วมกับแอป CNMI อื่น</div></div></div>
       </div>
       <div class="simple-panel mb-3">
         <div class="panel-heading-row"><div><h3>บัญชีผู้ใช้งาน</h3><div class="small-muted">รายชื่อถูกกำหนดไว้สำหรับ Blood Bank แล้ว · ปิดใช้งานแทนการลบ เพื่อเก็บ Audit ไว้</div></div></div>
@@ -312,11 +338,10 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="supabase-config.js?v=20260914-v2-8-2-admin-initial-password"></script>
-  <script src="supabase-backend.js?v=20260914-v2-8-2-admin-initial-password"></script>
-  <script src="script.js?v=20260914-v2-8-2-admin-initial-password"></script>
-  <script src="auth.js?v=20260914-v2-8-2-admin-initial-password"></script>
-  <script src="auth-v282.js?v=20260914-v2-8-2-admin-initial-password"></script>
+  <script src="supabase-config.js?v=20260914-v2-9-0-shared-auth"></script>
+  <script src="supabase-backend.js?v=20260914-v2-9-0-shared-auth"></script>
+  <script src="script.js?v=20260914-v2-9-0-shared-auth"></script>
+  <script src="auth.js?v=20260914-v2-9-0-shared-auth"></script>
 
 </body>
 </html>
