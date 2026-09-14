@@ -2515,8 +2515,53 @@
     const { data, error } = await client.rpc("minimum_stock_can_bootstrap_user", {
       p_username: normalized
     });
-    if (error) throw new Error("ตรวจสอบบัญชีไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.0");
+    if (error) throw new Error("ตรวจสอบบัญชีไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.1");
     return data || { allowed: false, username: normalized, hasAccount: false };
+  }
+
+  async function authVerifyInitialPassword(username, password) {
+    const client = getClient();
+    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+    const normalized = normalizeAuthUsername(username);
+    if (!normalized) throw new Error("กรุณากรอก Username");
+    const { data, error } = await client.rpc("minimum_stock_verify_initial_password", {
+      p_username: normalized,
+      p_password: String(password || "")
+    });
+    if (error) throw new Error("ตรวจรหัสเริ่มต้นไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.1");
+    return data || { allowed: false, matched: false, hasAccount: false, passwordConfigured: false };
+  }
+
+  async function authBootstrapWithInitialPassword(username, password) {
+    const client = getClient();
+    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+    const normalized = normalizeAuthUsername(username);
+    const pwd = String(password || "");
+    if (!normalized) throw new Error("กรุณากรอก Username");
+    if (pwd.length < 8) throw new Error("รหัสเริ่มต้นต้องมีอย่างน้อย 8 ตัวอักษร");
+
+    const info = await authVerifyInitialPassword(normalized, pwd);
+    if (!info.allowed) throw new Error("Username นี้ไม่มีสิทธิ์ Blood Stock หรือถูกปิดใช้งาน");
+    if (info.hasAccount) throw new Error("บัญชีนี้มี Supabase Account อยู่แล้ว กรุณาใช้รหัสเดิมหรือกดลืมรหัสผ่าน");
+    if (!info.passwordConfigured) throw new Error("Admin ยังไม่ได้กำหนดรหัสเริ่มต้นให้บัญชีนี้");
+    if (!info.matched) throw new Error("รหัสเริ่มต้นไม่ถูกต้อง กรุณาตรวจสอบรหัสที่ได้รับจาก Admin");
+
+    const email = String(info.email || usernameToMahidolEmail(normalized)).toLowerCase();
+    const { data, error } = await client.auth.signUp({
+      email,
+      password: pwd,
+      options: {
+        data: {
+          display_name: info.displayName || normalized,
+          nickname: info.nickname || "",
+          username: normalized,
+          minimum_stock_force_change_password: true
+        },
+        emailRedirectTo: window.location.origin + window.location.pathname
+      }
+    });
+    if (error) throw new Error("เปิดบัญชีอัตโนมัติไม่สำเร็จ: " + error.message);
+    return data || {};
   }
 
   async function authRegisterAllowlistedUser(username, password) {
@@ -2556,7 +2601,7 @@
 
     const info = await authRegistrationStatus(normalized);
     if (!info.allowed) throw new Error("Username นี้ไม่มีสิทธิ์ Blood Stock หรือถูกปิดใช้งาน");
-    if (!info.hasAccount) throw new Error("Username นี้ยังไม่มีบัญชีกลาง กรุณาเลือก “เปิดบัญชีครั้งแรก”");
+    if (!info.hasAccount) throw new Error("Username นี้ยังไม่มีบัญชีกลาง กรุณาติดต่อ Admin เพื่อกำหนดรหัสเริ่มต้น");
 
     const email = String(info.email || usernameToMahidolEmail(normalized)).toLowerCase();
     const redirectTo = window.location.origin + window.location.pathname + "?recovery=1";
@@ -2609,7 +2654,7 @@
 
     const { data, error } = await client.rpc("minimum_stock_current_user_access");
     if (error) {
-      throw new Error("ระบบสิทธิ์ผู้ใช้งานยังไม่พร้อม: " + error.message + " | กรุณารัน SQL v2.9.0");
+      throw new Error("ระบบสิทธิ์ผู้ใช้งานยังไม่พร้อม: " + error.message + " | กรุณารัน SQL v2.9.1");
     }
     return data || { authenticated: true, active: false, role: "", mustChangePassword: false };
   }
@@ -2644,6 +2689,19 @@
     return data || { ok: true };
   }
 
+  async function adminSetInitialPassword(email, password) {
+    const client = getClient();
+    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+    const pwd = String(password || "");
+    if (pwd.length < 8) throw new Error("รหัสเริ่มต้นต้องมีอย่างน้อย 8 ตัวอักษร");
+    const { data, error } = await client.rpc("minimum_stock_admin_set_initial_password", {
+      p_email: String(email || "").trim().toLowerCase(),
+      p_password: pwd
+    });
+    if (error) throw new Error("ตั้งรหัสเริ่มต้นไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.1");
+    return data || { ok: true };
+  }
+
   async function adminGetAuditLogs(limit = 100) {
     const client = getClient();
     if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
@@ -2662,6 +2720,8 @@
     authGetSession,
     authSignIn,
     authRegistrationStatus,
+    authVerifyInitialPassword,
+    authBootstrapWithInitialPassword,
     authRegisterAllowlistedUser,
     authSendPasswordReset,
     authUpdatePassword,
@@ -2672,6 +2732,7 @@
     logAudit,
     adminListUsers,
     adminSetUserActive,
+    adminSetInitialPassword,
     adminGetAuditLogs,
     uploadExcel,
     getDashboard,

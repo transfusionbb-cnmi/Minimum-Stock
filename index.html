@@ -10,8 +10,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Blood Stock" />
-  <link rel="manifest" href="manifest.webmanifest?v=20260914-v2-9-0-shared-auth" />
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260914-v2-9-0-shared-auth" />
+  <link rel="manifest" href="manifest.webmanifest?v=20260914-v2-9-1-admin-first-password" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260914-v2-9-1-admin-first-password" />
 
 
   <script>
@@ -19,7 +19,7 @@
       "use strict";
 
       // เปลี่ยนเลขนี้ทุกครั้งที่ออก ZIP ใหม่ เพื่อให้เครื่องผู้ใช้เริ่มเหมือนแอพใหม่
-      const APP_VERSION = "20260914-v2-9-0-shared-auth";
+      const APP_VERSION = "20260914-v2-9-1-admin-first-password";
       const VERSION_KEY = "minimumStock.__appVersion";
       const FORCE_RESET = /[?&](fresh|reset|clearCache)=1/i.test(window.location.search);
 
@@ -77,7 +77,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="style.css?v=20260914-v2-9-0-shared-auth">
+  <link rel="stylesheet" href="style.css?v=20260914-v2-9-1-admin-first-password">
 </head>
 
 <body>
@@ -90,7 +90,7 @@
 
     <div id="authLoginPanel">
       <h1>เข้าสู่ระบบ</h1>
-      <p class="auth-help">ใช้บัญชี Mahidol เดิมที่เคยใช้กับระบบ CNMI ใน Supabase นี้</p>
+      <p class="auth-help">กรอก Username Mahidol และรหัสผ่านได้เลย · ถ้าเป็นบัญชีใหม่ ให้ใช้รหัสเริ่มต้นที่ Admin กำหนดไว้ ระบบจะพาเปลี่ยนรหัสทันที</p>
       <form id="loginForm" class="auth-form">
         <label>Username
           <div class="username-input-wrap">
@@ -103,37 +103,15 @@
         </label>
         <button id="loginBtn" class="btn btn-main w-100" type="submit">เข้าสู่ระบบ</button>
       </form>
-      <div class="auth-actions-row">
+      <div class="auth-actions-row auth-actions-row-single">
         <button id="forgotPasswordBtn" class="auth-link-btn" type="button">ลืมรหัสผ่าน</button>
-        <button id="openAccountBtn" class="auth-link-btn" type="button">เปิดบัญชีครั้งแรก</button>
       </div>
-      <div class="auth-first-login-note">ถ้าเคยมีบัญชีในระบบ CNMI อื่นแล้ว <b>ใช้รหัสเดิมได้เลย</b> · Admin ของ Blood Stock จัดการเฉพาะสิทธิ์เข้าแอป ไม่ได้เปลี่ยนรหัสผ่านของบัญชีกลาง</div>
-    </div>
-
-    <div id="authRegisterPanel" style="display:none;">
-      <h1>เปิดบัญชีครั้งแรก</h1>
-      <p class="auth-help">ใช้เฉพาะเจ้าหน้าที่ Blood Bank ที่อยู่ในรายชื่ออนุญาต และยังไม่มีบัญชี Supabase ในโปรเจกต์นี้</p>
-      <form id="registerForm" class="auth-form">
-        <label>Username
-          <div class="username-input-wrap">
-            <input id="registerUsername" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="username.sur" required />
-            <span class="username-domain">@mahidol.ac.th</span>
-          </div>
-        </label>
-        <label>ตั้งรหัสผ่าน
-          <input id="registerPassword" type="password" autocomplete="new-password" minlength="8" required />
-        </label>
-        <label>ยืนยันรหัสผ่าน
-          <input id="registerPasswordConfirm" type="password" autocomplete="new-password" minlength="8" required />
-        </label>
-        <button id="registerBtn" class="btn btn-main w-100" type="submit">เปิดบัญชี</button>
-      </form>
-      <button id="registerBackBtn" class="auth-link-btn" type="button">← กลับหน้าเข้าสู่ระบบ</button>
+      <div class="auth-first-login-note"><b>เข้าใช้ครั้งแรก:</b> Admin จะกำหนดรหัสเริ่มต้นให้ ไม่ต้องเปิดบัญชีเอง เมื่อ Login สำเร็จระบบจะบังคับตั้งรหัสใหม่อย่างน้อย 8 ตัวอักษร</div>
     </div>
 
     <div id="authForgotPanel" style="display:none;">
       <h1>ลืมรหัสผ่าน</h1>
-      <p class="auth-help">ระบบจะส่งลิงก์ตั้งรหัสใหม่ไปที่อีเมล @mahidol.ac.th ของบัญชีนี้ รหัสใหม่จะใช้กับแอปอื่นที่ใช้บัญชี Supabase เดียวกันด้วย</p>
+      <p class="auth-help">ระบบจะส่งลิงก์ตั้งรหัสใหม่ไปที่อีเมล @mahidol.ac.th ของบัญชีที่เปิดใช้งานแล้ว</p>
       <form id="forgotPasswordForm" class="auth-form">
         <label>Username
           <div class="username-input-wrap">
@@ -265,16 +243,16 @@
         <div>
           <div class="page-kicker">ADMIN</div>
           <h1>ผู้ใช้งานและความปลอดภัย</h1>
-          <div class="page-subline">เปิด/ปิดบัญชีเจ้าหน้าที่ ป้องกันผู้ที่ออกจากหน่วยเข้าใช้งาน และตรวจ Log การใช้งาน</div>
+          <div class="page-subline">ตั้งรหัสเริ่มต้นสำหรับบัญชีใหม่ เปิด/ปิดสิทธิ์ Blood Stock และตรวจ Log การใช้งาน</div>
         </div>
         <button id="adminRefreshBtn" class="btn btn-light" type="button">รีเฟรช</button>
       </div>
       <div class="admin-summary-grid" id="adminSummary"></div>
       <div class="simple-panel mb-3 admin-access-note">
-        <div class="panel-heading-row"><div><h3>สิทธิ์เฉพาะ Blood Stock</h3><div class="small-muted">หน้านี้เปิด/ปิดสิทธิ์เข้า Blood Stock เท่านั้น ไม่ลบ Supabase Account และไม่เปลี่ยนรหัสผ่านที่อาจใช้ร่วมกับแอป CNMI อื่น</div></div></div>
+        <div class="panel-heading-row"><div><h3>สิทธิ์เฉพาะ Blood Stock</h3><div class="small-muted">บัญชีใหม่ที่ยังไม่มี Supabase Account: Admin ตั้งรหัสเริ่มต้นให้ได้จากหน้านี้ ผู้ใช้ Login ด้วยรหัสนั้นครั้งแรกแล้วระบบจะบังคับเปลี่ยนทันที · บัญชีที่มีอยู่แล้วจะใช้รหัสเดิมร่วมกับแอป CNMI อื่น</div></div></div>
       </div>
       <div class="simple-panel mb-3">
-        <div class="panel-heading-row"><div><h3>บัญชีผู้ใช้งาน</h3><div class="small-muted">รายชื่อถูกกำหนดไว้สำหรับ Blood Bank แล้ว · ปิดใช้งานแทนการลบ เพื่อเก็บ Audit ไว้</div></div></div>
+        <div class="panel-heading-row"><div><h3>บัญชีผู้ใช้งาน</h3><div class="small-muted">รายชื่อ Blood Bank ถูกกำหนดไว้แล้ว · คนที่ยังไม่มีบัญชีให้ตั้งรหัสเริ่มต้นก่อน · คนลาออกให้ปิดสิทธิ์แทนการลบ</div></div></div>
         <div id="adminUsersList" class="admin-users-list"><div class="small-muted">กำลังโหลด...</div></div>
       </div>
       <div class="simple-panel">
@@ -299,6 +277,27 @@
       <button id="outreachDetailCloseBtn" class="btn btn-light outreach-close-btn" type="button">✕</button>
     </div>
     <div id="outreachDetailBody"></div>
+  </div>
+</div>
+
+<div id="adminPasswordOverlay" class="modal-overlay" style="display:none;">
+  <div class="nice-modal admin-password-modal">
+    <div class="modal-icon">🔑</div>
+    <h4 class="fw-bold mb-2">ตั้งรหัสเริ่มต้น</h4>
+    <div id="adminPasswordTarget" class="small-muted mb-3"></div>
+    <form id="adminPasswordForm" class="auth-form">
+      <label>รหัสเริ่มต้น
+        <input id="adminInitialPassword" type="password" autocomplete="new-password" minlength="8" required />
+      </label>
+      <label>ยืนยันรหัสเริ่มต้น
+        <input id="adminInitialPasswordConfirm" type="password" autocomplete="new-password" minlength="8" required />
+      </label>
+      <div class="admin-password-tip">รหัสนี้ใช้ครั้งแรกเท่านั้น หลัง Login ระบบจะบังคับให้เจ้าหน้าที่ตั้งรหัสใหม่เอง</div>
+      <div class="modal-actions mt-3">
+        <button id="adminPasswordCancelBtn" class="btn btn-light" type="button">ยกเลิก</button>
+        <button id="adminPasswordSaveBtn" class="btn btn-main" type="submit">บันทึกรหัสเริ่มต้น</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -338,10 +337,10 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="supabase-config.js?v=20260914-v2-9-0-shared-auth"></script>
-  <script src="supabase-backend.js?v=20260914-v2-9-0-shared-auth"></script>
-  <script src="script.js?v=20260914-v2-9-0-shared-auth"></script>
-  <script src="auth.js?v=20260914-v2-9-0-shared-auth"></script>
+  <script src="supabase-config.js?v=20260914-v2-9-1-admin-first-password"></script>
+  <script src="supabase-backend.js?v=20260914-v2-9-1-admin-first-password"></script>
+  <script src="script.js?v=20260914-v2-9-1-admin-first-password"></script>
+  <script src="auth.js?v=20260914-v2-9-1-admin-first-password"></script>
 
 </body>
 </html>

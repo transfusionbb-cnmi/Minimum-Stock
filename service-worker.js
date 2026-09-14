@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-0-shared-auth";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-1-admin-first-password";
 const APP_SHELL = [
   "./",
   "./index.html",
