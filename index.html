@@ -10,8 +10,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Minimum Stock" />
-  <link rel="manifest" href="manifest.webmanifest?v=20260913-v2-6-0-outreach-outcome-analysis" />
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260913-v2-6-0-outreach-outcome-analysis" />
+  <link rel="manifest" href="manifest.webmanifest?v=20260914-v2-6-1-lis-csv-outreach-analysis" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260914-v2-6-1-lis-csv-outreach-analysis" />
 
 
   <script>
@@ -19,7 +19,7 @@
       "use strict";
 
       // เปลี่ยนเลขนี้ทุกครั้งที่ออก ZIP ใหม่ เพื่อให้เครื่องผู้ใช้เริ่มเหมือนแอพใหม่
-      const APP_VERSION = "20260913-v2-6-0-outreach-outcome-analysis";
+      const APP_VERSION = "20260914-v2-6-1-lis-csv-outreach-analysis";
       const VERSION_KEY = "minimumStock.__appVersion";
       const FORCE_RESET = /[?&](fresh|reset|clearCache)=1/i.test(window.location.search);
 
@@ -77,7 +77,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="style.css?v=20260913-v2-6-0-outreach-outcome-analysis">
+  <link rel="stylesheet" href="style.css?v=20260914-v2-6-1-lis-csv-outreach-analysis">
 </head>
 
 <body>
@@ -118,18 +118,18 @@
     <section id="page-upload" class="dashboard-page">
   <div id="uploadSection" class="hero-card mt-4">
       <div class="mb-4">
-        <h1 class="fw-bold mb-2">อัปโหลดไฟล์ใหม่ (ย้อนหลัง 2 ปี)</h1>
+        <h1 class="fw-bold mb-2">อัปโหลดไฟล์ใหม่จาก LIS</h1>
         <div class="small-muted">
-          อัปโหลดไฟล์ Excel เพื่อคำนวณ Minimum Stock และรายงานวิเคราะห์ผลถุงเลือดออกหน่วยจากไฟล์เดียวกัน
+          อัปโหลด CSV หรือ Excel ที่ Export จาก LIS เพื่อคำนวณ Minimum Stock และรายงานวิเคราะห์ผลถุงเลือดออกหน่วยจากไฟล์เดียวกัน
         </div>
       </div>
 
       <div id="uploadZone" class="upload-zone">
         <div class="fs-1 mb-2">📁</div>
-        <h5 class="fw-bold mb-2">ลากไฟล์ Excel มาวางตรงนี้</h5>
-        <div class="small-muted mb-3">หรือกดเพื่อเลือกไฟล์ .xlsx</div>
-        <input id="fileInput" type="file" accept=".xlsx,.xls" hidden />
-        <button class="btn btn-main" type="button">เลือกไฟล์ Excel</button>
+        <h5 class="fw-bold mb-2">ลากไฟล์ CSV / Excel จาก LIS มาวางตรงนี้</h5>
+        <div class="small-muted mb-3">รองรับ .csv, .xlsx และ .xls · CSV จาก LIS ที่มีหัวรายงานก่อนตารางอ่านได้โดยตรง</div>
+        <input id="fileInput" type="file" accept=".csv,.xlsx,.xls" hidden />
+        <button class="btn btn-main" type="button">เลือกไฟล์ CSV / Excel</button>
       </div>
 
       <div class="mt-3">
@@ -145,14 +145,14 @@
         🧹 ล้างข้อมูลเดิมในระบบ
       </button>
       <div class="small-muted mt-2">
-        ปุ่มนี้จะลบ snapshot เดิมใน Supabase และ cache ของแอพนี้ ใช้เมื่อเว็บเริ่มช้าหรือก่อนอัปโหลดรอบใหม่
+        ปุ่มนี้จะลบทั้ง snapshot Minimum Stock และชุดข้อมูลวิเคราะห์ออกหน่วยล่าสุด ใช้เฉพาะเมื่อต้องการล้างข้อมูลทั้งหมดจริง ๆ
       </div>
 
       <div id="statusBox" class="status-box"></div>
 
       <div id="loadingBox" class="status-box" style="display:none;">
         <div class="fw-bold mb-1">⏳ กำลังประมวลผลไฟล์ใหญ่</div>
-        <div class="small-muted">ระบบกำลังอ่าน Excel, แปลงวันที่ และคำนวณ Minimum Stock กรุณารอสักครู่</div>
+        <div class="small-muted">ระบบกำลังอ่าน CSV/Excel, แปลงวันที่, คำนวณ Minimum Stock และบันทึกข้อมูลวิเคราะห์แบบเป็นชุด กรุณารอสักครู่</div>
         <div class="progress mt-3" style="height: 10px;">
           <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%;"></div>
         </div>
@@ -205,9 +205,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="supabase-config.js?v=20260913-v2-6-0-outreach-outcome-analysis"></script>
-  <script src="supabase-backend.js?v=20260913-v2-6-0-outreach-outcome-analysis"></script>
-  <script src="script.js?v=20260913-v2-6-0-outreach-outcome-analysis"></script>
+  <script src="supabase-config.js?v=20260914-v2-6-1-lis-csv-outreach-analysis"></script>
+  <script src="supabase-backend.js?v=20260914-v2-6-1-lis-csv-outreach-analysis"></script>
+  <script src="script.js?v=20260914-v2-6-1-lis-csv-outreach-analysis"></script>
 
 <div id="confirmOverlay" class="modal-overlay" style="display:none;">
   <div class="nice-modal">

@@ -907,18 +907,69 @@
     return formatYmd(candidate);
   }
 
+  const OUTREACH_SOURCE_GROUPS = {
+    SELF_INHOUSE: "หาเอง – รับบริจาคในโรงพยาบาล",
+    SELF_OUTREACH: "หาเอง – ออกหน่วย",
+    TRC: "กาชาดไทย",
+    OTHER_HOSPITAL: "รับจากโรงพยาบาลอื่น",
+    REVIEW: "ไม่ระบุ/ต้องตรวจสอบ",
+    EXCLUDED: "ตัดออกจากการวิเคราะห์"
+  };
+
+  const OUTREACH_OUTCOME = {
+    USED: "used",
+    DESTROYED: "destroyed",
+    TRANSFORMED: "transformed",
+    UNRESOLVED: "unresolved",
+    CONFLICT: "conflict"
+  };
+
+  function isExcludedOutreachSource(value) {
+    const text = String(value || "").trim();
+    if (!text) return false;
+
+    const exactExcluded = new Set([
+      "ห้องรับบริจาคโลหิต รามาธิบดีจักรีนฤบดินทร์ (1B6)",
+      "10062Q79877",
+      "10067R02375",
+      "External Quality Assessment (EQA)",
+      "Test สอนแพทย์ พยาบาล"
+    ]);
+    if (exactExcluded.has(text)) return true;
+
+    const lower = text.toLowerCase();
+    if (/external quality assessment|\beqa\b|\btest\b|ทดสอบ|สอนแพทย์|สอนพยาบาล/i.test(lower)) return true;
+
+    // DonateSource ที่มีหน้าตาเป็นเลขถุง เช่น 10067R02375 เป็นข้อมูลสมมติ/ทดสอบ ไม่ใช่สถานที่รับบริจาค
+    if (/^\d{5,}[a-z]\d{3,}$/i.test(text.replace(/\s+/g, ""))) return true;
+
+    return false;
+  }
+
   function classifyOutreachSource(value) {
     const text = String(value || "").trim();
     if (!text) {
-      return { group: "ไม่ระบุ/ต้องตรวจสอบ", eligible: false, excluded: false };
+      return { group: OUTREACH_SOURCE_GROUPS.REVIEW, eligible: false, excluded: false, reason: "DonateSource ว่าง" };
     }
-    if (isExcludedDonateSource(text)) {
-      return { group: "ตัดออกตามระบบเดิม", eligible: false, excluded: true };
+    if (isExcludedOutreachSource(text)) {
+      return { group: OUTREACH_SOURCE_GROUPS.EXCLUDED, eligible: false, excluded: true, reason: "ข้อมูลสมมติ/ทดสอบ/สอน" };
     }
     if (text === "ศูนย์บริการโลหิตแห่งชาติ สภากาชาดไทย") {
-      return { group: "กาชาดไทย", eligible: true, excluded: false };
+      return { group: OUTREACH_SOURCE_GROUPS.TRC, eligible: true, excluded: false, reason: "" };
     }
-    return { group: "หาเอง/ออกหน่วย", eligible: true, excluded: false };
+    if (text === "โรงพยาบาลรามาธิบดีจักรีนฤบดินทร์") {
+      return { group: OUTREACH_SOURCE_GROUPS.SELF_INHOUSE, eligible: true, excluded: false, reason: "" };
+    }
+    if (text === "โรงพยาบาลรามาธิบดี" || text === "ศิริราชพยาบาล") {
+      return { group: OUTREACH_SOURCE_GROUPS.OTHER_HOSPITAL, eligible: true, excluded: false, reason: "" };
+    }
+    // ถ้ามีโรงพยาบาลใหม่ที่ไม่เคย map มาก่อน ไม่เดาให้เอง
+    if (text.includes("โรงพยาบาล")) {
+      return { group: OUTREACH_SOURCE_GROUPS.REVIEW, eligible: false, excluded: false, reason: "พบชื่อโรงพยาบาลใหม่ ต้องตรวจสอบว่าเป็นยืม/แลกหรือออกหน่วย" };
+    }
+
+    // ตามกติกางานจริง: แหล่งอื่นที่ไม่ใช่กาชาด/รพ.อื่น/ข้อมูลทดสอบ ถือเป็นจุดออกหน่วยของ CNMI
+    return { group: OUTREACH_SOURCE_GROUPS.SELF_OUTREACH, eligible: true, excluded: false, reason: "" };
   }
 
   function textContainsDestroySignal(value) {
@@ -932,15 +983,21 @@
     return keywords.some(keyword => text.includes(keyword));
   }
 
+  function normalizeOutreachStatus(value) {
+    return String(value || "").trim();
+  }
+
   function isKnownOutreachStatus(value) {
-    const status = String(value || "").trim();
+    const status = normalizeOutreachStatus(value);
     if (!status) return false;
     const known = new Set([
       "Released",
       "Available",
+      "Dedicated",
       "In Screening Process",
       "Quarantine",
       "ReadyToIssue",
+      "Be Transformed",
       "Destroyed",
       "Discarded",
       "Disposed",
@@ -951,48 +1008,127 @@
   }
 
   function classifyOutreachOutcome(statusValue, destroyReasonValue) {
-    const status = String(statusValue || "").trim();
+    const status = normalizeOutreachStatus(statusValue);
     const destroyReason = String(destroyReasonValue || "").trim();
     const released = status === "Released";
-    // DestroyReason เป็น field ที่เกิดเมื่อมีการทิ้ง/ทำลาย จึงถือว่า non-empty เป็นหลักฐานของการทำลาย
+    const transformed = status === "Be Transformed";
     const destroyed = textContainsDestroySignal(status) || Boolean(destroyReason);
 
-    if (released && destroyed) return "ข้อมูลขัดแย้ง ต้องตรวจสอบ";
-    if (released) return "นำไปใช้/จ่ายออก";
-    if (destroyed) return "ทิ้ง/ทำลาย";
-    return "ยังไม่ทราบผล/คงเหลือ/สถานะอื่น";
+    if ((released || transformed) && destroyed) return OUTREACH_OUTCOME.CONFLICT;
+    if (released) return OUTREACH_OUTCOME.USED;
+    if (transformed) return OUTREACH_OUTCOME.TRANSFORMED;
+    if (destroyed) return OUTREACH_OUTCOME.DESTROYED;
+    return OUTREACH_OUTCOME.UNRESOLVED;
+  }
+
+  function normalizeDateTimeDisplay(value) {
+    if (value === null || value === undefined || value === "") return "";
+    if (value instanceof Date && !isNaN(value)) {
+      const ymd = formatYmd(value);
+      const hh = String(value.getHours()).padStart(2, "0");
+      const mm = String(value.getMinutes()).padStart(2, "0");
+      return `${ymd} ${hh}:${mm}`;
+    }
+    if (typeof value === "number" && isFinite(value)) {
+      const d = excelSerialToDate(value);
+      if (!isNaN(d)) {
+        const ymd = formatYmd(d);
+        const hh = String(d.getUTCHours()).padStart(2, "0");
+        const mm = String(d.getUTCMinutes()).padStart(2, "0");
+        return `${ymd} ${hh}:${mm}`;
+      }
+    }
+    return String(value).trim();
+  }
+
+  function normalizeComponentKeyPart(value) {
+    return String(value || "").trim().toUpperCase().replace(/\s+/g, " ");
+  }
+
+  function makeOutreachComponentKey(bagNumber, productType, dateStockIn, rowIndex) {
+    const bag = normalizeBagKey(bagNumber);
+    const product = normalizeComponentKeyPart(productType);
+    const date = normalizeAnyDateStrict(dateStockIn);
+    if (!bag || !product || !date) return `ROW_${rowIndex}`;
+    return `${bag}||${product}||${date}`;
+  }
+
+  function parseCsvTextToRows(text) {
+    const input = String(text || "").replace(/^\uFEFF/, "");
+    const rows = [];
+    let row = [];
+    let field = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < input.length; i += 1) {
+      const ch = input[i];
+      if (ch === '"') {
+        if (inQuotes && input[i + 1] === '"') {
+          field += '"';
+          i += 1;
+        } else {
+          inQuotes = !inQuotes;
+        }
+        continue;
+      }
+      if (ch === "," && !inQuotes) {
+        row.push(field);
+        field = "";
+        continue;
+      }
+      if ((ch === "\n" || ch === "\r") && !inQuotes) {
+        if (ch === "\r" && input[i + 1] === "\n") i += 1;
+        row.push(field);
+        field = "";
+        if (row.some(cell => String(cell || "").length > 0)) rows.push(row);
+        row = [];
+        continue;
+      }
+      field += ch;
+    }
+    if (field.length || row.length) {
+      row.push(field);
+      if (row.some(cell => String(cell || "").length > 0)) rows.push(row);
+    }
+    return rows;
   }
 
   async function readExcelSheet(file) {
-    if (!window.XLSX) {
-      throw new Error("โหลดไลบรารีอ่าน Excel ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตหรือ CDN xlsx");
+    const lowerName = String(file?.name || "").toLowerCase();
+    let values = [];
+
+    if (lowerName.endsWith(".csv")) {
+      // LIS ส่งออก CSV UTF-8 และมีหัวรายงาน 2 บรรทัดก่อน header จริง
+      const text = await file.text();
+      values = parseCsvTextToRows(text);
+    } else {
+      if (!window.XLSX) {
+        throw new Error("โหลดไลบรารีอ่าน Excel ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตหรือ CDN xlsx");
+      }
+      const buffer = await file.arrayBuffer();
+      const workbook = window.XLSX.read(buffer, {
+        type: "array",
+        cellDates: true,
+        raw: true
+      });
+      const firstSheetName = workbook.SheetNames[0];
+      if (!firstSheetName) throw new Error("ไม่พบข้อมูลในไฟล์ Excel");
+      const sheet = workbook.Sheets[firstSheetName];
+      values = window.XLSX.utils.sheet_to_json(sheet, {
+        header: 1,
+        raw: true,
+        defval: ""
+      });
     }
 
-    const buffer = await file.arrayBuffer();
-    const workbook = window.XLSX.read(buffer, {
-      type: "array",
-      cellDates: true,
-      raw: true
-    });
+    if (!values || values.length < 2) throw new Error("ไม่พบข้อมูลในไฟล์ Excel/CSV");
 
-    const firstSheetName = workbook.SheetNames[0];
-    if (!firstSheetName) throw new Error("ไม่พบชีตในไฟล์ Excel");
-
-    const sheet = workbook.Sheets[firstSheetName];
-    const values = window.XLSX.utils.sheet_to_json(sheet, {
-      header: 1,
-      raw: true,
-      defval: ""
-    });
-
-    if (!values || values.length < 2) throw new Error("ไม่พบข้อมูลในไฟล์ Excel");
-
-    const headerRowIndex = values.findIndex(row => String(row[0] || "").trim() === "BagNumber");
+    // LIS CSV จริงมีหัวรายงาน 2 บรรทัดก่อน header จึงค้นหา BagNumber แทนการสมมติว่า header อยู่บรรทัดแรก
+    const headerRowIndex = values.findIndex(row => Array.isArray(row) && row.some(cell => String(cell || "").trim() === "BagNumber"));
     if (headerRowIndex === -1) throw new Error("หาแถวหัวตาราง BagNumber ไม่เจอ");
 
     const headers = values[headerRowIndex].map(value => String(value || "").trim());
     const headerMap = buildHeaderMap(headers);
-    // คง logic เดิมของ Minimum Stock: ใช้ตำแหน่งคอลัมน์เดิมในการตัดแถวว่าง
     const dataRows = values.slice(headerRowIndex + 1).filter(row => {
       return row && (row[EXCEL_COL.bagNumber] || row[EXCEL_COL.productType] || row[EXCEL_COL.status]);
     });
@@ -1000,88 +1136,109 @@
     return { values, headerRowIndex, headers, headerMap, dataRows };
   }
 
-  function buildOutreachValidation(dataRows, headerMap) {
+  function chooseUniqueText(values) {
+    const unique = Array.from(new Set((values || []).map(v => String(v || "").trim()).filter(Boolean)));
+    return { value: unique[0] || "", conflict: unique.length > 1, values: unique };
+  }
+
+  function analyzeOutreachData(dataRows, headerMap) {
     const missingHeaders = OUTREACH_REQUIRED_HEADERS.filter(name => getHeaderIndex(headerMap, name) < 0);
+    if (missingHeaders.length) {
+      return {
+        rows: [],
+        filterOptions: {},
+        excludedComponentCount: 0,
+        validation: {
+          ok: false,
+          blocking: true,
+          missingHeaders,
+          issueCount: missingHeaders.length,
+          duplicateComponentCount: 0,
+          multiProductBagCount: 0,
+          invalidDateCount: 0,
+          unknownStatusCount: 0,
+          unknownSourceCount: 0,
+          missingBagCount: 0,
+          outcomeConflictCount: 0,
+          sourceConflictCount: 0,
+          excludedRawRowCount: 0,
+          issues: missingHeaders.map(name => ({ type: "missing_header", bagNumber: "", message: `ไม่พบคอลัมน์ ${name}` }))
+        }
+      };
+    }
+
     const issues = [];
-    const duplicateMap = new Map();
+    const componentGroups = new Map();
+    const productsByBag = new Map();
     const unknownStatuses = new Map();
     const unknownSources = new Map();
     let invalidDateCount = 0;
     let missingBagCount = 0;
-    let outcomeConflictCount = 0;
-
-    if (missingHeaders.length) {
-      return {
-        ok: false,
-        blocking: true,
-        missingHeaders,
-        issueCount: missingHeaders.length,
-        duplicateBagCount: 0,
-        invalidDateCount: 0,
-        unknownStatusCount: 0,
-        unknownSourceCount: 0,
-        missingBagCount: 0,
-        outcomeConflictCount: 0,
-        issues: missingHeaders.map(name => ({ type: "missing_header", bagNumber: "", message: `ไม่พบคอลัมน์ ${name}` }))
-      };
-    }
+    let excludedRawRowCount = 0;
 
     dataRows.forEach((row, rowIndex) => {
-      const excelRow = rowIndex + 2;
+      const excelRow = rowIndex + 1;
       const bagRaw = getHeaderValue(row, headerMap, "BagNumber");
       const bagNumber = String(bagRaw || "").trim();
       const bagKey = normalizeBagKey(bagRaw);
-      const status = String(getHeaderValue(row, headerMap, "Status") || "").trim();
+      const productType = String(getHeaderValue(row, headerMap, "ProductType") || "").trim();
+      const status = normalizeOutreachStatus(getHeaderValue(row, headerMap, "Status"));
       const donateSource = String(getHeaderValue(row, headerMap, "DonateSource") || "").trim();
       const dateStockInRaw = getHeaderValue(row, headerMap, "DateStockIn");
       const dateStockOutRaw = getHeaderValue(row, headerMap, "DateStockOut");
       const destroyReason = String(getHeaderValue(row, headerMap, "DestroyReason") || "").trim();
+      const sourceInfo = classifyOutreachSource(donateSource);
+
+      if (sourceInfo.excluded) excludedRawRowCount += 1;
 
       if (!bagKey) {
         missingBagCount += 1;
-        issues.push({ type: "missing_bag", bagNumber: "", message: `แถว ${excelRow}: ไม่มี BagNumber` });
-      } else {
-        if (!duplicateMap.has(bagKey)) duplicateMap.set(bagKey, []);
-        duplicateMap.get(bagKey).push({ row: excelRow, bagNumber });
+        issues.push({ type: "missing_bag", bagNumber: "", message: `แถวข้อมูล ${excelRow}: ไม่มี BagNumber` });
       }
 
-      if (!dateStockInRaw) {
+      const dateStockIn = normalizeAnyDateStrict(dateStockInRaw);
+      if (!dateStockInRaw || !dateStockIn) {
         invalidDateCount += 1;
-        issues.push({ type: "invalid_date", bagNumber, message: `ไม่มี DateStockIn (แถว ${excelRow})` });
-      } else if (!normalizeAnyDateStrict(dateStockInRaw)) {
-        invalidDateCount += 1;
-        issues.push({ type: "invalid_date", bagNumber, message: `DateStockIn ไม่ถูกต้อง (แถว ${excelRow})` });
+        issues.push({ type: "invalid_date", bagNumber, message: `DateStockIn ไม่ถูกต้อง (แถวข้อมูล ${excelRow})` });
       }
       if (dateStockOutRaw && !normalizeAnyDateStrict(dateStockOutRaw)) {
         invalidDateCount += 1;
-        issues.push({ type: "invalid_date", bagNumber, message: `DateStockOut ไม่ถูกต้อง (แถว ${excelRow})` });
+        issues.push({ type: "invalid_date", bagNumber, message: `DateStockOut ไม่ถูกต้อง (แถวข้อมูล ${excelRow})` });
       }
 
-      if (!status) {
-        unknownStatuses.set("(ว่าง)", (unknownStatuses.get("(ว่าง)") || 0) + 1);
-      } else if (!isKnownOutreachStatus(status)) {
-        unknownStatuses.set(status, (unknownStatuses.get(status) || 0) + 1);
+      if (!status || !isKnownOutreachStatus(status)) {
+        const key = status || "(ว่าง)";
+        unknownStatuses.set(key, (unknownStatuses.get(key) || 0) + 1);
       }
 
-      if (status === "Released" && destroyReason) {
-        outcomeConflictCount += 1;
-        issues.push({ type: "outcome_conflict", bagNumber, message: `Status = Released แต่มี DestroyReason (แถว ${excelRow})` });
-      }
-
-      const sourceInfo = classifyOutreachSource(donateSource);
       if (!sourceInfo.excluded && !sourceInfo.eligible) {
         const key = donateSource || "(ว่าง)";
         unknownSources.set(key, (unknownSources.get(key) || 0) + 1);
       }
-    });
 
-    const duplicateGroups = Array.from(duplicateMap.values()).filter(rows => rows.length > 1);
-    duplicateGroups.forEach(rows => {
-      issues.push({
-        type: "duplicate_bag",
-        bagNumber: rows[0].bagNumber,
-        message: `BagNumber ซ้ำ ${rows.length} แถว: ${rows.map(item => item.row).join(", ")}`
+      const componentKey = makeOutreachComponentKey(bagRaw, productType, dateStockInRaw, rowIndex);
+      if (!componentGroups.has(componentKey)) componentGroups.set(componentKey, []);
+      componentGroups.get(componentKey).push({
+        row,
+        rowIndex,
+        bagNumber,
+        bagKey,
+        productType,
+        bloodGroup: String(getHeaderValue(row, headerMap, "BloodGroup") || "").trim(),
+        rh: String(getHeaderValue(row, headerMap, "Rh") || "").trim(),
+        donateSource,
+        sourceInfo,
+        dateStockIn,
+        dateStockOut: normalizeDateTimeDisplay(dateStockOutRaw),
+        status,
+        destroyReason,
+        outcomeCode: classifyOutreachOutcome(status, destroyReason)
       });
+
+      if (bagKey) {
+        if (!productsByBag.has(bagKey)) productsByBag.set(bagKey, new Set());
+        if (productType) productsByBag.get(bagKey).add(productType);
+      }
     });
 
     unknownStatuses.forEach((count, status) => {
@@ -1091,187 +1248,197 @@
       issues.push({ type: "unknown_source", bagNumber: "", message: `DonateSource ต้องตรวจสอบ: ${source} (${count} รายการ)` });
     });
 
-    return {
-      ok: true,
-      blocking: false,
-      missingHeaders: [],
-      issueCount: issues.length,
-      duplicateBagCount: duplicateGroups.length,
-      invalidDateCount,
-      unknownStatusCount: Array.from(unknownStatuses.values()).reduce((a, b) => a + b, 0),
-      unknownSourceCount: Array.from(unknownSources.values()).reduce((a, b) => a + b, 0),
-      missingBagCount,
-      outcomeConflictCount,
-      issues
-    };
-  }
-
-  function chooseUniqueText(values) {
-    const unique = Array.from(new Set((values || []).map(v => String(v || "").trim()).filter(Boolean)));
-    return { value: unique[0] || "", conflict: unique.length > 1, values: unique };
-  }
-
-  function buildOutreachAnalysis(dataRows, headerMap) {
-    const validation = buildOutreachValidation(dataRows, headerMap);
-    if (validation.blocking) {
-      throw new Error("ไฟล์ขาดคอลัมน์สำคัญ: " + validation.missingHeaders.join(", "));
-    }
-
-    const bagGroups = new Map();
-    dataRows.forEach((row, rowIndex) => {
-      const bagRaw = getHeaderValue(row, headerMap, "BagNumber");
-      const bagKey = normalizeBagKey(bagRaw);
-      if (!bagKey) return;
-      if (!bagGroups.has(bagKey)) bagGroups.set(bagKey, []);
-      bagGroups.get(bagKey).push({ row, rowIndex });
-    });
-
     const rows = [];
-    let excludedSourceRows = 0;
+    let excludedComponentCount = 0;
+    let duplicateComponentCount = 0;
+    let sourceConflictCount = 0;
+    let outcomeConflictCount = 0;
 
-    bagGroups.forEach((items, bagKey) => {
-      const mapped = items.map(item => {
-        const row = item.row;
-        const status = String(getHeaderValue(row, headerMap, "Status") || "").trim();
-        const destroyReason = String(getHeaderValue(row, headerMap, "DestroyReason") || "").trim();
-        const donateSource = String(getHeaderValue(row, headerMap, "DonateSource") || "").trim();
-        return {
-          bagNumber: String(getHeaderValue(row, headerMap, "BagNumber") || "").trim(),
-          productType: String(getHeaderValue(row, headerMap, "ProductType") || "").trim(),
-          bloodGroup: String(getHeaderValue(row, headerMap, "BloodGroup") || "").trim(),
-          rh: String(getHeaderValue(row, headerMap, "Rh") || "").trim(),
-          donateSource,
-          dateStockIn: normalizeAnyDateStrict(getHeaderValue(row, headerMap, "DateStockIn")),
-          dateStockOut: normalizeAnyDateStrict(getHeaderValue(row, headerMap, "DateStockOut")),
-          status,
-          destroyReason,
-          sourceInfo: classifyOutreachSource(donateSource),
-          outcome: classifyOutreachOutcome(status, destroyReason)
-        };
-      });
+    componentGroups.forEach((items, componentKey) => {
+      if (items.length > 1) duplicateComponentCount += 1;
 
-      // ถ้าทุกแถวของ BagNumber นี้เป็นแหล่งที่ระบบเดิมตัดออก ให้ตัดออกจากรายงานใหม่ด้วย
-      if (mapped.every(item => item.sourceInfo.excluded)) {
-        excludedSourceRows += 1;
+      const usableItems = items.filter(item => !item.sourceInfo.excluded);
+      if (!usableItems.length) {
+        excludedComponentCount += 1;
         return;
       }
 
-      const bagNumber = chooseUniqueText(mapped.map(item => item.bagNumber));
-      const productType = chooseUniqueText(mapped.map(item => item.productType));
-      const bloodGroup = chooseUniqueText(mapped.map(item => item.bloodGroup));
-      const rh = chooseUniqueText(mapped.map(item => item.rh));
-      const donateSource = chooseUniqueText(mapped.filter(item => !item.sourceInfo.excluded).map(item => item.donateSource));
-      const status = chooseUniqueText(mapped.map(item => item.status));
-      const destroyReason = chooseUniqueText(mapped.map(item => item.destroyReason));
-      const sourceGroups = Array.from(new Set(mapped.filter(item => !item.sourceInfo.excluded).map(item => item.sourceInfo.group)));
-      const outcomes = Array.from(new Set(mapped.map(item => item.outcome)));
-      const dateStockIns = mapped.map(item => item.dateStockIn).filter(Boolean).sort();
-      const dateStockOuts = mapped.map(item => item.dateStockOut).filter(Boolean).sort();
+      const bagNumber = chooseUniqueText(usableItems.map(item => item.bagNumber));
+      const productType = chooseUniqueText(usableItems.map(item => item.productType));
+      const bloodGroup = chooseUniqueText(usableItems.map(item => item.bloodGroup));
+      const rh = chooseUniqueText(usableItems.map(item => item.rh));
+      const source = chooseUniqueText(usableItems.map(item => item.donateSource));
+      const sourceGroups = Array.from(new Set(usableItems.map(item => item.sourceInfo.group)));
+      const statuses = chooseUniqueText(usableItems.map(item => item.status));
+      const reasons = chooseUniqueText(usableItems.map(item => item.destroyReason));
+      const outcomes = Array.from(new Set(usableItems.map(item => item.outcomeCode)));
+      const dateStockIns = Array.from(new Set(usableItems.map(item => item.dateStockIn).filter(Boolean))).sort();
+      const dateStockOuts = usableItems.map(item => item.dateStockOut).filter(Boolean);
 
-      let sourceGroup = sourceGroups.length === 1 ? sourceGroups[0] : "ไม่ระบุ/ต้องตรวจสอบ";
-      let finalOutcome = outcomes.length === 1 ? outcomes[0] : "ข้อมูลขัดแย้ง ต้องตรวจสอบ";
+      const sourceConflict = source.conflict || sourceGroups.length !== 1;
+      if (sourceConflict) {
+        sourceConflictCount += 1;
+        issues.push({
+          type: "source_conflict",
+          bagNumber: bagNumber.value,
+          message: `ผลิตภัณฑ์เดียวกันมี DonateSource มากกว่า 1 ค่า: ${source.values.join(" | ")}`
+        });
+      }
 
-      const fieldConflict = [productType, bloodGroup, rh, donateSource].some(item => item.conflict);
-      if (fieldConflict) finalOutcome = "ข้อมูลขัดแย้ง ต้องตรวจสอบ";
+      let outcomeCode = outcomes.length === 1 ? outcomes[0] : OUTREACH_OUTCOME.CONFLICT;
+      if (outcomeCode === OUTREACH_OUTCOME.CONFLICT || outcomes.length > 1) {
+        outcomeConflictCount += 1;
+        issues.push({
+          type: "outcome_conflict",
+          bagNumber: bagNumber.value,
+          message: `Status / DestroyReason ให้ผลลัพธ์ขัดแย้งใน ${productType.value || "ผลิตภัณฑ์"}`
+        });
+      }
 
-      // Released กับ DestroyReason ที่สื่อว่าทำลาย ต้องถือเป็น conflict เสมอ
-      if (mapped.some(item => item.status === "Released") && mapped.some(item => textContainsDestroySignal(item.status) || Boolean(item.destroyReason))) {
-        finalOutcome = "ข้อมูลขัดแย้ง ต้องตรวจสอบ";
+      const dateConflict = dateStockIns.length > 1;
+      const fieldConflict = bagNumber.conflict || productType.conflict || bloodGroup.conflict || rh.conflict || dateConflict;
+      if (fieldConflict) {
+        issues.push({
+          type: "field_conflict",
+          bagNumber: bagNumber.value,
+          message: "พบข้อมูล BloodGroup / Rh / ProductType / DateStockIn ขัดแย้งในผลิตภัณฑ์เดียวกัน"
+        });
       }
 
       const dateStockIn = dateStockIns[0] || "";
-      const dateStockOut = dateStockOuts[dateStockOuts.length - 1] || "";
+      const sourceGroup = sourceConflict ? OUTREACH_SOURCE_GROUPS.REVIEW : (sourceGroups[0] || OUTREACH_SOURCE_GROUPS.REVIEW);
       const aggregateEligible = Boolean(
         dateStockIn &&
-        sourceGroup !== "ไม่ระบุ/ต้องตรวจสอบ" &&
-        sourceGroup !== "ตัดออกตามระบบเดิม"
+        !sourceConflict &&
+        sourceGroup !== OUTREACH_SOURCE_GROUPS.REVIEW &&
+        sourceGroup !== OUTREACH_SOURCE_GROUPS.EXCLUDED
       );
 
       rows.push({
-        bagNumber: bagNumber.value || bagKey,
+        componentKey,
+        bagNumber: bagNumber.value,
         productType: productType.value,
         bloodGroup: bloodGroup.value,
         rh: rh.value,
-        donateSource: donateSource.value,
+        donateSource: sourceConflict ? source.values.join(" | ") : source.value,
         sourceGroup,
         dateStockIn,
-        dateStockOut,
-        status: status.value,
-        destroyReason: destroyReason.value,
-        finalOutcome,
+        dateStockOut: dateStockOuts[dateStockOuts.length - 1] || "",
+        status: statuses.conflict ? statuses.values.join(" | ") : statuses.value,
+        destroyReason: reasons.conflict ? reasons.values.join(" | ") : reasons.value,
+        outcomeCode,
         aggregateEligible,
         duplicateCount: items.length,
-        needsReview: !aggregateEligible || finalOutcome === "ข้อมูลขัดแย้ง ต้องตรวจสอบ" || items.length > 1 || fieldConflict
+        needsReview: Boolean(
+          !aggregateEligible ||
+          outcomeCode === OUTREACH_OUTCOME.CONFLICT ||
+          sourceConflict ||
+          fieldConflict ||
+          statuses.conflict ||
+          !isKnownOutreachStatus(statuses.value)
+        )
       });
     });
 
     rows.sort((a, b) =>
       String(b.dateStockIn || "").localeCompare(String(a.dateStockIn || "")) ||
-      String(a.donateSource || "").localeCompare(String(b.donateSource || "")) ||
+      String(a.donateSource || "").localeCompare(String(b.donateSource || ""), "th") ||
       String(a.bagNumber || "").localeCompare(String(b.bagNumber || ""))
     );
 
+    const multiProductBagCount = Array.from(productsByBag.values()).filter(set => set.size > 1).length;
+    const eligibleRows = rows.filter(row => row.aggregateEligible);
+    const validDates = eligibleRows.map(row => row.dateStockIn).filter(Boolean).sort();
+    const unique = values => Array.from(new Set(values.map(v => String(v || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "th"));
+    const filterOptions = {
+      minDate: validDates[0] || "",
+      maxDate: validDates[validDates.length - 1] || "",
+      sourceGroups: unique(eligibleRows.map(row => row.sourceGroup)),
+      sources: unique(eligibleRows.map(row => row.donateSource)),
+      products: unique(eligibleRows.map(row => row.productType)),
+      bloodGroups: unique(eligibleRows.map(row => row.bloodGroup)),
+      rhs: unique(eligibleRows.map(row => row.rh))
+    };
+
+    const unknownStatusCount = Array.from(unknownStatuses.values()).reduce((a, b) => a + b, 0);
+    const unknownSourceCount = Array.from(unknownSources.values()).reduce((a, b) => a + b, 0);
+    const validation = {
+      ok: true,
+      blocking: false,
+      missingHeaders: [],
+      issueCount: issues.length,
+      duplicateComponentCount,
+      multiProductBagCount,
+      invalidDateCount,
+      unknownStatusCount,
+      unknownSourceCount,
+      missingBagCount,
+      outcomeConflictCount,
+      sourceConflictCount,
+      excludedRawRowCount,
+      issues: issues.slice(0, 500),
+      issuesTruncated: issues.length > 500
+    };
+
+    return { rows, filterOptions, excludedComponentCount, validation };
+  }
+
+  function buildOutreachValidation(dataRows, headerMap) {
+    return analyzeOutreachData(dataRows, headerMap).validation;
+  }
+
+  function buildOutreachAnalysis(dataRows, headerMap) {
+    const analysis = analyzeOutreachData(dataRows, headerMap);
+    if (analysis.validation.blocking) {
+      throw new Error("ไฟล์ขาดคอลัมน์สำคัญ: " + analysis.validation.missingHeaders.join(", "));
+    }
+
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       generatedAt: new Date().toISOString(),
       requiredHeaders: OUTREACH_REQUIRED_HEADERS,
       optionalHeaders: OUTREACH_OPTIONAL_HEADERS,
-      totalUniqueBags: rows.length,
-      eligibleBags: rows.filter(row => row.aggregateEligible).length,
-      excludedSourceRows,
-      validation,
-      rows
+      rawRowCount: dataRows.length,
+      componentRowCount: analysis.rows.length,
+      totalUniqueBags: new Set(analysis.rows.map(row => normalizeBagKey(row.bagNumber)).filter(Boolean)).size,
+      eligibleComponentRows: analysis.rows.filter(row => row.aggregateEligible).length,
+      excludedComponentCount: analysis.excludedComponentCount,
+      validation: analysis.validation,
+      filterOptions: analysis.filterOptions,
+      rows: analysis.rows
     };
   }
 
-  function compactOutreachAnalysis(analysis) {
+  // v2.6.1 stores detailed outreach rows in a dedicated table instead of one huge JSONB snapshot.
+  // This function now returns only small metadata when a caller still expects outreach_analysis.
+  function compactOutreachAnalysis(analysis, batchId = "") {
     if (!analysis) return {};
-    const columns = [
-      "bagNumber", "productType", "bloodGroup", "rh", "donateSource", "sourceGroup",
-      "dateStockIn", "dateStockOut", "status", "destroyReason", "finalOutcome",
-      "aggregateEligible", "duplicateCount", "needsReview"
-    ];
     return {
-      schemaVersion: analysis.schemaVersion || 1,
+      schemaVersion: 2,
+      storage: "minimum_stock_outreach_rows",
+      batchId: batchId || "",
       generatedAt: analysis.generatedAt || "",
-      requiredHeaders: analysis.requiredHeaders || OUTREACH_REQUIRED_HEADERS,
-      optionalHeaders: analysis.optionalHeaders || OUTREACH_OPTIONAL_HEADERS,
+      rawRowCount: analysis.rawRowCount || 0,
+      componentRowCount: analysis.componentRowCount || 0,
       totalUniqueBags: analysis.totalUniqueBags || 0,
-      eligibleBags: analysis.eligibleBags || 0,
-      excludedSourceRows: analysis.excludedSourceRows || 0,
-      validation: analysis.validation ? {
-        ...analysis.validation,
-        issues: (analysis.validation.issues || []).slice(0, 500),
-        issuesTruncated: (analysis.validation.issues || []).length > 500
-      } : {},
-      columns,
-      rows: (analysis.rows || []).map(row => columns.map(column => row[column] ?? ""))
+      eligibleComponentRows: analysis.eligibleComponentRows || 0,
+      excludedComponentCount: analysis.excludedComponentCount || 0
     };
   }
 
   function expandOutreachAnalysis(value) {
-    if (!value || typeof value !== "object") return null;
-    if (!Array.isArray(value.rows)) return value;
-    if (!Array.isArray(value.columns)) return value;
-    const rows = value.rows.map(raw => {
-      const item = {};
-      value.columns.forEach((column, index) => { item[column] = raw[index]; });
-      item.aggregateEligible = Boolean(item.aggregateEligible);
-      item.needsReview = Boolean(item.needsReview);
-      item.duplicateCount = Number(item.duplicateCount || 1);
-      return item;
-    });
-    return { ...value, rows };
+    return value && typeof value === "object" ? value : null;
   }
 
   async function preflightOutreachFile(file) {
     const sheetData = await readExcelSheet(file);
-    const validation = buildOutreachValidation(sheetData.dataRows, sheetData.headerMap);
+    const analysis = analyzeOutreachData(sheetData.dataRows, sheetData.headerMap);
     return {
-      ok: !validation.blocking,
+      ok: !analysis.validation.blocking,
       fileName: file.name,
       totalRows: sheetData.dataRows.length,
-      validation
+      componentRows: analysis.rows.length,
+      validation: analysis.validation
     };
   }
 
@@ -1288,6 +1455,7 @@
       if (String(row[EXCEL_COL.status] || "").trim() === "Released") releasedRows += 1;
     });
 
+    // Existing calculations are intentionally untouched.
     const calcResult = calculateMinimumStock(dataRows);
     const stockRows = buildLatestStockDetail(dataRows);
     const usageHistoryRows = buildLatestUsageHistory(dataRows);
@@ -1313,6 +1481,7 @@
       outreachAnalysis
     };
   }
+
 
   function getExpiryRule(type) {
     if (type === "LPRC / LDPRC") return { high: 7, medium: 14, watch: 21 };
@@ -1698,15 +1867,144 @@
     };
   }
 
+  function emitOutreachProgress(options, stage, current, total, message) {
+    if (typeof options?.onProgress !== "function") return;
+    try {
+      options.onProgress({ stage, current: Number(current || 0), total: Number(total || 0), message: String(message || "") });
+    } catch (err) {
+      console.warn("outreach progress callback failed", err);
+    }
+  }
+
+  function toOutreachDbRow(batchId, row) {
+    return {
+      batch_id: batchId,
+      component_key: row.componentKey || "",
+      bag_number: row.bagNumber || "",
+      product_type: row.productType || "",
+      blood_group: row.bloodGroup || "",
+      rh: row.rh || "",
+      donate_source: row.donateSource || "",
+      source_group: row.sourceGroup || OUTREACH_SOURCE_GROUPS.REVIEW,
+      date_stock_in: row.dateStockIn || null,
+      date_stock_out: row.dateStockOut || "",
+      status: row.status || "",
+      destroy_reason: row.destroyReason || "",
+      outcome_code: row.outcomeCode || OUTREACH_OUTCOME.UNRESOLVED,
+      aggregate_eligible: Boolean(row.aggregateEligible),
+      needs_review: Boolean(row.needsReview),
+      duplicate_count: Number(row.duplicateCount || 1)
+    };
+  }
+
+  function fromOutreachDbRow(row) {
+    return {
+      id: row.id,
+      componentKey: row.component_key || "",
+      bagNumber: row.bag_number || "",
+      productType: row.product_type || "",
+      bloodGroup: row.blood_group || "",
+      rh: row.rh || "",
+      donateSource: row.donate_source || "",
+      sourceGroup: row.source_group || OUTREACH_SOURCE_GROUPS.REVIEW,
+      dateStockIn: row.date_stock_in || "",
+      dateStockOut: row.date_stock_out || "",
+      status: row.status || "",
+      destroyReason: row.destroy_reason || "",
+      outcomeCode: row.outcome_code || OUTREACH_OUTCOME.UNRESOLVED,
+      aggregateEligible: Boolean(row.aggregate_eligible),
+      needsReview: Boolean(row.needs_review),
+      duplicateCount: Number(row.duplicate_count || 1)
+    };
+  }
+
+  async function createOutreachBatch(parsed) {
+    const client = getClient();
+    const analysis = parsed.outreachAnalysis || {};
+    const validation = analysis.validation || {};
+    const filterOptions = analysis.filterOptions || {};
+
+    const { data, error } = await client
+      .from("minimum_stock_outreach_batches")
+      .insert({
+        file_name: parsed.fileName || "",
+        calculated_at: parsed.calculatedAt || new Date().toISOString(),
+        status: "processing",
+        is_active: false,
+        source_start_date: filterOptions.minDate || null,
+        source_end_date: filterOptions.maxDate || null,
+        raw_row_count: Number(analysis.rawRowCount || parsed.totalRows || 0),
+        component_row_count: Number(analysis.componentRowCount || (analysis.rows || []).length || 0),
+        unique_bag_count: Number(analysis.totalUniqueBags || 0),
+        excluded_component_count: Number(analysis.excludedComponentCount || 0),
+        validation,
+        filter_options: filterOptions
+      })
+      .select("id")
+      .single();
+
+    if (error) throw new Error("สร้างชุดข้อมูลวิเคราะห์ออกหน่วยไม่สำเร็จ: " + error.message);
+    return data.id;
+  }
+
+  async function stageOutreachRows(batchId, analysis, options = {}) {
+    const client = getClient();
+    const rows = analysis?.rows || [];
+    const chunkSize = 750;
+    emitOutreachProgress(options, "outreach-save", 0, rows.length, `กำลังบันทึกข้อมูลวิเคราะห์ 0/${rows.length.toLocaleString()} รายการ`);
+
+    for (let start = 0; start < rows.length; start += chunkSize) {
+      const chunk = rows.slice(start, start + chunkSize).map(row => toOutreachDbRow(batchId, row));
+      const { error } = await client.from("minimum_stock_outreach_rows").insert(chunk);
+      if (error) {
+        throw new Error(`บันทึกข้อมูลวิเคราะห์ช่วง ${start + 1}-${Math.min(start + chunkSize, rows.length)} ไม่สำเร็จ: ${error.message}`);
+      }
+      const current = Math.min(start + chunkSize, rows.length);
+      emitOutreachProgress(options, "outreach-save", current, rows.length, `กำลังบันทึกข้อมูลวิเคราะห์ ${current.toLocaleString()}/${rows.length.toLocaleString()} รายการ`);
+    }
+
+    const { error: readyError } = await client
+      .from("minimum_stock_outreach_batches")
+      .update({ status: "ready" })
+      .eq("id", batchId);
+    if (readyError) throw new Error("ยืนยันชุดข้อมูลวิเคราะห์ไม่สำเร็จ: " + readyError.message);
+  }
+
+  async function discardOutreachBatch(batchId) {
+    if (!batchId) return;
+    const client = getClient();
+    try {
+      await client.from("minimum_stock_outreach_batches").delete().eq("id", batchId);
+    } catch (err) {
+      console.warn("discard outreach batch failed", err);
+    }
+  }
+
+  async function activateOutreachBatch(batchId) {
+    const client = getClient();
+    const { data, error } = await client.rpc("minimum_stock_outreach_activate_batch", { p_batch_id: batchId });
+    if (error) throw new Error("เปิดใช้ชุดข้อมูลวิเคราะห์ล่าสุดไม่สำเร็จ: " + error.message);
+    return data;
+  }
+
+  async function clearAllOutreachBatches() {
+    if (!isConfigured()) return { ok: true, deleted_batches: 0 };
+    const client = getClient();
+    const { data, error } = await client.rpc("minimum_stock_outreach_clear_all");
+    if (error) throw new Error("ล้างข้อมูลวิเคราะห์ออกหน่วยไม่สำเร็จ: " + error.message);
+    cachedOutreachSnapshot = null;
+    return data || { ok: true };
+  }
+
+  async function cleanupOldSnapshots(keepId) {
+    const client = getClient();
+    const { error } = await client.rpc("minimum_stock_delete_other_snapshots", { p_keep_id: keepId });
+    if (error) throw new Error("ล้าง snapshot เก่าหลังบันทึกสำเร็จไม่ครบ: " + error.message);
+  }
+
   async function saveSnapshot(parsed, options = {}) {
     const client = getClient();
     if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
-
-    // ปกติ uploadExcel จะล้าง snapshot เดิมก่อนอ่านไฟล์แล้ว
-    // เผื่อมีการเรียก saveSnapshot ตรง ๆ จากภายนอก ให้ยังล้างได้ถ้าไม่ได้สั่งข้าม
-    if (!options.skipClearBeforeSave) {
-      await clearAllSnapshots({ beforeUpload: true });
-    }
 
     const payload = {
       file_name: parsed.fileName,
@@ -1721,7 +2019,7 @@
       usage_history_rows: parsed.usageHistoryRows || [],
       in_history_rows: parsed.inHistoryRows || [],
       raw_preview: parsed.rawPreview || [],
-      outreach_analysis: compactOutreachAnalysis(parsed.outreachAnalysis)
+      outreach_analysis: compactOutreachAnalysis(parsed.outreachAnalysis, options.outreachBatchId || "")
     };
 
     const { data, error } = await client
@@ -1733,7 +2031,7 @@
     if (error) {
       const message = String(error.message || "");
       if (message.includes("outreach_analysis")) {
-        throw new Error("ยังไม่ได้เพิ่มคอลัมน์ outreach_analysis ใน Supabase กรุณารันไฟล์ supabase-outreach-analysis-v2.6.0.sql ใน SQL Editor ก่อนอัปโหลดไฟล์");
+        throw new Error("Supabase ยังไม่พร้อมสำหรับ v2.6.1 กรุณารันไฟล์ supabase-outreach-analysis-v2.6.1.sql ก่อน");
       }
       throw new Error("บันทึกลง Supabase ไม่สำเร็จ: " + message);
     }
@@ -1773,17 +2071,70 @@
     }
     const client = getClient();
     const { error } = await client
-      .from(getTableName())
-      .select("id,outreach_analysis")
+      .from("minimum_stock_outreach_batches")
+      .select("id")
       .limit(1);
     if (error) {
-      const message = String(error.message || "");
-      if (message.includes("outreach_analysis")) {
-        throw new Error("ยังไม่ได้เพิ่มคอลัมน์ outreach_analysis ใน Supabase กรุณารันไฟล์ supabase-outreach-analysis-v2.6.0.sql ก่อน ระบบยังไม่ได้ล้างข้อมูลเดิม");
-      }
-      throw new Error("ตรวจสอบ Supabase ไม่สำเร็จ: " + message);
+      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.6.1 กรุณารันไฟล์ supabase-outreach-analysis-v2.6.1.sql ใน SQL Editor ก่อน");
     }
     return { ok: true };
+  }
+
+  async function getActiveOutreachBatch(forceRefresh = false) {
+    if (!forceRefresh && cachedOutreachSnapshot?.batchMeta) return cachedOutreachSnapshot.batchMeta;
+    const client = getClient();
+    const { data, error } = await client
+      .from("minimum_stock_outreach_batches")
+      .select("id,file_name,calculated_at,completed_at,source_start_date,source_end_date,raw_row_count,component_row_count,unique_bag_count,excluded_component_count,validation,filter_options")
+      .eq("is_active", true)
+      .eq("status", "complete")
+      .order("completed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error("โหลดชุดข้อมูลวิเคราะห์ล่าสุดไม่สำเร็จ: " + error.message);
+    return data || null;
+  }
+
+  function normalizeOutreachFilters(filters = {}) {
+    return {
+      dateFrom: filters.dateFrom || "",
+      dateTo: filters.dateTo || "",
+      sourceGroup: filters.sourceGroup || "",
+      source: filters.source || "",
+      productType: filters.productType || "",
+      bloodGroup: filters.bloodGroup || "",
+      rh: filters.rh || ""
+    };
+  }
+
+  async function runOutreachReport(batchId, filters = {}) {
+    const client = getClient();
+    const f = normalizeOutreachFilters(filters);
+    const { data, error } = await client.rpc("minimum_stock_outreach_report", {
+      p_batch_id: batchId,
+      p_date_from: f.dateFrom || null,
+      p_date_to: f.dateTo || null,
+      p_source_group: f.sourceGroup || null,
+      p_donate_source: f.source || null,
+      p_product_type: f.productType || null,
+      p_blood_group: f.bloodGroup || null,
+      p_rh: f.rh || null
+    });
+    if (error) throw new Error("คำนวณรายงานวิเคราะห์ออกหน่วยไม่สำเร็จ: " + error.message);
+    return data || { summary: {}, groups: [], sources: [] };
+  }
+
+  async function getOutreachReviewRows(batchId, limit = 100) {
+    const client = getClient();
+    const { data, error } = await client
+      .from("minimum_stock_outreach_rows")
+      .select("id,component_key,bag_number,product_type,blood_group,rh,donate_source,source_group,date_stock_in,date_stock_out,status,destroy_reason,outcome_code,aggregate_eligible,needs_review,duplicate_count")
+      .eq("batch_id", batchId)
+      .eq("needs_review", true)
+      .order("date_stock_in", { ascending: false, nullsFirst: false })
+      .limit(Math.max(1, Math.min(500, Number(limit || 100))));
+    if (error) throw new Error("โหลดรายการที่ต้องตรวจสอบไม่สำเร็จ: " + error.message);
+    return (data || []).map(fromOutreachDbRow);
   }
 
   async function getOutreachAnalysis(options = {}) {
@@ -1791,68 +2142,153 @@
       throw new Error("รายงานวิเคราะห์ผลถุงเลือดออกหน่วยต้องใช้ Supabase");
     }
 
-    if (!options.forceRefresh && cachedOutreachSnapshot) return cachedOutreachSnapshot;
     if (options.forceRefresh) cachedOutreachSnapshot = null;
-
-    const client = getClient();
-    const { data, error } = await client
-      .from(getTableName())
-      .select(OUTREACH_SELECT)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      const message = String(error.message || "");
-      if (message.includes("outreach_analysis")) {
-        throw new Error("ยังไม่ได้เปิดใช้รายงานใหม่ใน Supabase กรุณารันไฟล์ supabase-outreach-analysis-v2.6.0.sql ก่อน");
-      }
-      throw new Error("โหลดรายงานวิเคราะห์ผลถุงเลือดออกหน่วยไม่สำเร็จ: " + message);
+    const batch = await getActiveOutreachBatch(Boolean(options.forceRefresh));
+    if (!batch) {
+      return { ok: true, message: "ยังไม่มีข้อมูลวิเคราะห์ผลถุงเลือดออกหน่วย", batchId: "", report: { summary: {}, groups: [], sources: [] } };
     }
 
-    if (!data) {
-      return { ok: true, message: "ยังไม่มีข้อมูลวิเคราะห์ผลถุงเลือดออกหน่วย", rows: [] };
+    const filters = normalizeOutreachFilters(options.filters || {});
+    const report = await runOutreachReport(batch.id, filters);
+    let reviewRows = [];
+    if (!Object.values(filters).some(Boolean)) {
+      reviewRows = await getOutreachReviewRows(batch.id, 100);
+    } else if (cachedOutreachSnapshot?.batchMeta?.id === batch.id) {
+      reviewRows = cachedOutreachSnapshot.reviewRows || [];
     }
 
-    const analysis = expandOutreachAnalysis(data.outreach_analysis) || { rows: [] };
-    cachedOutreachSnapshot = {
+    const result = {
       ok: true,
       message: "โหลดรายงานวิเคราะห์ผลถุงเลือดออกหน่วยสำเร็จ",
-      id: data.id,
-      fileName: data.file_name || "",
-      calculatedAt: data.calculated_at || data.created_at || "",
-      ...analysis
+      batchId: batch.id,
+      fileName: batch.file_name || "",
+      calculatedAt: batch.calculated_at || batch.completed_at || "",
+      sourceStartDate: batch.source_start_date || "",
+      sourceEndDate: batch.source_end_date || "",
+      rawRowCount: Number(batch.raw_row_count || 0),
+      componentRowCount: Number(batch.component_row_count || 0),
+      totalUniqueBags: Number(batch.unique_bag_count || 0),
+      excludedComponentCount: Number(batch.excluded_component_count || 0),
+      validation: batch.validation || {},
+      filterOptions: batch.filter_options || {},
+      reviewRows,
+      report,
+      filters,
+      batchMeta: batch
     };
-    return cachedOutreachSnapshot;
+
+    if (!Object.values(filters).some(Boolean)) cachedOutreachSnapshot = result;
+    return result;
+  }
+
+  function applyOutreachRowQueryFilters(query, filters = {}) {
+    const f = normalizeOutreachFilters(filters);
+    if (f.dateFrom) query = query.gte("date_stock_in", f.dateFrom);
+    if (f.dateTo) query = query.lte("date_stock_in", f.dateTo);
+    if (f.sourceGroup) query = query.eq("source_group", f.sourceGroup);
+    if (f.source) query = query.eq("donate_source", f.source);
+    if (f.productType) query = query.eq("product_type", f.productType);
+    if (f.bloodGroup) query = query.eq("blood_group", f.bloodGroup);
+    if (f.rh) query = query.eq("rh", f.rh);
+    return query;
+  }
+
+  async function getOutreachRows(options = {}) {
+    if (!isConfigured()) throw new Error("รายงานวิเคราะห์ออกหน่วยต้องใช้ Supabase");
+    const batch = options.batchId ? { id: options.batchId } : await getActiveOutreachBatch(false);
+    if (!batch?.id) return { rows: [], count: 0, page: 1, perPage: Number(options.perPage || 100) };
+
+    const client = getClient();
+    const selectFields = "id,component_key,bag_number,product_type,blood_group,rh,donate_source,source_group,date_stock_in,date_stock_out,status,destroy_reason,outcome_code,aggregate_eligible,needs_review,duplicate_count";
+    const perPage = Math.max(1, Math.min(1000, Number(options.perPage || 100)));
+    const page = Math.max(1, Number(options.page || 1));
+    const extraFilters = { ...(options.filters || {}) };
+    if (options.sourceGroup) extraFilters.sourceGroup = options.sourceGroup;
+    if (options.source) extraFilters.source = options.source;
+
+    const buildQuery = (withCount = false) => {
+      let query = client
+        .from("minimum_stock_outreach_rows")
+        .select(selectFields, withCount ? { count: "exact" } : undefined)
+        .eq("batch_id", batch.id);
+      if (!options.includeIneligible) query = query.eq("aggregate_eligible", true);
+      query = applyOutreachRowQueryFilters(query, extraFilters);
+      return query.order("date_stock_in", { ascending: false, nullsFirst: false })
+        .order("donate_source", { ascending: true })
+        .order("bag_number", { ascending: true });
+    };
+
+    if (!options.all) {
+      const from = (page - 1) * perPage;
+      const to = from + perPage - 1;
+      const { data, error, count } = await buildQuery(true).range(from, to);
+      if (error) throw new Error("โหลดรายละเอียดรายถุงไม่สำเร็จ: " + error.message);
+      return { rows: (data || []).map(fromOutreachDbRow), count: Number(count || 0), page, perPage };
+    }
+
+    const rows = [];
+    const chunk = 1000;
+    let from = 0;
+    while (true) {
+      const { data, error } = await buildQuery(false).range(from, from + chunk - 1);
+      if (error) throw new Error("โหลดข้อมูลสำหรับส่งออกไม่สำเร็จ: " + error.message);
+      const part = (data || []).map(fromOutreachDbRow);
+      rows.push(...part);
+      emitOutreachProgress(options, "outreach-export", rows.length, 0, `กำลังเตรียมข้อมูลส่งออก ${rows.length.toLocaleString()} รายการ`);
+      if (part.length < chunk) break;
+      from += chunk;
+    }
+    return { rows, count: rows.length, page: 1, perPage: rows.length };
   }
 
   async function uploadExcel(file, options = {}) {
     if (!isConfigured()) return fallbackUploadExcel(file, options.gasWebAppUrl);
 
-    // โหมด Supabase only: ถ้าตั้งค่า Supabase แล้ว ให้คำนวณและบันทึกลง Supabase เท่านั้น
-    // ไม่ fallback ไป Google Sheet/Apps Script เพื่อไม่ให้ช้าและไม่ให้มีข้อมูลซ้ำ
-    if (!options.skipClearBeforeUpload) {
-      await clearAllSnapshots({ beforeUpload: true });
-    }
+    // v2.6.1 safe replace:
+    // - parse + stage outreach first while old data is still active
+    // - save the new Minimum Stock snapshot
+    // - activate the new outreach batch atomically
+    // - delete old snapshots only after the new snapshot exists
     const parsed = await parseExcelFile(file);
-    await saveSnapshot(parsed, { skipClearBeforeSave: true });
-    return toDashboard({
-      file_name: parsed.fileName,
-      calculated_at: parsed.calculatedAt,
-      total_rows: parsed.totalRows,
-      released_rows: parsed.releasedRows,
-      result_rows: parsed.resultRows,
-      start_date: parsed.startDate,
-      end_date: parsed.endDate,
-      results: parsed.results
-    });
+    let batchId = "";
+    let snapshot = null;
+    let activated = false;
+
+    try {
+      emitOutreachProgress(options, "outreach-batch", 0, parsed.outreachAnalysis?.componentRowCount || 0, "กำลังเตรียมพื้นที่ข้อมูลวิเคราะห์ออกหน่วย");
+      batchId = await createOutreachBatch(parsed);
+      await stageOutreachRows(batchId, parsed.outreachAnalysis, options);
+
+      emitOutreachProgress(options, "snapshot", 0, 1, "กำลังบันทึก Minimum Stock / Expiry Risk / Mobile Unit Planning");
+      snapshot = await saveSnapshot(parsed, { outreachBatchId: batchId });
+      emitOutreachProgress(options, "snapshot", 1, 1, "บันทึก snapshot ใหม่สำเร็จ");
+
+      await activateOutreachBatch(batchId);
+      activated = true;
+      try {
+        await cleanupOldSnapshots(snapshot.id);
+      } catch (cleanupErr) {
+        // Latest snapshot is still selected by created_at, so cleanup failure must not invalidate a successful upload.
+        console.warn("cleanup old snapshots failed", cleanupErr);
+      }
+      clearCachedSnapshotState();
+
+      return toDashboard(snapshot);
+    } catch (err) {
+      // If activation did not happen yet, remove staged rows so a failed upload does not consume storage.
+      if (batchId && !activated) await discardOutreachBatch(batchId);
+      throw err;
+    }
   }
+
 
   window.MinimumStockBackend = {
     uploadExcel,
     getDashboard,
     getMobilePlanning,
     getOutreachAnalysis,
+    getOutreachRows,
+    clearAllOutreachBatches,
     ensureOutreachSchema,
     preflightOutreachFile,
     clearAllSnapshots,
@@ -1874,6 +2310,8 @@
       classifyOutreachOutcome,
       buildOutreachAnalysis,
       buildOutreachValidation,
+      analyzeOutreachData,
+      parseCsvTextToRows,
       compactOutreachAnalysis,
       expandOutreachAnalysis,
       normalizeAnyDateStrict

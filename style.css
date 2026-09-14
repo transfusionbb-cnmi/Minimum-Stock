@@ -1152,3 +1152,50 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------------- v2.6.1 LIS CSV outreach refinements ---------------- */
+.outreach-method-note {
+  border-left: 5px solid #4f9ed2;
+}
+
+.bar-transformed,
+.legend-transformed {
+  background: #8b7bc7;
+}
+
+.bar-conflict {
+  background: #e3b54b;
+}
+
+.mini-received {
+  background: #4f9ed2;
+}
+
+.mini-used {
+  background: #2d9f73;
+}
+
+.mini-destroyed {
+  background: #dc6d68;
+}
+
+.outreach-outcome-badge.is-transformed {
+  background: #f0edfb;
+  color: #5c4aa0;
+}
+
+.outreach-source-bar-row {
+  grid-template-columns: minmax(120px, 210px) 1fr 64px;
+  align-items: center;
+}
+
+@media (max-width: 700px) {
+  .outreach-source-bar-row {
+    grid-template-columns: minmax(105px, 150px) 1fr 54px;
+    gap: 8px;
+  }
+}
+
+.legend-conflict {
+  background: #e3b54b;
+}
