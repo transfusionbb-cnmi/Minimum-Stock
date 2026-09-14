@@ -10,8 +10,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Blood Stock" />
-  <link rel="manifest" href="manifest.webmanifest?v=20260914-v2-8-1-roster-login-trend" />
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260914-v2-8-1-roster-login-trend" />
+  <link rel="manifest" href="manifest.webmanifest?v=20260914-v2-8-2-admin-initial-password" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260914-v2-8-2-admin-initial-password" />
 
 
   <script>
@@ -19,7 +19,7 @@
       "use strict";
 
       // เปลี่ยนเลขนี้ทุกครั้งที่ออก ZIP ใหม่ เพื่อให้เครื่องผู้ใช้เริ่มเหมือนแอพใหม่
-      const APP_VERSION = "20260914-v2-8-1-roster-login-trend";
+      const APP_VERSION = "20260914-v2-8-2-admin-initial-password";
       const VERSION_KEY = "minimumStock.__appVersion";
       const FORCE_RESET = /[?&](fresh|reset|clearCache)=1/i.test(window.location.search);
 
@@ -77,7 +77,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="style.css?v=20260914-v2-8-1-roster-login-trend">
+  <link rel="stylesheet" href="style.css?v=20260914-v2-8-2-admin-initial-password">
 </head>
 
 <body>
@@ -94,14 +94,14 @@
       <form id="loginForm" class="auth-form">
         <label>Username
           <div class="username-input-wrap">
-            <input id="loginUsername" type="text" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" placeholder="parichat.ink" required />
+            <input id="loginUsername" type="text" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" placeholder="username.sur" required />
             <span class="username-domain">@mahidol.ac.th</span>
           </div>
         </label>
         <label>รหัสผ่าน
           <input id="loginPassword" type="password" autocomplete="current-password" minlength="8" required />
         </label>
-        <div class="auth-first-login-note">เข้าใช้ครั้งแรก: รหัสผ่านเริ่มต้นเป็น Username เดียวกัน เช่น <b>parichat.ink</b></div>
+        <div class="auth-first-login-note">เข้าใช้ครั้งแรก: ใช้รหัสผ่านเริ่มต้นที่ <b>Admin กำหนดให้</b> และระบบจะให้เปลี่ยนรหัสใหม่หลังเข้าสู่ระบบ</div>
         <button id="loginBtn" class="btn btn-main w-100" type="submit">เข้าสู่ระบบ</button>
       </form>
     </div>
@@ -230,6 +230,23 @@
         <button id="adminRefreshBtn" class="btn btn-light" type="button">รีเฟรช</button>
       </div>
       <div class="admin-summary-grid" id="adminSummary"></div>
+      <div id="adminInitialPasswordPanel" class="simple-panel mb-3 admin-only" style="display:none;">
+        <div class="panel-heading-row"><div><h3>กำหนดรหัสเริ่มต้น</h3><div class="small-muted">ใช้เฉพาะเจ้าหน้าที่ที่ยังไม่เคยเปิดบัญชี · อย่างน้อย 8 ตัวอักษร · ระบบไม่เก็บรหัสจริง</div></div></div>
+        <div class="row g-2 align-items-end mt-1">
+          <div class="col-12 col-md-5">
+            <label class="form-label">ผู้ใช้งาน</label>
+            <select id="adminInitialPasswordUser" class="form-select"><option value="">กำลังโหลดรายชื่อ...</option></select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label">รหัสเริ่มต้น</label>
+            <input id="adminInitialPasswordValue" class="form-control" type="password" minlength="8" autocomplete="new-password" placeholder="อย่างน้อย 8 ตัวอักษร" />
+          </div>
+          <div class="col-12 col-md-3 d-grid">
+            <button id="adminInitialPasswordSaveBtn" class="btn btn-main" type="button">บันทึกรหัสเริ่มต้น</button>
+          </div>
+        </div>
+        <div id="adminInitialPasswordStatus" class="small-muted mt-2"></div>
+      </div>
       <div class="simple-panel mb-3">
         <div class="panel-heading-row"><div><h3>บัญชีผู้ใช้งาน</h3><div class="small-muted">รายชื่อถูกกำหนดไว้สำหรับ Blood Bank แล้ว · ปิดใช้งานแทนการลบ เพื่อเก็บ Audit ไว้</div></div></div>
         <div id="adminUsersList" class="admin-users-list"><div class="small-muted">กำลังโหลด...</div></div>
@@ -295,10 +312,11 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="supabase-config.js?v=20260914-v2-8-1-roster-login-trend"></script>
-  <script src="supabase-backend.js?v=20260914-v2-8-1-roster-login-trend"></script>
-  <script src="script.js?v=20260914-v2-8-1-roster-login-trend"></script>
-  <script src="auth.js?v=20260914-v2-8-1-roster-login-trend"></script>
+  <script src="supabase-config.js?v=20260914-v2-8-2-admin-initial-password"></script>
+  <script src="supabase-backend.js?v=20260914-v2-8-2-admin-initial-password"></script>
+  <script src="script.js?v=20260914-v2-8-2-admin-initial-password"></script>
+  <script src="auth.js?v=20260914-v2-8-2-admin-initial-password"></script>
+  <script src="auth-v282.js?v=20260914-v2-8-2-admin-initial-password"></script>
 
 </body>
 </html>
