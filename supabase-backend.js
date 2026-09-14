@@ -2515,7 +2515,7 @@
     const { data, error } = await client.rpc("minimum_stock_can_bootstrap_user", {
       p_username: normalized
     });
-    if (error) throw new Error("ตรวจสอบบัญชีไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.1");
+    if (error) throw new Error("ตรวจสอบบัญชีไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.2");
     return data || { allowed: false, username: normalized, hasAccount: false };
   }
 
@@ -2528,7 +2528,7 @@
       p_username: normalized,
       p_password: String(password || "")
     });
-    if (error) throw new Error("ตรวจรหัสเริ่มต้นไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.1");
+    if (error) throw new Error("ตรวจรหัสเริ่มต้นไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.2");
     return data || { allowed: false, matched: false, hasAccount: false, passwordConfigured: false };
   }
 
@@ -2654,7 +2654,7 @@
 
     const { data, error } = await client.rpc("minimum_stock_current_user_access");
     if (error) {
-      throw new Error("ระบบสิทธิ์ผู้ใช้งานยังไม่พร้อม: " + error.message + " | กรุณารัน SQL v2.9.1");
+      throw new Error("ระบบสิทธิ์ผู้ใช้งานยังไม่พร้อม: " + error.message + " | กรุณารัน SQL v2.9.2");
     }
     return data || { authenticated: true, active: false, role: "", mustChangePassword: false };
   }
@@ -2698,7 +2698,7 @@
       p_email: String(email || "").trim().toLowerCase(),
       p_password: pwd
     });
-    if (error) throw new Error("ตั้งรหัสเริ่มต้นไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.1");
+    if (error) throw new Error("ตั้งรหัสเริ่มต้นไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.2");
     return data || { ok: true };
   }
 
