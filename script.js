@@ -92,10 +92,10 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
         }
 
         uploadBtn.textContent = "กำลังตรวจสอบ Supabase...";
-        showStatus("กำลังตรวจสอบว่า Supabase พร้อมสำหรับ v2.6.1 ก่อนเริ่มบันทึกชุดข้อมูลใหม่", true);
+        showStatus("กำลังตรวจสอบว่า Supabase พร้อมสำหรับโครงสร้างวิเคราะห์ v2.6.1 ก่อนเริ่มบันทึกชุดข้อมูลใหม่", true);
         await MinimumStockBackend.ensureOutreachSchema();
 
-        // v2.6.1 ไม่ล้างข้อมูลเดิมก่อนเริ่ม เพื่อป้องกันข้อมูลหายถ้าไฟล์ใหม่หรืออินเทอร์เน็ตมีปัญหาระหว่างอัปโหลด
+        // v2.6.2 ไม่ล้างข้อมูลเดิมก่อนเริ่ม เพื่อป้องกันข้อมูลหายถ้าไฟล์ใหม่หรืออินเทอร์เน็ตมีปัญหาระหว่างอัปโหลด
         clearMinimumStockLocalCaches({ keepVersion: true });
         currentOutreachAnalysisData = null;
 
@@ -218,7 +218,7 @@ let currentMobilePlanningData = null;
 let currentOutreachAnalysisData = null;
 let currentOutreachFilteredRows = [];
 let currentOutreachSourceSummary = [];
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260914-v2-6-1-lis-csv-outreach-analysis";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260914-v2-6-2-confirm-modal-dom-fix";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -465,23 +465,39 @@ function closeModal() {
 
 function showConfirmModal(title, message) {
   return new Promise((resolve) => {
-    confirmTitle.textContent = title || "ยืนยัน";
-    confirmMessage.textContent = String(message || "");
-    confirmMessage.style.whiteSpace = "pre-line";
-    confirmOverlay.style.display = "flex";
+    // v2.6.2: resolve the confirmation elements only when the modal is used.
+    // This prevents stale/null references if script.js is evaluated before
+    // the confirm modal markup has finished parsing or when a cached HTML
+    // shell and a newer script are briefly mixed during deployment.
+    const overlay = document.getElementById("confirmOverlay");
+    const titleEl = document.getElementById("confirmTitle");
+    const messageEl = document.getElementById("confirmMessage");
+    const okBtn = document.getElementById("confirmOkBtn");
+    const cancelBtn = document.getElementById("confirmCancelBtn");
+
+    if (!overlay || !titleEl || !messageEl || !okBtn || !cancelBtn) {
+      console.error("Confirmation modal elements are missing from the DOM");
+      resolve(window.confirm(`${title || "ยืนยัน"}\n\n${String(message || "")}`));
+      return;
+    }
+
+    titleEl.textContent = title || "ยืนยัน";
+    messageEl.textContent = String(message || "");
+    messageEl.style.whiteSpace = "pre-line";
+    overlay.style.display = "flex";
 
     const cleanup = (result) => {
-      confirmOverlay.style.display = "none";
-      confirmOkBtn.onclick = null;
-      confirmCancelBtn.onclick = null;
-      confirmOverlay.onclick = null;
+      overlay.style.display = "none";
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+      overlay.onclick = null;
       resolve(result);
     };
 
-    confirmOkBtn.onclick = () => cleanup(true);
-    confirmCancelBtn.onclick = () => cleanup(false);
-    confirmOverlay.onclick = (e) => {
-      if (e.target === confirmOverlay) cleanup(false);
+    okBtn.onclick = () => cleanup(true);
+    cancelBtn.onclick = () => cleanup(false);
+    overlay.onclick = (e) => {
+      if (e.target === overlay) cleanup(false);
     };
   });
 }
@@ -1314,7 +1330,7 @@ function renderExpiryGroupedRows(rows) {
 }
 
 
-/* ---------------- Outreach blood bag outcome analysis v2.6.1 ---------------- */
+/* ---------------- Outreach blood bag outcome analysis v2.6.2 ---------------- */
 const OUTREACH_USED = "นำไปใช้/จ่ายออก";
 const OUTREACH_DESTROYED = "ทิ้ง/ทำลาย";
 const OUTREACH_TRANSFORMED = "แปรรูปต่อ";
@@ -1410,7 +1426,7 @@ async function loadOutreachAnalysis(forceRefresh = false) {
   container.innerHTML = `
     <div class="hero-card mt-4">
       <div class="fw-bold">กำลังโหลดรายงานวิเคราะห์ผลถุงเลือดออกหน่วย...</div>
-      <div class="small-muted mt-1">v2.6.1 โหลดเฉพาะสรุปจาก Supabase เพื่อให้เปิดบนมือถือได้เร็วขึ้น</div>
+      <div class="small-muted mt-1">v2.6.2 โหลดเฉพาะสรุปจาก Supabase เพื่อให้เปิดบนมือถือได้เร็วขึ้น</div>
     </div>
   `;
 
