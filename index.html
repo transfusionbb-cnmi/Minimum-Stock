@@ -10,8 +10,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Blood Stock" />
-  <link rel="manifest" href="manifest.webmanifest?v=20260914-v2-7-0-simple-ui-lifetime-master" />
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260914-v2-7-0-simple-ui-lifetime-master" />
+  <link rel="manifest" href="manifest.webmanifest?v=20260914-v2-8-1-roster-login-trend" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260914-v2-8-1-roster-login-trend" />
 
 
   <script>
@@ -19,7 +19,7 @@
       "use strict";
 
       // เปลี่ยนเลขนี้ทุกครั้งที่ออก ZIP ใหม่ เพื่อให้เครื่องผู้ใช้เริ่มเหมือนแอพใหม่
-      const APP_VERSION = "20260914-v2-7-0-simple-ui-lifetime-master";
+      const APP_VERSION = "20260914-v2-8-1-roster-login-trend";
       const VERSION_KEY = "minimumStock.__appVersion";
       const FORCE_RESET = /[?&](fresh|reset|clearCache)=1/i.test(window.location.search);
 
@@ -77,10 +77,65 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="style.css?v=20260914-v2-7-0-simple-ui-lifetime-master">
+  <link rel="stylesheet" href="style.css?v=20260914-v2-8-1-roster-login-trend">
 </head>
 
 <body>
+<div id="authShell" class="auth-shell">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="auth-brand-mark">B</div>
+      <div><strong>CNMI Blood Stock</strong><span>เข้าสู่ระบบก่อนใช้งาน</span></div>
+    </div>
+
+    <div id="authLoginPanel">
+      <h1>เข้าสู่ระบบ</h1>
+      <p class="auth-help">กรอก Username มหิดล ไม่ต้องพิมพ์ @mahidol.ac.th</p>
+      <form id="loginForm" class="auth-form">
+        <label>Username
+          <div class="username-input-wrap">
+            <input id="loginUsername" type="text" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" placeholder="parichat.ink" required />
+            <span class="username-domain">@mahidol.ac.th</span>
+          </div>
+        </label>
+        <label>รหัสผ่าน
+          <input id="loginPassword" type="password" autocomplete="current-password" minlength="8" required />
+        </label>
+        <div class="auth-first-login-note">เข้าใช้ครั้งแรก: รหัสผ่านเริ่มต้นเป็น Username เดียวกัน เช่น <b>parichat.ink</b></div>
+        <button id="loginBtn" class="btn btn-main w-100" type="submit">เข้าสู่ระบบ</button>
+      </form>
+    </div>
+
+    <div id="authChangePasswordPanel" style="display:none;">
+      <h1>ตั้งรหัสผ่านใหม่</h1>
+      <p class="auth-help">ครั้งแรกต้องเปลี่ยนรหัสก่อนเข้าแอป ใช้อย่างน้อย 8 ตัวอักษร</p>
+      <form id="changePasswordForm" class="auth-form">
+        <label>รหัสผ่านใหม่
+          <input id="newPassword" type="password" autocomplete="new-password" minlength="8" required />
+        </label>
+        <label>ยืนยันรหัสผ่านใหม่
+          <input id="confirmNewPassword" type="password" autocomplete="new-password" minlength="8" required />
+        </label>
+        <button id="changePasswordBtn" class="btn btn-main w-100" type="submit">บันทึกรหัสผ่านใหม่</button>
+      </form>
+      <button id="changePasswordLogoutBtn" class="auth-link-btn" type="button">ออกจากระบบ</button>
+    </div>
+
+    <div id="authPendingPanel" class="auth-pending" style="display:none;">
+      <div class="auth-pending-icon">🔒</div>
+      <h1>บัญชีนี้ถูกปิดใช้งาน</h1>
+      <p id="authPendingMessage" class="auth-help">กรุณาติดต่อ Admin ของหน่วย</p>
+      <div class="d-grid gap-2">
+        <button id="pendingRefreshBtn" class="btn btn-main w-100" type="button">ตรวจสอบสิทธิ์อีกครั้ง</button>
+        <button id="pendingLogoutBtn" class="btn btn-light w-100" type="button">ออกจากระบบ</button>
+      </div>
+    </div>
+
+    <div id="authMessage" class="auth-message" style="display:none;"></div>
+  </div>
+</div>
+
+<div id="protectedApp" style="display:none;">
   <button class="mobile-menu-btn" onclick="toggleSidebar()">☰ เมนู</button>
 <div id="sideOverlay" class="side-overlay" onclick="toggleSidebar(false)"></div>
 
@@ -92,9 +147,17 @@
     <button class="side-btn active" onclick="showDashboardPage('minimum', this)"><span>▦</span> สต๊อกขั้นต่ำ</button>
     <button class="side-btn" onclick="showDashboardPage('expiry', this)"><span>◷</span> ใกล้หมดอายุ</button>
     <button class="side-btn" onclick="showDashboardPage('mobile', this)"><span>▣</span> วางแผนออกหน่วย</button>
-    <button class="side-btn" onclick="showDashboardPage('outreach', this)"><span>↗</span> ผลถุงออกหน่วย</button>
+    <button class="side-btn" onclick="showDashboardPage('outreach', this)"><span>↗</span> ผลถุงเลือด</button>
 
     <button id="installAppBtn" class="side-btn install-app-btn" type="button"><span>＋</span> ติดตั้งแอป</button>
+    <button id="adminUsersBtn" class="side-btn admin-only" type="button" style="display:none;" onclick="showDashboardPage('admin', this)"><span>⚙</span> จัดการผู้ใช้งาน</button>
+
+    <div class="side-user-card">
+      <div class="side-user-name" id="currentUserName">ผู้ใช้งาน</div>
+      <div class="side-user-email" id="currentUserEmail"></div>
+      <div class="side-user-role" id="currentUserRole">Staff</div>
+      <button id="logoutBtn" class="side-logout-btn" type="button">ออกจากระบบ</button>
+    </div>
   </aside>
 
   <main>
@@ -133,7 +196,7 @@
           <div class="progress mt-3" style="height:8px;"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%;"></div></div>
         </div>
 
-        <details class="simple-details danger-details mt-3">
+        <details class="simple-details danger-details mt-3 admin-only" style="display:none;">
           <summary>ตัวเลือกสำหรับผู้ดูแลระบบ</summary>
           <div class="pt-3 small-muted mb-2">การล้างข้อมูลจะลบฐานประวัติ LIS ทั้งหมด และต้องนำไฟล์ย้อนหลังทั้งหมดมาเป็นฐานใหม่</div>
           <button id="clearDataBtn" class="btn btn-outline-danger" type="button">ล้างฐานข้อมูลทั้งหมด</button>
@@ -157,10 +220,31 @@
       <div id="outreachOutcomeDashboard"></div>
     </section>
 
+    <section id="page-admin" class="dashboard-page">
+      <div class="simple-page-head mt-2">
+        <div>
+          <div class="page-kicker">ADMIN</div>
+          <h1>ผู้ใช้งานและความปลอดภัย</h1>
+          <div class="page-subline">เปิด/ปิดบัญชีเจ้าหน้าที่ ป้องกันผู้ที่ออกจากหน่วยเข้าใช้งาน และตรวจ Log การใช้งาน</div>
+        </div>
+        <button id="adminRefreshBtn" class="btn btn-light" type="button">รีเฟรช</button>
+      </div>
+      <div class="admin-summary-grid" id="adminSummary"></div>
+      <div class="simple-panel mb-3">
+        <div class="panel-heading-row"><div><h3>บัญชีผู้ใช้งาน</h3><div class="small-muted">รายชื่อถูกกำหนดไว้สำหรับ Blood Bank แล้ว · ปิดใช้งานแทนการลบ เพื่อเก็บ Audit ไว้</div></div></div>
+        <div id="adminUsersList" class="admin-users-list"><div class="small-muted">กำลังโหลด...</div></div>
+      </div>
+      <div class="simple-panel">
+        <div class="panel-heading-row"><div><h3>Audit Log ล่าสุด</h3><div class="small-muted">Login / Logout / เปลี่ยนรหัส / Upload LIS / เปิด-ปิดบัญชี / ล้างฐานข้อมูล</div></div></div>
+        <div id="adminAuditList" class="admin-audit-list"><div class="small-muted">กำลังโหลด...</div></div>
+      </div>
+    </section>
+
           <div id="dashboard" class="mt-4" style="display:none;"></div>
     </div>
   </main>
 </div>
+</div><!-- /protectedApp -->
 
 <div id="outreachDetailOverlay" class="modal-overlay outreach-detail-overlay" style="display:none;">
   <div class="outreach-detail-modal">
@@ -211,9 +295,10 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="supabase-config.js?v=20260914-v2-7-0-simple-ui-lifetime-master"></script>
-  <script src="supabase-backend.js?v=20260914-v2-7-0-simple-ui-lifetime-master"></script>
-  <script src="script.js?v=20260914-v2-7-0-simple-ui-lifetime-master"></script>
+  <script src="supabase-config.js?v=20260914-v2-8-1-roster-login-trend"></script>
+  <script src="supabase-backend.js?v=20260914-v2-8-1-roster-login-trend"></script>
+  <script src="script.js?v=20260914-v2-8-1-roster-login-trend"></script>
+  <script src="auth.js?v=20260914-v2-8-1-roster-login-trend"></script>
 
 </body>
 </html>

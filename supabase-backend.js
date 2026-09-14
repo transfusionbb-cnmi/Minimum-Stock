@@ -85,9 +85,9 @@
     const cfg = getConfig();
     cachedClient = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
       auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
       }
     });
     return cachedClient;
@@ -123,21 +123,11 @@
     const { data, error } = await client.rpc("minimum_stock_clear_all_snapshots");
 
     if (error) {
-      // fallback เผื่อบาง Project เปิด delete policy ไว้แล้ว
-      const { error: directDeleteError } = await client
-        .from(getTableName())
-        .delete()
-        .not("id", "is", null);
-
-      if (directDeleteError) {
-        throw new Error(
-          "ล้างข้อมูลเดิมใน Supabase ไม่สำเร็จ: " +
-          (error.message || directDeleteError.message) +
-          " | ให้รันไฟล์ supabase-clear-before-upload.sql ใน SQL Editor ก่อน"
-        );
-      }
-
-      return { ok: true, message: "ล้างข้อมูลเดิมแล้ว", deleted: null };
+      throw new Error(
+        "ล้างข้อมูลเดิมใน Supabase ไม่สำเร็จ: " +
+        (error.message || "ไม่มีสิทธิ์") +
+        " | ฟังก์ชันนี้อนุญาตเฉพาะ Admin"
+      );
     }
 
     return data || { ok: true, message: "ล้างข้อมูลเดิมแล้ว", deleted: null };
@@ -924,6 +914,28 @@
     CONFLICT: "conflict"
   };
 
+  // v2.7.1: ผู้ใช้ยืนยันว่ารายการตรวจสอบ 28 component ด้านล่างเป็นข้อมูลสมมติ/ใช้สอนทั้งหมด
+  // จึงกันออกจาก CQI/KPI โดยอิง BagNumber เพื่อไม่ให้กลับมาปรากฏเป็น "ต้องตรวจสอบ" อีก
+  // 28 component นี้มาจาก 22 BagNumber (บาง BagNumber มีมากกว่า 1 ProductType)
+  const OUTREACH_TRAINING_BAG_KEYS = new Set([
+    "10062310166", "10062310170", "10062310210", "10062310225",
+    "10062710219", "10062710259", "10062810164", "10062A20629",
+    "10062J10210", "10062N10387", "10062V17612", "10063020888",
+    "10066K08484", "10066M16169", "10066V34903", "10068040382",
+    "120", "9009", "X201", "X202", "X203", "X204"
+  ]);
+
+  function normalizeTrainingBagKey(value) {
+    let key = normalizeBagKey(value);
+    // CSV จาก LIS บางช่วง export เลขถุงแบบ numeric แล้วเติม .00
+    if (/^\d+\.00$/.test(key)) key = key.slice(0, -3);
+    return key;
+  }
+
+  function isExcludedTrainingBag(value) {
+    return OUTREACH_TRAINING_BAG_KEYS.has(normalizeTrainingBagKey(value));
+  }
+
   function isExcludedOutreachSource(value) {
     const text = String(value || "").trim();
     if (!text) return false;
@@ -1011,7 +1023,7 @@
     const status = normalizeOutreachStatus(statusValue);
     const destroyReason = String(destroyReasonValue || "").trim();
 
-    // v2.7.0: Status ใน LIS เป็นตัวหลัก เพราะ DestroyReason บางครั้งติดมากับ
+    // v2.7.1: Status ใน LIS เป็นตัวหลัก เพราะ DestroyReason บางครั้งติดมากับ
     // component อื่นของ BagNumber เดียวกัน แม้รายการนี้จะ Released/Be Transformed แล้ว
     if (status === "Released" || status === "Dedicated") return OUTREACH_OUTCOME.USED;
     if (status === "Be Transformed") return OUTREACH_OUTCOME.TRANSFORMED;
@@ -1281,7 +1293,10 @@
       const dateStockInRaw = getHeaderValue(row, headerMap, "DateStockIn");
       const dateStockOutRaw = getHeaderValue(row, headerMap, "DateStockOut");
       const destroyReason = String(getHeaderValue(row, headerMap, "DestroyReason") || "").trim();
-      const sourceInfo = classifyOutreachSource(donateSource);
+      const trainingBagExcluded = isExcludedTrainingBag(bagRaw);
+      const sourceInfo = trainingBagExcluded
+        ? { group: OUTREACH_SOURCE_GROUPS.EXCLUDED, eligible: false, excluded: true, reason: "ข้อมูลสมมติ/ทดสอบ/สอน (BagNumber)" }
+        : classifyOutreachSource(donateSource);
 
       if (sourceInfo.excluded) excludedRawRowCount += 1;
 
@@ -1502,7 +1517,7 @@
     };
   }
 
-  // v2.7.0 stores outreach history in a lifetime master table; snapshot keeps only a small pointer.
+  // v2.7.1 stores outreach history in a lifetime master table; snapshot keeps only a small pointer.
   // This function now returns only small metadata when a caller still expects outreach_analysis.
   function compactOutreachAnalysis(analysis, uploadId = "") {
     if (!analysis) return {};
@@ -2140,7 +2155,7 @@
     if (error) {
       const message = String(error.message || "");
       if (message.includes("outreach_analysis")) {
-        throw new Error("Supabase ยังไม่พร้อมสำหรับ v2.7.0 กรุณารันไฟล์ supabase-outreach-analysis-v2.7.0.sql ก่อน");
+        throw new Error("Supabase ยังไม่พร้อมสำหรับ v2.8.1 กรุณารันไฟล์ supabase-auth-security-v2.8.1.sql ก่อน");
       }
       throw new Error("บันทึกลง Supabase ไม่สำเร็จ: " + message);
     }
@@ -2184,7 +2199,7 @@
       .select("component_key")
       .limit(1);
     if (error) {
-      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.7.0 กรุณารันไฟล์ supabase-outreach-analysis-v2.7.0.sql ใน SQL Editor ก่อน");
+      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.8.1 กรุณารันไฟล์ supabase-auth-security-v2.8.1.sql ใน SQL Editor ก่อน");
     }
     return { ok: true };
   }
@@ -2198,12 +2213,19 @@
   }
 
   function normalizeOutreachFilters(filters = {}) {
+    const rawProducts = Array.isArray(filters.productTypes)
+      ? filters.productTypes
+      : (filters.productType ? [filters.productType] : []);
+    const productTypes = Array.from(new Set(rawProducts
+      .map(value => String(value || "").trim())
+      .filter(Boolean)));
+
     return {
       dateFrom: filters.dateFrom || "",
       dateTo: filters.dateTo || "",
       sourceGroup: filters.sourceGroup || "",
       source: filters.source || "",
-      productType: filters.productType || "",
+      productTypes,
       bloodGroup: filters.bloodGroup || "",
       rh: filters.rh || ""
     };
@@ -2212,17 +2234,33 @@
   async function runOutreachReport(filters = {}) {
     const client = getClient();
     const f = normalizeOutreachFilters(filters);
-    const { data, error } = await client.rpc("minimum_stock_outreach_master_report", {
+    const { data, error } = await client.rpc("minimum_stock_outreach_master_report_v280", {
       p_date_from: f.dateFrom || null,
       p_date_to: f.dateTo || null,
       p_source_group: f.sourceGroup || null,
       p_donate_source: f.source || null,
-      p_product_type: f.productType || null,
+      p_product_types: f.productTypes.length ? f.productTypes : null,
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
     });
     if (error) throw new Error("คำนวณรายงานวิเคราะห์ออกหน่วยไม่สำเร็จ: " + error.message);
     return data || { summary: {}, groups: [], sources: [] };
+  }
+
+  async function getOutreachMonthlyTrend(year, filters = {}) {
+    const client = getClient();
+    const f = normalizeOutreachFilters(filters);
+    const safeYear = Number(year || new Date().getFullYear());
+    const { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v280", {
+      p_year: safeYear,
+      p_source_group: f.sourceGroup || null,
+      p_donate_source: f.source || null,
+      p_product_types: f.productTypes.length ? f.productTypes : null,
+      p_blood_group: f.bloodGroup || null,
+      p_rh: f.rh || null
+    });
+    if (error) throw new Error("โหลดกราฟแนวโน้มรายเดือนไม่สำเร็จ: " + error.message);
+    return data || { year: safeYear, years: [], months: [] };
   }
 
   async function getOutreachFilterOptions() {
@@ -2261,7 +2299,10 @@
     if (options.forceRefresh) cachedOutreachSnapshot = null;
 
     const filters = normalizeOutreachFilters(options.filters || {});
-    const hasFilters = Object.values(filters).some(Boolean);
+    const hasFilters = Boolean(
+      filters.dateFrom || filters.dateTo || filters.sourceGroup || filters.source ||
+      filters.productTypes.length || filters.bloodGroup || filters.rh
+    );
     if (!hasFilters && !options.forceRefresh && cachedOutreachSnapshot) return cachedOutreachSnapshot;
 
     const [state, latestUpload, filterOptions, report] = await Promise.all([
@@ -2309,7 +2350,8 @@
     if (f.dateTo) query = query.lte("date_stock_in", f.dateTo);
     if (f.sourceGroup) query = query.eq("source_group", f.sourceGroup);
     if (f.source) query = query.eq("donate_source", f.source);
-    if (f.productType) query = query.eq("product_type", f.productType);
+    if (f.productTypes.length === 1) query = query.eq("product_type", f.productTypes[0]);
+    if (f.productTypes.length > 1) query = query.in("product_type", f.productTypes);
     if (f.bloodGroup) query = query.eq("blood_group", f.bloodGroup);
     if (f.rh) query = query.eq("rh", f.rh);
     return query;
@@ -2390,7 +2432,7 @@
   async function uploadExcel(file, options = {}) {
     if (!isConfigured()) return fallbackUploadExcel(file, options.gasWebAppUrl);
 
-    // v2.7.0:
+    // v2.7.1:
     // - ฐานย้อนหลังเดิมอยู่ใน minimum_stock_outreach_master
     // - ไฟล์ประจำวันต้องย้อนหลัง 2 ปี และจะ UPSERT เฉพาะ component ที่อยู่ในไฟล์
     // - ประวัติเก่ากว่า 2 ปีไม่ถูกลบ
@@ -2432,11 +2474,191 @@
 
 
 
+  /* ---------------- Authentication / access control (v2.8.1) ---------------- */
+  function normalizeAuthUsername(value) {
+    let username = String(value || "").trim().toLowerCase();
+    username = username.replace(/@mahidol\.ac\.th$/i, "");
+    return username;
+  }
+
+  function usernameToMahidolEmail(value) {
+    const username = normalizeAuthUsername(value);
+    return username ? `${username}@mahidol.ac.th` : "";
+  }
+
+  async function authGetSession() {
+    const client = getClient();
+    if (!client) return { session: null };
+    const { data, error } = await client.auth.getSession();
+    if (error) throw new Error("ตรวจสอบ Login ไม่สำเร็จ: " + error.message);
+    return data || { session: null };
+  }
+
+  async function authSignIn(username, password) {
+    const client = getClient();
+    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+    const email = usernameToMahidolEmail(username);
+    if (!email) throw new Error("กรุณากรอก Username");
+    const { data, error } = await client.auth.signInWithPassword({
+      email,
+      password: String(password || "")
+    });
+    if (error) throw new Error("เข้าสู่ระบบไม่สำเร็จ: " + error.message);
+    return data || {};
+  }
+
+  async function getBootstrapUser(username) {
+    const client = getClient();
+    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+    const normalized = normalizeAuthUsername(username);
+    const { data, error } = await client.rpc("minimum_stock_can_bootstrap_user", {
+      p_username: normalized
+    });
+    if (error) throw new Error("ตรวจสอบบัญชีเริ่มต้นไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.8.1");
+    return data || { allowed: false, username: normalized };
+  }
+
+  async function authBootstrapFirstLogin(username, password) {
+    const client = getClient();
+    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+    const normalized = normalizeAuthUsername(username);
+    if (!normalized) throw new Error("กรุณากรอก Username");
+
+    const info = await getBootstrapUser(normalized);
+    if (!info.allowed) throw new Error("Username นี้ไม่ได้รับสิทธิ์ใช้งาน หรือถูก Admin ปิดใช้งาน");
+    if (info.hasAccount) throw new Error("รหัสผ่านไม่ถูกต้อง หากเคยเปลี่ยนรหัสแล้วให้ใช้รหัสล่าสุดของตนเอง");
+    if (String(password || "") !== normalized) {
+      throw new Error("เข้าใช้ครั้งแรก รหัสผ่านเริ่มต้นต้องเหมือน Username");
+    }
+
+    const email = String(info.email || usernameToMahidolEmail(normalized)).toLowerCase();
+    const { data, error } = await client.auth.signUp({
+      email,
+      password: normalized,
+      options: {
+        data: {
+          display_name: info.displayName || normalized,
+          nickname: info.nickname || "",
+          username: normalized
+        },
+        emailRedirectTo: window.location.origin + window.location.pathname
+      }
+    });
+    if (error) throw new Error("เปิดบัญชีครั้งแรกไม่สำเร็จ: " + error.message);
+    return { ...(data || {}), bootstrapInfo: info };
+  }
+
+  async function authUpdatePassword(newPassword) {
+    const client = getClient();
+    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+    const password = String(newPassword || "");
+    if (password.length < 8) throw new Error("รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร");
+    const { data, error } = await client.auth.updateUser({ password });
+    if (error) throw new Error("เปลี่ยนรหัสผ่านไม่สำเร็จ: " + error.message);
+    return data || {};
+  }
+
+  async function markPasswordChanged() {
+    const client = getClient();
+    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+    const { data, error } = await client.rpc("minimum_stock_mark_password_changed");
+    if (error) throw new Error("บันทึกสถานะรหัสผ่านไม่สำเร็จ: " + error.message);
+    return data || { ok: true };
+  }
+
+  async function authSignOut() {
+    const client = getClient();
+    if (!client) return { ok: true };
+    const { error } = await client.auth.signOut({ scope: "local" });
+    if (error) throw new Error("ออกจากระบบไม่สำเร็จ: " + error.message);
+    clearCachedSnapshotState();
+    return { ok: true };
+  }
+
+  function onAuthStateChange(callback) {
+    const client = getClient();
+    if (!client || !client.auth) return { data: { subscription: null } };
+    return client.auth.onAuthStateChange((event, session) => {
+      if (typeof callback === "function") callback(event, session);
+    });
+  }
+
+  async function getCurrentUserAccess() {
+    const client = getClient();
+    if (!client) return { authenticated: false, active: false, role: "", mustChangePassword: false };
+    const { data: sessionData, error: sessionError } = await client.auth.getSession();
+    if (sessionError) throw new Error("ตรวจสอบ Login ไม่สำเร็จ: " + sessionError.message);
+    if (!sessionData?.session) return { authenticated: false, active: false, role: "", mustChangePassword: false };
+
+    const { data, error } = await client.rpc("minimum_stock_current_user_access");
+    if (error) {
+      throw new Error("ระบบสิทธิ์ผู้ใช้งานยังไม่พร้อม: " + error.message + " | กรุณารัน SQL v2.8.1");
+    }
+    return data || { authenticated: true, active: false, role: "", mustChangePassword: false };
+  }
+
+  async function logAudit(action, detail = {}) {
+    const client = getClient();
+    if (!client) return { ok: false };
+    const { data, error } = await client.rpc("minimum_stock_log_audit", {
+      p_action: String(action || ""),
+      p_detail: detail || {}
+    });
+    if (error) throw new Error("บันทึก Audit Log ไม่สำเร็จ: " + error.message);
+    return data || { ok: true };
+  }
+
+  async function adminListUsers() {
+    const client = getClient();
+    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+    const { data, error } = await client.rpc("minimum_stock_admin_list_users");
+    if (error) throw new Error("โหลดรายชื่อผู้ใช้งานไม่สำเร็จ: " + error.message);
+    return data || [];
+  }
+
+  async function adminSetUserActive(email, isActive) {
+    const client = getClient();
+    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+    const { data, error } = await client.rpc("minimum_stock_admin_set_user_active", {
+      p_email: String(email || "").trim().toLowerCase(),
+      p_is_active: Boolean(isActive)
+    });
+    if (error) throw new Error("เปลี่ยนสถานะผู้ใช้งานไม่สำเร็จ: " + error.message);
+    return data || { ok: true };
+  }
+
+  async function adminGetAuditLogs(limit = 100) {
+    const client = getClient();
+    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+    const safeLimit = Math.max(1, Math.min(300, Number(limit || 100)));
+    const { data, error } = await client
+      .from("minimum_stock_audit_logs")
+      .select("id,created_at,user_id,email,action,detail")
+      .order("created_at", { ascending: false })
+      .limit(safeLimit);
+    if (error) throw new Error("โหลด Audit Log ไม่สำเร็จ: " + error.message);
+    return data || [];
+  }
+
+
   window.MinimumStockBackend = {
+    authGetSession,
+    authSignIn,
+    authBootstrapFirstLogin,
+    authUpdatePassword,
+    markPasswordChanged,
+    authSignOut,
+    onAuthStateChange,
+    getCurrentUserAccess,
+    logAudit,
+    adminListUsers,
+    adminSetUserActive,
+    adminGetAuditLogs,
     uploadExcel,
     getDashboard,
     getMobilePlanning,
     getOutreachAnalysis,
+    getOutreachMonthlyTrend,
     getOutreachRows,
     clearAllOutreachBatches,
     ensureOutreachSchema,
@@ -2458,6 +2680,7 @@
       normalizeCurrentStockLocation,
       isSplitSubunitBagNumber,
       classifyOutreachSource,
+      isExcludedTrainingBag,
       classifyOutreachOutcome,
       buildOutreachAnalysis,
       buildOutreachValidation,

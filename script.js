@@ -19,7 +19,7 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
     const confirmCancelBtn = document.getElementById("confirmCancelBtn");
 
     let selectedFile = null;
-    document.addEventListener("DOMContentLoaded", () => { loadDashboardOnStart(); loadLisUploadGuide(); });
+    window.addEventListener("minimumStockAuthReady", () => { loadDashboardOnStart(); loadLisUploadGuide(); });
 
     uploadZone.addEventListener("click", () => fileInput.click());
 
@@ -248,7 +248,9 @@ let currentMobilePlanningData = null;
 let currentOutreachAnalysisData = null;
 let currentOutreachFilteredRows = [];
 let currentOutreachSourceSummary = [];
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260914-v2-7-0-simple-ui-lifetime-master";
+let currentOutreachTrendYear = new Date().getFullYear();
+let currentOutreachTrendData = null;
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260914-v2-8-1-roster-login-trend";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -1016,57 +1018,66 @@ function renderExpiryRisk(data, days) {
   if (!holder) return;
 
   const stockRows = data.stockRows || [];
-  const focusRows = stockRows.filter(r => {
+  const eligible = stockRows.filter(r => {
     const type = String(r.type || "");
     const d = Number(r.daysToExpire);
-    return ["LPRC / LDPRC", "LDPPC", "SDP", "FFP"].includes(type) && d >= 0 && d <= Number(days || 7);
+    return ["LPRC / LDPRC", "LDPPC", "SDP", "FFP"].includes(type) && d >= 0;
   });
-  const urgent = focusRows.filter(r => Number(r.daysToExpire) <= 1).length;
-  const redCount = focusRows.filter(r => r.type === "LPRC / LDPRC").length;
-  const plateletCount = focusRows.filter(r => r.type === "LDPPC" || r.type === "SDP").length;
-  const ffpCount = focusRows.filter(r => r.type === "FFP").length;
+  const focusRows = eligible.filter(r => Number(r.daysToExpire) <= Number(days || 7));
+  const within1 = eligible.filter(r => Number(r.daysToExpire) <= 1).length;
+  const within3 = eligible.filter(r => Number(r.daysToExpire) <= 3).length;
+  const within7 = eligible.filter(r => Number(r.daysToExpire) <= 7).length;
   const groupedRows = buildExpiryGroupedRows(focusRows);
 
   holder.innerHTML = `
     <div class="simple-page-head">
       <div>
-        <div class="page-kicker">USE FIRST</div>
-        <h1>ถุงไหนควรรีบใช้ก่อน</h1>
-        <div class="page-subline">ดูของที่กำลังหมดอายุ เพื่อช่วยจัดลำดับการใช้และลด waste</div>
+        <h1>ควรใช้ถุงไหนก่อน?</h1>
+        <div class="page-subline">หน้านี้ใช้ดูเลือดที่กำลังหมดอายุ เพื่อช่วยจัดลำดับใช้ก่อนและลดการทิ้ง</div>
       </div>
+    </div>
+
+    <div class="purpose-card mb-3">
+      <div class="purpose-icon">◷</div>
+      <div><strong>วิธีใช้หน้านี้</strong><span>เลือกช่วงวัน แล้วดูรายการบนสุดก่อน ยิ่งเหลือวันน้อยยิ่งควรจัดลำดับใช้ก่อน</span></div>
+    </div>
+
+    <div class="simple-kpi-grid expiry-quick-grid">
+      <div class="simple-kpi ${within1 ? "is-alert" : "is-good"}"><span>ภายใน 1 วัน</span><strong>${within1}</strong><small>รายการ</small></div>
+      <div class="simple-kpi ${within3 ? "is-alert" : ""}"><span>ภายใน 3 วัน</span><strong>${within3}</strong><small>รายการ</small></div>
+      <div class="simple-kpi"><span>ภายใน 7 วัน</span><strong>${within7}</strong><small>รายการ</small></div>
     </div>
 
     <div class="choice-row mb-3">
-      <span class="choice-label">ดูที่จะหมดอายุภายใน</span>
+      <span class="choice-label">แสดงรายการที่จะหมดอายุภายใน</span>
       ${[1,3,5,7,14,30].map(d => `<button class="plan-btn expiry-day-btn ${Number(days)===d?"active":""}" data-days="${d}" onclick="setExpiryDays(${d})">${d} วัน</button>`).join("")}
     </div>
 
-    <div class="simple-kpi-grid">
-      <div class="simple-kpi ${urgent ? "is-alert" : "is-good"}"><span>วันนี้–พรุ่งนี้</span><strong>${urgent}</strong><small>รายการ</small></div>
-      <div class="simple-kpi"><span>เม็ดเลือดแดง</span><strong>${redCount}</strong><small>รายการ</small></div>
-      <div class="simple-kpi"><span>เกล็ดเลือด</span><strong>${plateletCount}</strong><small>รายการ</small></div>
-      <div class="simple-kpi"><span>FFP</span><strong>${ffpCount}</strong><small>รายการ</small></div>
-    </div>
-
     ${focusRows.length ? `
-      <div class="attention-strip ${urgent ? "" : "is-ok"}">
-        <strong>${focusRows.length} รายการ</strong><span> จะหมดอายุภายใน ${days} วัน — เรียงรายการเร่งด่วนไว้บนสุดแล้ว</span>
-      </div>
       <div class="simple-table-card table-responsive">
+        <div class="table-card-head">
+          <div><h3>${focusRows.length.toLocaleString()} รายการที่ควรติดตาม</h3><p>เรียงจากหมดอายุเร็วที่สุด</p></div>
+        </div>
         <table class="table align-middle mb-0 simple-table">
-          <thead><tr><th>เร่งด่วน</th><th>ผลิตภัณฑ์</th><th>หมู่เลือด</th><th class="text-end">จำนวน</th><th class="text-end">เหลือ</th><th>ควรทำ</th></tr></thead>
-          <tbody>${renderExpiryGroupedRows(groupedRows)}</tbody>
+          <thead><tr><th>ความเร่งด่วน</th><th>ผลิตภัณฑ์ / หมู่เลือด</th><th class="text-end">จำนวน</th><th class="text-end">เหลือ</th><th>แนะนำ</th></tr></thead>
+          <tbody>${renderExpiryGroupedRowsSimple(groupedRows)}</tbody>
         </table>
       </div>` : `
-      <div class="empty-state-card"><div class="empty-icon">✓</div><h3>ยังไม่มีถุงที่ใกล้หมดอายุในช่วงนี้</h3><p>เลือกช่วงวันด้านบนเพื่อดูไกลขึ้นได้</p></div>`}
-
-    <details class="simple-details mt-3">
-      <summary>หน้านี้เอาไว้ทำอะไร?</summary>
-      <div class="pt-3 small-muted">ใช้ช่วยเลือกถุงที่ควรจัดลำดับใช้ก่อนจาก ExpireDate ของ stock ปัจจุบัน หน้านี้ไม่ได้เปลี่ยนวันหมดอายุหรือสถานะใน LIS</div>
-    </details>
+      <div class="empty-state-card"><div class="empty-icon">✓</div><h3>ยังไม่มีรายการใกล้หมดอายุ</h3><p>ในช่วง ${days} วันที่เลือก</p></div>`}
   `;
 }
 
+function renderExpiryGroupedRowsSimple(rows) {
+  if (!rows || !rows.length) return `<tr><td colspan="5" class="text-center small-muted py-4">ไม่มีรายการ</td></tr>`;
+  return rows.map(r => `
+    <tr>
+      <td class="fw-bold">${getExpiryUrgency(r.daysToExpire)}</td>
+      <td><span class="mobile-product-badge ${getTypeClass(r.type)}">${r.type}</span> <b>${r.bloodGroup}</b></td>
+      <td class="text-end fw-bold">${r.count}</td>
+      <td class="text-end">${r.daysToExpire} วัน</td>
+      <td>${getExpiryActionText(r)}</td>
+    </tr>`).join("");
+}
 function buildExpiryGroupedRows(rows) {
   const bucket = {};
 
@@ -1137,7 +1148,7 @@ function renderExpiryGroupedRows(rows) {
 }
 
 
-/* ---------------- Outreach blood bag outcome analysis v2.7.0 ---------------- */
+/* ---------------- Outreach blood bag outcome analysis v2.7.1 ---------------- */
 const OUTREACH_USED = "นำไปใช้/จ่ายออก";
 const OUTREACH_DESTROYED = "ทิ้ง/ทำลาย";
 const OUTREACH_TRANSFORMED = "แปรรูปต่อ";
@@ -1262,6 +1273,50 @@ async function loadOutreachAnalysis(forceRefresh = false) {
   }
 }
 
+function renderProductMultiSelect(products, selectedProducts) {
+  const selected = new Set(Array.isArray(selectedProducts) ? selectedProducts : []);
+  const label = selected.size === 0 ? "ทุกชนิด" : selected.size === 1 ? Array.from(selected)[0] : `เลือก ${selected.size} ชนิด`;
+  return `
+    <details class="product-multi-select" id="outreachProductPicker">
+      <summary><span>ชนิดผลิตภัณฑ์</span><strong id="outreachProductLabel">${escapeOutreachHtml(label)}</strong></summary>
+      <div class="product-multi-menu">
+        <div class="product-multi-actions">
+          <button type="button" onclick="setAllOutreachProducts(true)">เลือกทั้งหมด</button>
+          <button type="button" onclick="setAllOutreachProducts(false)">ล้าง</button>
+        </div>
+        ${(products || []).map((product, index) => `
+          <label class="product-check-row">
+            <input class="outreach-product-check" type="checkbox" value="${escapeOutreachHtml(product)}" ${selected.has(product) ? "checked" : ""} onchange="handleOutreachProductChange()" />
+            <span>${escapeOutreachHtml(product)}</span>
+          </label>`).join("")}
+      </div>
+    </details>`;
+}
+
+function getSelectedOutreachProducts() {
+  return Array.from(document.querySelectorAll(".outreach-product-check:checked"))
+    .map(el => el.value)
+    .filter(Boolean);
+}
+
+function updateOutreachProductLabel() {
+  const selected = getSelectedOutreachProducts();
+  const label = document.getElementById("outreachProductLabel");
+  if (!label) return;
+  label.textContent = selected.length === 0 ? "ทุกชนิด" : selected.length === 1 ? selected[0] : `เลือก ${selected.length} ชนิด`;
+}
+
+function setAllOutreachProducts(selectAll) {
+  document.querySelectorAll(".outreach-product-check").forEach(el => { el.checked = Boolean(selectAll); });
+  updateOutreachProductLabel();
+  applyOutreachFilters();
+}
+
+function handleOutreachProductChange() {
+  updateOutreachProductLabel();
+  applyOutreachFilters();
+}
+
 function renderOutreachAnalysis() {
   const container = document.getElementById("outreachOutcomeDashboard");
   const data = currentOutreachAnalysisData;
@@ -1271,9 +1326,9 @@ function renderOutreachAnalysis() {
     container.innerHTML = `
       <div class="empty-state-card mt-4">
         <div class="empty-icon">↻</div>
-        <h3>ยังไม่มีฐานผลถุงเลือด</h3>
-        <p>รัน SQL v2.7.0 แล้วอัปโหลดข้อมูลย้อนหลังทั้งหมดครั้งแรก</p>
-        <button class="btn btn-main" type="button" onclick="scrollToUpload()">ไปอัปเดตข้อมูล</button>
+        <h3>ยังไม่มีข้อมูลผลถุงเลือด</h3>
+        <p>อัปเดตไฟล์ LIS ก่อน 1 ครั้ง ระบบจะสร้างรายงานให้เอง</p>
+        <button class="btn btn-main" type="button" onclick="scrollToUpload()">ไปอัปเดต LIS</button>
       </div>`;
     return;
   }
@@ -1286,46 +1341,68 @@ function renderOutreachAnalysis() {
     <div class="outreach-report-shell">
       <div class="simple-page-head">
         <div>
-          <div class="page-kicker">CQI · OUTCOME</div>
-          <h1>ถุงเลือดที่รับมา ไปไหนต่อ?</h1>
-          <div class="page-subline">ฐานย้อนหลัง ${escapeOutreachHtml(data.sourceStartDate || "-")} ถึง ${escapeOutreachHtml(data.sourceEndDate || "-")} · อัปเดต ${escapeOutreachHtml(formatDisplayDateTime(data.calculatedAt) || "-")}</div>
+          <h1>ผลถุงเลือด</h1>
+          <div class="page-subline">ดูว่าเลือดที่รับเข้าถูกใช้ ทิ้ง หรือยังอยู่ในระบบ · อัปเดต ${escapeOutreachHtml(formatDisplayDateTime(data.calculatedAt) || "-")}</div>
         </div>
         <div class="compact-actions no-print">
+          <button id="outreachExportCsvBtn" class="btn btn-light" type="button" onclick="exportOutreachCsv()">CSV</button>
           <button id="outreachExportExcelBtn" class="btn btn-light" type="button" onclick="exportOutreachExcel()">Excel</button>
           <button class="btn btn-main" type="button" onclick="printOutreachReport()">PDF</button>
         </div>
       </div>
 
       <details class="simple-details filter-details mb-3 no-print">
-        <summary>🔎 กรองข้อมูล</summary>
+        <summary>กรองข้อมูล</summary>
         <div class="outreach-filter-grid pt-3">
-          <label class="outreach-filter-item">ตั้งแต่<input id="outreachDateFrom" type="date" class="form-control" min="${escapeOutreachHtml(options.minDate || "")}" max="${escapeOutreachHtml(options.maxDate || "")}" value="${escapeOutreachHtml(f.dateFrom || "")}" onchange="applyOutreachFilters()" /></label>
+          <label class="outreach-filter-item">วันที่รับเข้า ตั้งแต่<input id="outreachDateFrom" type="date" class="form-control" min="${escapeOutreachHtml(options.minDate || "")}" max="${escapeOutreachHtml(options.maxDate || "")}" value="${escapeOutreachHtml(f.dateFrom || "")}" onchange="applyOutreachFilters()" /></label>
           <label class="outreach-filter-item">ถึง<input id="outreachDateTo" type="date" class="form-control" min="${escapeOutreachHtml(options.minDate || "")}" max="${escapeOutreachHtml(options.maxDate || "")}" value="${escapeOutreachHtml(f.dateTo || "")}" onchange="applyOutreachFilters()" /></label>
           <label class="outreach-filter-item">เดือน / ปี<input id="outreachMonth" type="month" class="form-control" onchange="applyOutreachMonthFilter()" /></label>
           <label class="outreach-filter-item">กลุ่มแหล่งรับเข้า<select id="outreachSourceGroup" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(options.sourceGroups || [], f.sourceGroup || "", "ทั้งหมด")}</select></label>
-          <label class="outreach-filter-item">จุดออกหน่วย<select id="outreachSource" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(options.sources || [], f.source || "", "ทุกจุด")}</select></label>
-          <label class="outreach-filter-item">ผลิตภัณฑ์<select id="outreachProduct" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(options.products || [], f.productType || "", "ทุกชนิด")}</select></label>
+          <label class="outreach-filter-item">จุดออกหน่วย / แหล่งรับเข้า<select id="outreachSource" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(options.sources || [], f.source || "", "ทุกจุด")}</select></label>
+          ${renderProductMultiSelect(options.products || [], f.productTypes || [])}
           <label class="outreach-filter-item">หมู่เลือด<select id="outreachBloodGroup" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(options.bloodGroups || [], f.bloodGroup || "", "ทุกหมู่")}</select></label>
           <label class="outreach-filter-item">Rh<select id="outreachRh" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(options.rhs || [], f.rh || "", "ทุก Rh")}</select></label>
         </div>
-        <div class="d-flex justify-content-between align-items-center gap-2 mt-3"><div id="outreachFilterLoading" class="small-muted" style="display:none;">กำลังคำนวณ...</div><button class="btn btn-light btn-sm" type="button" onclick="resetOutreachFilters()">ล้างตัวกรอง</button></div>
+        <div class="d-flex justify-content-between align-items-center gap-2 mt-3">
+          <div id="outreachFilterLoading" class="small-muted" style="display:none;">กำลังคำนวณ...</div>
+          <button class="btn btn-light btn-sm" type="button" onclick="resetOutreachFilters()">ล้างตัวกรอง</button>
+        </div>
       </details>
 
       <div id="outreachValidationBox"></div>
       <div id="outreachSummaryCards"></div>
-      <div id="outreachCharts"></div>
-      <div id="outreachSourceTable"></div>
+
+      <div class="simple-panel mb-3 trend-panel">
+        <div class="panel-heading-row">
+          <div>
+            <h3>แนวโน้มรายเดือน</h3>
+            <div class="small-muted">จำนวน Stock in / Released / Expired ของแต่ละเดือน · กราฟใช้ปีที่เลือก ส่วนตัวกรองวันที่ด้านบนใช้กับตาราง/สรุป</div>
+          </div>
+          <select id="outreachTrendYear" class="form-select trend-year-select" onchange="changeOutreachTrendYear(this.value)"></select>
+        </div>
+        <div id="outreachTrendChart"><div class="small-muted py-4">กำลังโหลดกราฟ...</div></div>
+      </div>
+
+      <details class="simple-details mb-3" open>
+        <summary>เปรียบเทียบแหล่งรับเข้าและจุดออกหน่วย</summary>
+        <div class="pt-3" id="outreachCharts"></div>
+      </details>
 
       <details class="simple-details mb-4">
-        <summary>วิธีนับของรายงานนี้</summary>
-        <div class="pt-3 small-muted">1 BagNumber อาจแยกเป็นหลายผลิตภัณฑ์ จึงติดตามที่ BagNumber + ProductType + DateStockIn · Dedicated นับเป็นใช้/จ่ายออก เพราะเป็นการส่งต่อ/แลก/ยืม/จำหน่ายให้โรงพยาบาลอื่น แต่แสดงจำนวนแยกไว้ · Be Transformed แยกเป็นแปรรูปต่อ</div>
+        <summary>ดูตารางรายจุด</summary>
+        <div class="pt-3" id="outreachSourceTable"></div>
+      </details>
+
+      <details class="simple-details mb-4">
+        <summary>วิธีนับ</summary>
+        <div class="pt-3 small-muted">ติดตามระดับ BagNumber + ProductType + DateStockIn · Released = ใช้/จ่ายออก · Dedicated = ส่งต่อ/แลก/ยืม/จำหน่ายให้ รพ.อื่น · Expired/Rejected = ทิ้ง/ทำลาย · Be Transformed = แปรรูปต่อ · ข้อมูลสอน/ทดสอบถูกตัดออกจาก CQI/KPI</div>
       </details>
     </div>`;
 
   renderOutreachValidation(validation, data.reviewRows || []);
   renderOutreachReportSections(data.report || {});
+  loadOutreachTrend();
 }
-
 function renderOutreachValidation(validation, reviewRows) {
   const box = document.getElementById("outreachValidationBox");
   if (!box) return;
@@ -1363,7 +1440,7 @@ function getOutreachFilterValues() {
     dateTo: read("outreachDateTo"),
     sourceGroup: read("outreachSourceGroup"),
     source: read("outreachSource"),
-    productType: read("outreachProduct"),
+    productTypes: getSelectedOutreachProducts(),
     bloodGroup: read("outreachBloodGroup"),
     rh: read("outreachRh")
   };
@@ -1383,10 +1460,12 @@ function applyOutreachMonthFilter() {
 }
 
 function resetOutreachFilters() {
-  ["outreachDateFrom", "outreachDateTo", "outreachMonth", "outreachSourceGroup", "outreachSource", "outreachProduct", "outreachBloodGroup", "outreachRh"].forEach(id => {
+  ["outreachDateFrom", "outreachDateTo", "outreachMonth", "outreachSourceGroup", "outreachSource", "outreachBloodGroup", "outreachRh"].forEach(id => {
     const element = document.getElementById(id);
     if (element) element.value = "";
   });
+  document.querySelectorAll(".outreach-product-check").forEach(el => { el.checked = false; });
+  updateOutreachProductLabel();
   applyOutreachFilters();
 }
 
@@ -1408,11 +1487,82 @@ async function applyOutreachFilters() {
     currentOutreachAnalysisData = data;
     currentOutreachSourceSummary = normalizeOutreachSourceSummary(data?.report?.sources || []);
     renderOutreachReportSections(data.report || {});
+    loadOutreachTrend(currentOutreachTrendYear);
   } catch (err) {
     showModal("error", "คำนวณตัวกรองไม่สำเร็จ", err.message);
   } finally {
     if (requestId === outreachRequestSeq && loading) loading.style.display = "none";
   }
+}
+
+
+function changeOutreachTrendYear(value) {
+  const y = Number(value || new Date().getFullYear());
+  if (Number.isFinite(y)) currentOutreachTrendYear = y;
+  loadOutreachTrend(currentOutreachTrendYear);
+}
+
+async function loadOutreachTrend(year) {
+  const box = document.getElementById("outreachTrendChart");
+  const select = document.getElementById("outreachTrendYear");
+  if (!box || !currentOutreachAnalysisData?.batchId) return;
+
+  box.innerHTML = `<div class="small-muted py-4">กำลังโหลดกราฟ...</div>`;
+  try {
+    const filters = getOutreachFilterValues();
+    const result = await MinimumStockBackend.getOutreachMonthlyTrend(year || currentOutreachTrendYear, filters);
+    currentOutreachTrendData = result;
+    const years = Array.isArray(result?.years) ? result.years.map(Number).filter(Number.isFinite) : [];
+    if (years.length) {
+      if (!years.includes(Number(currentOutreachTrendYear))) currentOutreachTrendYear = Math.max(...years);
+      if (select) {
+        select.innerHTML = years.sort((a,b)=>b-a).map(y => `<option value="${y}" ${Number(currentOutreachTrendYear)===y?"selected":""}>${y + 543}</option>`).join("");
+      }
+    }
+    renderOutreachTrendChart(result);
+  } catch (err) {
+    box.innerHTML = `<div class="data-quality-strip"><strong>โหลดกราฟไม่ได้</strong><span>${escapeOutreachHtml(err.message)}</span></div>`;
+  }
+}
+
+function renderOutreachTrendChart(data) {
+  const box = document.getElementById("outreachTrendChart");
+  if (!box) return;
+  const months = Array.isArray(data?.months) ? data.months : [];
+  if (!months.length) {
+    box.innerHTML = `<div class="small-muted py-4">ยังไม่มีข้อมูลของปีนี้</div>`;
+    return;
+  }
+
+  const monthNames = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+  const maxValue = Math.max(1, ...months.flatMap(m => [Number(m.stockIn||0), Number(m.released||0), Number(m.expired||0)]));
+  const totalIn = months.reduce((s,m)=>s+Number(m.stockIn||0),0);
+  const totalReleased = months.reduce((s,m)=>s+Number(m.released||0),0);
+  const totalExpired = months.reduce((s,m)=>s+Number(m.expired||0),0);
+
+  box.innerHTML = `
+    <div class="trend-summary-row">
+      <span><i class="trend-dot trend-in"></i>Stock in <b>${totalIn.toLocaleString()}</b></span>
+      <span><i class="trend-dot trend-released"></i>Released <b>${totalReleased.toLocaleString()}</b></span>
+      <span><i class="trend-dot trend-expired"></i>Expired <b>${totalExpired.toLocaleString()}</b></span>
+    </div>
+    <div class="monthly-trend-chart" role="img" aria-label="กราฟ Stock in Released Expired รายเดือน">
+      ${months.map((m, i) => {
+        const hIn = Math.max(2, Math.round((Number(m.stockIn||0)/maxValue)*100));
+        const hRel = Math.max(2, Math.round((Number(m.released||0)/maxValue)*100));
+        const hExp = Number(m.expired||0) ? Math.max(2, Math.round((Number(m.expired||0)/maxValue)*100)) : 0;
+        return `
+          <div class="month-group">
+            <div class="month-bars">
+              <span class="month-bar trend-in" style="height:${hIn}%" title="Stock in ${Number(m.stockIn||0).toLocaleString()}"></span>
+              <span class="month-bar trend-released" style="height:${hRel}%" title="Released ${Number(m.released||0).toLocaleString()}"></span>
+              <span class="month-bar trend-expired" style="height:${hExp}%" title="Expired ${Number(m.expired||0).toLocaleString()}"></span>
+            </div>
+            <div class="month-label">${monthNames[i] || m.month}</div>
+          </div>`;
+      }).join("")}
+    </div>
+    <div class="small-muted mt-2">Stock in ใช้ DateStockIn · Released/Expired ใช้ DateStockOut ของสถานะนั้น</div>`;
 }
 
 function renderOutreachReportSections(report) {
@@ -1799,6 +1949,10 @@ if (page === "outreach") {
 
 if (page === "upload") {
   loadLisUploadGuide();
+}
+
+if (page === "admin" && window.MinimumStockAuthUI?.loadAdminPanel) {
+  window.MinimumStockAuthUI.loadAdminPanel();
 }
 }
 

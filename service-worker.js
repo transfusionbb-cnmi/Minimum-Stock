@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-7-0-simple-ui-lifetime-master";
+const CACHE_NAME = "minimum-stock-pwa-v2-8-1-roster-login-trend";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -8,6 +8,7 @@ const APP_SHELL = [
   "./script.js",
   "./supabase-config.js",
   "./supabase-backend.js",
+  "./auth.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
