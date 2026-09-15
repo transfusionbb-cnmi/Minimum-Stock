@@ -2217,7 +2217,21 @@
   async function getLisDataState() {
     if (!isConfigured()) return { baselineEstablished: false, masterCount: 0, uniqueBags: 0, latestUpload: {} };
     const client = getClient();
-    const { data, error } = await client.rpc("minimum_stock_lis_data_state");
+
+    // v2.9.14: ใช้ RPC แบบ security definer สำหรับ Auth ที่แยกตามแอป
+    // เพื่อให้ผลในหน้าเว็บตรงกับข้อมูลจริงในฐาน แม้ตาราง master/upload จะมี RLS
+    let { data, error } = await client.rpc("minimum_stock_lis_data_state_v2914");
+
+    // fallback เฉพาะกรณียังไม่ได้ติดตั้ง SQL v2.9.14
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const legacy = await client.rpc("minimum_stock_lis_data_state");
+      data = legacy.data;
+      error = legacy.error;
+      if (!error) {
+        console.warn("Using legacy minimum_stock_lis_data_state; install SQL v2.9.14 for app-specific auth.");
+      }
+    }
+
     if (error) throw new Error("โหลดสถานะฐาน LIS ไม่สำเร็จ: " + error.message);
     return data || { baselineEstablished: false, masterCount: 0, uniqueBags: 0, latestUpload: {} };
   }
