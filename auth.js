@@ -6,6 +6,7 @@
   let appStarted = false;
   let accessTimer = null;
   let recoveryMode = /[?&]recovery=1\b/i.test(window.location.search) || /type=recovery/i.test(window.location.hash);
+  let adminFirstLoginMode = /[?&]adminFirstLogin=1\b/i.test(window.location.search);
 
   function el(id) { return document.getElementById(id); }
 
@@ -138,6 +139,17 @@
       return;
     }
 
+    if (adminFirstLoginMode) {
+      if (app) app.style.display = "none";
+      if (authShell) authShell.style.display = "grid";
+      if (el("changePasswordHelp")) {
+        el("changePasswordHelp").textContent = "ยืนยันอีเมล Admin สำเร็จแล้ว กรุณาตั้งรหัสผ่านของคุณอย่างน้อย 8 ตัวอักษร ก่อนเข้าใช้งานระบบ";
+      }
+      showAuthPanel("password");
+      toggleAdminUI(false);
+      return;
+    }
+
     if (!currentAccess.active) {
       clearMinimumStockCaches();
       scrubProtectedData();
@@ -211,6 +223,7 @@
       scrubProtectedData();
       appStarted = false;
       recoveryMode = false;
+      adminFirstLoginMode = false;
       currentAccess = null;
       window.MinimumStockAccess = null;
       await applyAccess({ authenticated: false, active: false, role: "" });
@@ -255,9 +268,15 @@
         try {
           const info = await backend.authRegistrationStatus(username);
           if (info?.allowed && !info?.hasAccount) {
+            const role = String(info?.role || info?.userRole || info?.user_role || "").toLowerCase();
+            const isFirstAdmin = role === "admin" || username === "parichat.ink";
+            if (isFirstAdmin) {
+              const result = await backend.authStartAdminFirstLogin(username);
+              setAuthMessage(`ส่งลิงก์เปิดบัญชี Admin ไปที่ ${result?.email || username + "@mahidol.ac.th"} แล้ว\nเปิดอีเมล Mahidol แล้วกดลิงก์จากอุปกรณ์นี้ ระบบจะพาไปตั้งรหัสผ่านใหม่ทันที`, true);
+              return;
+            }
             if (info.passwordConfigured === false || info.hasInitialPassword === false) {
-              setAuthMessage("บัญชีนี้ยังไม่มีรหัสเริ่มต้นจาก Admin
-กรุณาให้ Admin ไปที่ “จัดการผู้ใช้งาน” แล้วกดตั้งรหัสเริ่มต้นก่อน", false);
+              setAuthMessage("บัญชีนี้ยังไม่มีรหัสเริ่มต้นจาก Admin\nกรุณาให้ Admin ไปที่ “จัดการผู้ใช้งาน” แล้วกดตั้งรหัสเริ่มต้นก่อน", false);
               return;
             }
             const result = await backend.authBootstrapWithInitialPassword(username, password);
@@ -311,12 +330,15 @@
     setAuthMessage("", true);
     try {
       const wasFirstLogin = Boolean(currentAccess?.mustChangePassword);
+      const wasAdminFirstLogin = Boolean(adminFirstLoginMode);
       await backend.authUpdatePassword(password);
       if (wasFirstLogin) await backend.markPasswordChanged();
-      try { await backend.logAudit(wasFirstLogin ? "FIRST_PASSWORD_CHANGED" : (recoveryMode ? "PASSWORD_RESET" : "PASSWORD_CHANGED"), { sharedAuth: true }); } catch (_) {}
+      const auditAction = wasAdminFirstLogin ? "ADMIN_FIRST_PASSWORD_SET" : (wasFirstLogin ? "FIRST_PASSWORD_CHANGED" : (recoveryMode ? "PASSWORD_RESET" : "PASSWORD_CHANGED"));
+      try { await backend.logAudit(auditAction, { sharedAuth: true }); } catch (_) {}
       if (el("newPassword")) el("newPassword").value = "";
       if (el("confirmNewPassword")) el("confirmNewPassword").value = "";
       recoveryMode = false;
+      adminFirstLoginMode = false;
       if (history.replaceState) history.replaceState({}, document.title, window.location.pathname);
       await refreshAccess();
     } catch (err) {
@@ -342,6 +364,7 @@
       ACCOUNT_BOOTSTRAP: "เปิดบัญชีด้วยรหัสเริ่มต้น",
       INITIAL_PASSWORD_SET: "Admin ตั้งรหัสเริ่มต้น",
       FIRST_PASSWORD_CHANGED: "เปลี่ยนรหัสหลัง Login ครั้งแรก",
+      ADMIN_FIRST_PASSWORD_SET: "Admin เปิดบัญชีและตั้งรหัสครั้งแรก",
       PASSWORD_RESET: "ตั้งรหัสผ่านใหม่",
       PASSWORD_CHANGED: "เปลี่ยนรหัสผ่าน",
       LIS_UPLOAD: "อัปเดตข้อมูล LIS",
@@ -545,7 +568,7 @@
       return;
     }
     bindUI();
-    showAuthPanel(recoveryMode ? "password" : "login");
+    showAuthPanel((recoveryMode || adminFirstLoginMode) ? "password" : "login");
 
     backend.onAuthStateChange?.((event) => {
       if (event === "PASSWORD_RECOVERY") {
@@ -554,6 +577,7 @@
       } else if (event === "SIGNED_OUT") {
         appStarted = false;
         recoveryMode = false;
+        adminFirstLoginMode = false;
         applyAccess({ authenticated: false, active: false, role: "" });
       }
     });

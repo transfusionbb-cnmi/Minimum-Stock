@@ -2519,6 +2519,44 @@
     return data || { allowed: false, username: normalized, hasAccount: false };
   }
 
+  function isFirstAdminBootstrapAllowed(info, normalized) {
+    const role = String(info?.role || info?.userRole || info?.user_role || "").toLowerCase();
+    return role === "admin" || normalized === "parichat.ink";
+  }
+
+  async function authStartAdminFirstLogin(username) {
+    const client = getClient();
+    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+
+    const normalized = normalizeAuthUsername(username);
+    if (!normalized) throw new Error("กรุณากรอก Username");
+
+    const info = await authRegistrationStatus(normalized);
+    if (!info?.allowed) throw new Error("Username นี้ไม่มีสิทธิ์ Blood Stock หรือถูกปิดใช้งาน");
+    if (info?.hasAccount) throw new Error("บัญชี Admin นี้เปิดใช้งานแล้ว กรุณา Login ด้วยรหัสเดิมหรือกดลืมรหัสผ่าน");
+    if (!isFirstAdminBootstrapAllowed(info, normalized)) {
+      throw new Error("บัญชีนี้ไม่ใช่ Admin สำหรับการเปิดบัญชีครั้งแรก");
+    }
+
+    const email = String(info.email || usernameToMahidolEmail(normalized)).toLowerCase();
+    const redirectTo = window.location.origin + window.location.pathname + "?adminFirstLogin=1";
+    const { data, error } = await client.auth.signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: redirectTo,
+        data: {
+          display_name: info.displayName || normalized,
+          nickname: info.nickname || "",
+          username: normalized,
+          minimum_stock_admin_first_login: true
+        }
+      }
+    });
+    if (error) throw new Error("ส่งลิงก์เปิดบัญชี Admin ไม่สำเร็จ: " + error.message);
+    return { ...(data || {}), email };
+  }
+
   async function authVerifyInitialPassword(username, password) {
     const client = getClient();
     if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
@@ -2720,6 +2758,7 @@
     authGetSession,
     authSignIn,
     authRegistrationStatus,
+    authStartAdminFirstLogin,
     authVerifyInitialPassword,
     authBootstrapWithInitialPassword,
     authRegisterAllowlistedUser,
