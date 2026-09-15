@@ -146,7 +146,14 @@
       if (authShell) authShell.style.display = "grid";
       showAuthPanel("pending");
       if (el("authPendingMessage")) {
-        el("authPendingMessage").textContent = `${currentAccess.email || "บัญชีนี้"} ไม่มีสิทธิ์ Blood Stock หรือถูก Admin ปิดใช้งาน`;
+        const reason = String(currentAccess.reason || "");
+        if (reason === "not_in_minimum_stock_directory") {
+          el("authPendingMessage").textContent = `${currentAccess.authEmail || currentAccess.email || "บัญชีนี้"} ยังไม่ได้ผูกกับรายชื่อผู้ใช้ Minimum Stock`;
+        } else if (reason === "wrong_app_identity") {
+          el("authPendingMessage").textContent = `${currentAccess.email || "บัญชีนี้"} เป็นบัญชีของแอปอื่น ไม่ใช่ Minimum Stock`;
+        } else {
+          el("authPendingMessage").textContent = `${currentAccess.email || "บัญชีนี้"} ไม่มีสิทธิ์ Blood Stock หรือถูก Admin ปิดใช้งาน`;
+        }
       }
       toggleAdminUI(false);
       return;
