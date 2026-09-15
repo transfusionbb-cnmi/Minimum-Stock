@@ -67,15 +67,15 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
           const latest = state.latestUpload || {};
           box.innerHTML = `
             <div class="upload-rule-badge">ฐานย้อนหลังพร้อมแล้ว</div>
-            <div class="fw-bold mt-2">ครั้งต่อไปใช้ไฟล์ LIS ย้อนหลัง 2 ปีเท่านั้น</div>
-            <div class="small-muted mt-1">ระบบจะอัปเดต Status ของถุงเดิมและเพิ่มถุงใหม่ โดยไม่ลบประวัติเก่ากว่า 2 ปี</div>
+            <div class="fw-bold mt-2">ครั้งต่อไปใช้ไฟล์ LIS ย้อนหลังอย่างน้อย 2 ปี</div>
+            <div class="small-muted mt-1">มากกว่า 2 ปีอัปโหลดได้ · ระบบจะอัปเดตถุงเดิมและเพิ่มถุงใหม่ โดยไม่ลบประวัติเก่า</div>
             ${latest.file_name ? `<div class="small-muted mt-2">อัปเดตล่าสุด: <b>${latest.file_name}</b></div>` : ""}
           `;
         } else {
           box.innerHTML = `
             <div class="upload-rule-badge is-baseline">ยังไม่มีฐานย้อนหลัง</div>
             <div class="fw-bold mt-2">ครั้งแรกให้อัปโหลดข้อมูลย้อนหลังทั้งหมด</div>
-            <div class="small-muted mt-1">หลังสร้างฐานแล้ว ระบบจะบังคับไฟล์อัปเดตเป็นย้อนหลัง 2 ปี</div>
+            <div class="small-muted mt-1">หลังสร้างฐานแล้ว ไฟล์อัปเดตต้องครอบคลุมย้อนหลังอย่างน้อย 2 ปี</div>
           `;
         }
       } catch (err) {
@@ -1960,6 +1960,10 @@ if (page === "upload") {
 
 if (page === "admin" && window.MinimumStockAuthUI?.loadAdminPanel) {
   window.MinimumStockAuthUI.loadAdminPanel();
+}
+
+if (page === "audit" && window.MinimumStockAuthUI?.loadAuditPanel) {
+  window.MinimumStockAuthUI.loadAuditPanel();
 }
 }
 

@@ -367,16 +367,11 @@ minimum.${username}@auth.cnmiblood.com
   async function loadAdminPanel() {
     if (currentAccess?.role !== "admin" || !currentAccess?.active) return;
     const usersBox = el("adminUsersList");
-    const auditBox = el("adminAuditList");
     const summaryBox = el("adminSummary");
     if (usersBox) usersBox.innerHTML = '<div class="small-muted">กำลังโหลดรายชื่อ...</div>';
-    if (auditBox) auditBox.innerHTML = '<div class="small-muted">กำลังโหลด Log...</div>';
 
     try {
-      const [users, logs] = await Promise.all([
-        backend.adminListUsers(),
-        backend.adminGetAuditLogs(120)
-      ]);
+      const users = await backend.adminListUsers();
 
       const activeCount = users.filter(x => x.is_active).length;
       const disabledCount = users.filter(x => !x.is_active).length;
@@ -447,21 +442,30 @@ minimum.${username}@auth.cnmiblood.com
         });
       }
 
-      if (auditBox) {
-        auditBox.innerHTML = logs.length ? logs.map(log => `
-          <div class="audit-row">
-            <div class="audit-dot"></div>
-            <div class="audit-main">
-              <div class="audit-title">${escapeHtml(auditActionLabel(log.action))}</div>
-              <div class="audit-meta">${escapeHtml(log.email || "-")} · ${formatDateTime(log.created_at)}</div>
-              ${auditDetailText(log) ? `<div class="audit-detail">${escapeHtml(auditDetailText(log))}</div>` : ""}
-            </div>
-          </div>
-        `).join("") : '<div class="small-muted">ยังไม่มี Audit Log</div>';
-      }
     } catch (err) {
       if (usersBox) usersBox.innerHTML = `<div class="auth-message is-bad">${escapeHtml(err.message)}</div>`;
-      if (auditBox) auditBox.innerHTML = "";
+    }
+  }
+
+  async function loadAuditPanel() {
+    if (currentAccess?.role !== "admin" || !currentAccess?.active) return;
+    const auditBox = el("adminAuditList");
+    if (!auditBox) return;
+    auditBox.innerHTML = '<div class="small-muted">กำลังโหลด Log...</div>';
+    try {
+      const logs = await backend.adminGetAuditLogs(200);
+      auditBox.innerHTML = logs.length ? logs.map(log => `
+        <div class="audit-row">
+          <div class="audit-dot"></div>
+          <div class="audit-main">
+            <div class="audit-title">${escapeHtml(auditActionLabel(log.action))}</div>
+            <div class="audit-meta">${escapeHtml(log.email || "-")} · ${formatDateTime(log.created_at)}</div>
+            ${auditDetailText(log) ? `<div class="audit-detail">${escapeHtml(auditDetailText(log))}</div>` : ""}
+          </div>
+        </div>
+      `).join("") : '<div class="small-muted">ยังไม่มี Audit Log</div>';
+    } catch (err) {
+      auditBox.innerHTML = `<div class="auth-message is-bad">${escapeHtml(err.message)}</div>`;
     }
   }
 
@@ -535,6 +539,7 @@ minimum.${username}@auth.cnmiblood.com
     el("changePasswordLogoutBtn")?.addEventListener("click", doLogout);
     el("pendingRefreshBtn")?.addEventListener("click", () => refreshAccess());
     el("adminRefreshBtn")?.addEventListener("click", loadAdminPanel);
+    el("adminAuditRefreshBtn")?.addEventListener("click", loadAuditPanel);
   }
 
   async function init() {
@@ -566,6 +571,7 @@ minimum.${username}@auth.cnmiblood.com
 
   window.MinimumStockAuthUI = {
     loadAdminPanel,
+    loadAuditPanel,
     refreshAccess,
     getCurrentAccess: () => currentAccess
   };

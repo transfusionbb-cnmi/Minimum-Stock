@@ -1172,17 +1172,21 @@
         mode: "rolling_2y",
         startDate,
         endDate,
-        message: "หลังมีฐานข้อมูลแล้ว ต้อง Export CSV จาก LIS แบบย้อนหลัง 2 ปี และให้ไฟล์มีหัวรายงานช่วงวันที่"
+        message: "หลังมีฐานข้อมูลแล้ว ไฟล์ LIS ต้องครอบคลุมย้อนหลังอย่างน้อย 2 ปี และมีหัวรายงานช่วงวันที่"
       };
     }
 
     const expectedStart = subtractCalendarYears(endDate, 2);
-    const startDiff = Math.abs(daysBetweenYmd(startDate, expectedStart));
+    const coverageToExpectedStart = daysBetweenYmd(startDate, expectedStart);
     const endAge = daysBetweenYmd(endDate, todayYmd());
     const spanDays = daysBetweenYmd(startDate, endDate);
-    const startOk = Number.isFinite(startDiff) && startDiff <= 7;
+
+    // v2.9.15: รับไฟล์ที่ครอบคลุมย้อนหลัง "อย่างน้อย" 2 ปี
+    // มากกว่า 2 ปีรับได้ทั้งหมด; ตีกลับเฉพาะไฟล์ที่ช่วงสั้นกว่า 2 ปี
+    // เผื่อความคลาดเคลื่อนหัวรายงานไม่เกิน 7 วัน
+    const startOk = Number.isFinite(coverageToExpectedStart) && coverageToExpectedStart >= -7;
     const endOk = Number.isFinite(endAge) && endAge >= -1 && endAge <= 14;
-    const spanOk = Number.isFinite(spanDays) && spanDays >= 720 && spanDays <= 745;
+    const spanOk = Number.isFinite(spanDays) && spanDays >= 720;
     const ok = startOk && endOk && spanOk;
 
     return {
@@ -1193,8 +1197,10 @@
       expectedStart,
       spanDays,
       message: ok
-        ? `ช่วงไฟล์ถูกต้อง: ${startDate} ถึง ${endDate} (ย้อนหลังประมาณ 2 ปี)`
-        : `ไฟล์อัปเดตต้องเป็นช่วงย้อนหลัง 2 ปีเท่านั้น โดยอิงวันสิ้นสุดของรายงาน (คาดว่าเริ่มประมาณ ${expectedStart || "-"} ถึง ${endDate || "วันนี้"})`
+        ? `ช่วงไฟล์ถูกต้อง: ${startDate} ถึง ${endDate} (ย้อนหลังอย่างน้อย 2 ปี)`
+        : !endOk
+          ? `วันสิ้นสุดรายงานต้องเป็นข้อมูลล่าสุด (ไม่เกิน 14 วันจากวันนี้)`
+          : `ไฟล์อัปเดตต้องครอบคลุมย้อนหลังอย่างน้อย 2 ปี โดยเริ่มไม่ช้ากว่าประมาณ ${expectedStart || "-"}; มากกว่า 2 ปีสามารถอัปโหลดได้`
     };
   }
 
@@ -2258,7 +2264,7 @@
   async function runOutreachReport(filters = {}) {
     const client = getClient();
     const f = normalizeOutreachFilters(filters);
-    const { data, error } = await client.rpc("minimum_stock_outreach_master_report_v280", {
+    const params = {
       p_date_from: f.dateFrom || null,
       p_date_to: f.dateTo || null,
       p_source_group: f.sourceGroup || null,
@@ -2266,7 +2272,13 @@
       p_product_types: f.productTypes.length ? f.productTypes : null,
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
-    });
+    };
+    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2915", params);
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const legacy = await client.rpc("minimum_stock_outreach_master_report_v280", params);
+      data = legacy.data;
+      error = legacy.error;
+    }
     if (error) throw new Error("คำนวณรายงานวิเคราะห์ออกหน่วยไม่สำเร็จ: " + error.message);
     return data || { summary: {}, groups: [], sources: [] };
   }
@@ -2275,21 +2287,32 @@
     const client = getClient();
     const f = normalizeOutreachFilters(filters);
     const safeYear = Number(year || new Date().getFullYear());
-    const { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v280", {
+    const params = {
       p_year: safeYear,
       p_source_group: f.sourceGroup || null,
       p_donate_source: f.source || null,
       p_product_types: f.productTypes.length ? f.productTypes : null,
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
-    });
+    };
+    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2915", params);
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const legacy = await client.rpc("minimum_stock_outreach_monthly_trend_v280", params);
+      data = legacy.data;
+      error = legacy.error;
+    }
     if (error) throw new Error("โหลดกราฟแนวโน้มรายเดือนไม่สำเร็จ: " + error.message);
     return data || { year: safeYear, years: [], months: [] };
   }
 
   async function getOutreachFilterOptions() {
     const client = getClient();
-    const { data, error } = await client.rpc("minimum_stock_outreach_filter_options");
+    let { data, error } = await client.rpc("minimum_stock_outreach_filter_options_v2915");
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const legacy = await client.rpc("minimum_stock_outreach_filter_options");
+      data = legacy.data;
+      error = legacy.error;
+    }
     if (error) throw new Error("โหลดตัวกรองรายงานไม่สำเร็จ: " + error.message);
     return data || {};
   }
@@ -2449,7 +2472,7 @@
   async function mergeOutreachBatchToMaster(batchId, parsed, coverage) {
     const client = getClient();
     const analysis = parsed.outreachAnalysis || {};
-    const { data, error } = await client.rpc("minimum_stock_outreach_merge_batch_to_master", {
+    const params = {
       p_batch_id: batchId,
       p_file_name: parsed.fileName || "",
       p_upload_mode: coverage?.mode || "rolling_2y",
@@ -2460,7 +2483,13 @@
       p_unique_bag_count: Number(analysis.totalUniqueBags || 0),
       p_excluded_component_count: Number(analysis.excludedComponentCount || 0),
       p_validation: analysis.validation || {}
-    });
+    };
+    let { data, error } = await client.rpc("minimum_stock_outreach_merge_batch_to_master_v2915", params);
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const legacy = await client.rpc("minimum_stock_outreach_merge_batch_to_master", params);
+      data = legacy.data;
+      error = legacy.error;
+    }
     if (error) throw new Error("อัปเดตฐานประวัติ LIS ไม่สำเร็จ: " + error.message);
     return data || { ok: true };
   }
@@ -2479,7 +2508,7 @@
 
     // v2.7.1:
     // - ฐานย้อนหลังเดิมอยู่ใน minimum_stock_outreach_master
-    // - ไฟล์ประจำวันต้องย้อนหลัง 2 ปี และจะ UPSERT เฉพาะ component ที่อยู่ในไฟล์
+    // - ไฟล์ประจำวันต้องย้อนหลังอย่างน้อย 2 ปี และจะ UPSERT เฉพาะ component ที่อยู่ในไฟล์
     // - ประวัติเก่ากว่า 2 ปีไม่ถูกลบ
     const parsed = await parseExcelFile(file);
     const state = await getLisDataState();
