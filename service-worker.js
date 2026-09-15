@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-15-filter-upload-audit-ui-fix";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-16-schema-report-user-icons-fix";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -14,7 +14,15 @@ const APP_SHELL = [
   "./icons/icon-512.png",
   "./icons/icon-maskable-512.png",
   "./icons/apple-touch-icon.png",
-  "./icons/login-brand-soft.png"
+  "./icons/login-brand-soft.png",
+  "./icons/menu/lis.png",
+  "./icons/menu/minimum.png",
+  "./icons/menu/expiry.png",
+  "./icons/menu/mobile.png",
+  "./icons/menu/outreach.png",
+  "./icons/menu/install.png",
+  "./icons/menu/users.png",
+  "./icons/menu/audit.png"
 ];
 
 self.addEventListener("install", (event) => {

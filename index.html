@@ -10,8 +10,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Blood Stock" />
-  <link rel="manifest" href="manifest.webmanifest?v=20260915-v2-9-15-filter-upload-audit-ui-fix" />
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260915-v2-9-15-filter-upload-audit-ui-fix" />
+  <link rel="manifest" href="manifest.webmanifest?v=20260915-v2-9-16-schema-report-user-icons-fix" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260915-v2-9-16-schema-report-user-icons-fix" />
 
 
   <script>
@@ -19,7 +19,7 @@
       "use strict";
 
       // เปลี่ยนเลขนี้ทุกครั้งที่ออก ZIP ใหม่ เพื่อให้เครื่องผู้ใช้เริ่มเหมือนแอพใหม่
-      const APP_VERSION = "20260915-v2-9-15-filter-upload-audit-ui-fix";
+      const APP_VERSION = "20260915-v2-9-16-schema-report-user-icons-fix";
       const VERSION_KEY = "minimumStock.__appVersion";
       const FORCE_RESET = /[?&](fresh|reset|clearCache)=1/i.test(window.location.search);
 
@@ -77,7 +77,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="style.css?v=20260915-v2-9-15-filter-upload-audit-ui-fix">
+  <link rel="stylesheet" href="style.css?v=20260915-v2-9-16-schema-report-user-icons-fix">
 </head>
 
 <body>
@@ -178,15 +178,16 @@
   <aside id="sideMenu" class="side-menu">
     <div class="side-brand"><div class="brand-mark brand-mark-image" aria-hidden="true"><img src="icons/login-brand-soft.png" alt="" /></div><div><strong>Blood Stock</strong><span>CNMI</span></div></div>
 
-    <button class="side-btn" onclick="showDashboardPage('upload', this)"><span class="side-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg></span> อัปเดต LIS</button>
-    <button class="side-btn active" onclick="showDashboardPage('minimum', this)"><span class="side-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 9h8M8 13h5"/></svg></span> สต๊อกขั้นต่ำ</button>
-    <button class="side-btn" onclick="showDashboardPage('expiry', this)"><span class="side-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 2"/></svg></span> ใกล้หมดอายุ</button>
-    <button class="side-btn" onclick="showDashboardPage('mobile', this)"><span class="side-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11v10H4zM15 10h3l2 3v4h-5z"/><circle cx="8" cy="18" r="1.6"/><circle cx="18" cy="18" r="1.6"/></svg></span> ออกหน่วย</button>
-    <button class="side-btn" onclick="showDashboardPage('outreach', this)"><span class="side-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18V9m7 9V5m7 13v-6"/><path d="m4 6 5-3 5 3 6-4"/></svg></span> ผลถุงเลือด</button>
+    <button class="side-btn" onclick="showDashboardPage('upload', this)"><span class="side-icon"><img src="icons/menu/lis.png" alt="" /></span> อัปเดต LIS</button>
+    <button class="side-btn active" onclick="showDashboardPage('minimum', this)"><span class="side-icon"><img src="icons/menu/minimum.png" alt="" /></span> สต๊อกขั้นต่ำ</button>
+    <button class="side-btn" onclick="showDashboardPage('expiry', this)"><span class="side-icon"><img src="icons/menu/expiry.png" alt="" /></span> ใกล้หมดอายุ</button>
+    <button class="side-btn" onclick="showDashboardPage('mobile', this)"><span class="side-icon"><img src="icons/menu/mobile.png" alt="" /></span> ออกหน่วย</button>
+    <button class="side-btn" onclick="showDashboardPage('outreach', this)"><span class="side-icon"><img src="icons/menu/outreach.png" alt="" /></span> ผลถุงเลือด</button>
 
-    <button id="installAppBtn" class="side-btn install-app-btn" type="button"><span class="side-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10m0 0-4-4m4 4 4-4"/><path d="M5 18h14"/></svg></span> ติดตั้งแอป</button>
-    <button id="adminUsersBtn" class="side-btn admin-only" type="button" style="display:none;" onclick="showDashboardPage('admin', this)"><span class="side-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3"/><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6"/></svg></span> ผู้ใช้งาน</button>
-    <button id="adminAuditBtn" class="side-btn admin-only" type="button" style="display:none;" onclick="showDashboardPage('audit', this)"><span class="side-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10a2 2 0 0 1 2 2v14H5V6a2 2 0 0 1 2-2Z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg></span> Audit Log</button>
+    <button id="installAppBtn" class="side-btn install-app-btn" type="button"><span class="side-icon"><img src="icons/menu/install.png" alt="" /></span> ติดตั้งแอป</button>
+    <button id="adminUsersBtn" class="side-btn admin-only" type="button" style="display:none;" onclick="showDashboardPage('admin', this)"><span class="side-icon"><img src="icons/menu/users.png" alt="" /></span> จัดการผู้ใช้</button>
+    <button id="adminAddUserBtn" class="side-btn admin-only" type="button" style="display:none;" onclick="showDashboardPage('admin-add', this)"><span class="side-icon side-icon-plus"><img src="icons/menu/users.png" alt="" /></span> เพิ่มผู้ใช้</button>
+    <button id="adminAuditBtn" class="side-btn admin-only" type="button" style="display:none;" onclick="showDashboardPage('audit', this)"><span class="side-icon"><img src="icons/menu/audit.png" alt="" /></span> Audit Log</button>
 
     <div class="side-user-card">
       <div class="side-user-name" id="currentUserName">ผู้ใช้งาน</div>
@@ -259,15 +260,65 @@
     <section id="page-admin" class="dashboard-page">
       <div class="simple-page-head mt-2">
         <div>
-          <h1>ผู้ใช้งาน</h1>
-          <div class="page-subline">สิทธิ์และรหัสผ่านของ Minimum Stock</div>
+          <div class="page-title-with-icon"><img src="icons/menu/users.png" alt="" /><div><h1>จัดการผู้ใช้งาน</h1><div class="page-subline">แก้ไขข้อมูล รีเซ็ตรหัส และเปิด-ปิดสิทธิ์ Minimum Stock</div></div></div>
         </div>
-        <button id="adminRefreshBtn" class="btn btn-light" type="button">รีเฟรช</button>
+        <div class="admin-head-actions">
+          <button class="btn btn-main" type="button" onclick="showDashboardPage('admin-add', document.getElementById('adminAddUserBtn'))">+ เพิ่มผู้ใช้ใหม่</button>
+          <button id="adminRefreshBtn" class="btn btn-light" type="button">รีเฟรช</button>
+        </div>
       </div>
       <div class="admin-summary-grid" id="adminSummary"></div>
       <div class="simple-panel mb-3">
-        <div class="panel-heading-row"><div><h3>บัญชีผู้ใช้งาน</h3><div class="small-muted">ตั้งรหัสชั่วคราว รีเซ็ตรหัส หรือเปิด-ปิดสิทธิ์</div></div></div>
+        <div class="panel-heading-row"><div><h3>บัญชีผู้ใช้งาน</h3><div class="small-muted">ปุ่มแก้ไขและรีเซ็ตรหัสอยู่ในรายการเดียวกัน การเปิด/ปิดสิทธิ์จะบันทึกทันที</div></div></div>
         <div id="adminUsersList" class="admin-users-list"><div class="small-muted">กำลังโหลด...</div></div>
+      </div>
+    </section>
+
+    <section id="page-admin-add" class="dashboard-page">
+      <div class="simple-page-head mt-2">
+        <div class="page-title-with-icon"><span class="page-title-user-plus"><img src="icons/menu/users.png" alt="" /></span><div><h1>เพิ่มผู้ใช้งานใหม่</h1><div class="page-subline">สร้างรายชื่อ Staff และกำหนดรหัสชั่วคราวสำหรับ Login ครั้งแรก</div></div></div>
+        <button class="btn btn-light" type="button" onclick="showDashboardPage('admin', document.getElementById('adminUsersBtn'))">← กลับรายชื่อ</button>
+      </div>
+
+      <div class="simple-panel admin-create-card">
+        <form id="adminAddUserForm" class="admin-create-form">
+          <div class="admin-form-grid">
+            <label class="admin-form-field admin-form-field-wide">Username Mahidol
+              <div class="username-input-wrap">
+                <input id="adminNewUsername" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="name.surname" required />
+                <span class="username-domain">@mahidol.ac.th</span>
+              </div>
+              <span class="field-help">ใช้เฉพาะ Username ไม่ต้องพิมพ์ @mahidol.ac.th</span>
+            </label>
+            <label class="admin-form-field admin-form-field-wide">ชื่อ - นามสกุล
+              <input id="adminNewDisplayName" type="text" autocomplete="off" placeholder="เช่น สมชาย ใจดี" required />
+            </label>
+            <label class="admin-form-field">ชื่อเล่น
+              <input id="adminNewNickname" type="text" autocomplete="off" placeholder="ไม่บังคับ" />
+            </label>
+            <label class="admin-form-field">ตำแหน่ง
+              <input id="adminNewPosition" type="text" autocomplete="off" placeholder="เช่น นักเทคนิคการแพทย์" />
+            </label>
+            <label class="admin-form-field">รหัสชั่วคราว
+              <div class="password-input-wrap">
+                <input id="adminNewPassword" type="password" autocomplete="new-password" minlength="8" placeholder="อย่างน้อย 8 ตัวอักษร" required />
+                <button id="toggleAdminNewPasswordBtn" class="password-toggle-btn" type="button">ดู</button>
+              </div>
+            </label>
+            <label class="admin-form-field">ยืนยันรหัสชั่วคราว
+              <div class="password-input-wrap">
+                <input id="adminNewPasswordConfirm" type="password" autocomplete="new-password" minlength="8" placeholder="กรอกรหัสเดิมอีกครั้ง" required />
+                <button id="toggleAdminNewPasswordConfirmBtn" class="password-toggle-btn" type="button">ดู</button>
+              </div>
+            </label>
+          </div>
+
+          <div class="admin-create-footer">
+            <label class="admin-create-active"><input id="adminNewActive" class="form-check-input" type="checkbox" checked /> เปิดใช้งานทันที</label>
+            <div class="admin-create-note">ผู้ใช้ใหม่จะเป็น <b>Staff</b> และเมื่อ Login ครั้งแรก ระบบจะบังคับตั้งรหัสใหม่</div>
+            <button id="adminAddUserSaveBtn" class="btn btn-main" type="submit">เพิ่มผู้ใช้งาน</button>
+          </div>
+        </form>
       </div>
     </section>
 
@@ -300,6 +351,29 @@
       <button id="outreachDetailCloseBtn" class="btn btn-light outreach-close-btn" type="button">✕</button>
     </div>
     <div id="outreachDetailBody"></div>
+  </div>
+</div>
+
+<div id="adminEditUserOverlay" class="modal-overlay" style="display:none;">
+  <div class="nice-modal admin-edit-user-modal">
+    <div class="modal-user-icon"><img src="icons/menu/users.png" alt="" /></div>
+    <h4 class="fw-bold mb-1">แก้ไขข้อมูลผู้ใช้งาน</h4>
+    <div id="adminEditUserAccount" class="small-muted mb-3"></div>
+    <form id="adminEditUserForm" class="auth-form">
+      <label>ชื่อ - นามสกุล
+        <input id="adminEditDisplayName" type="text" autocomplete="off" required />
+      </label>
+      <label>ชื่อเล่น
+        <input id="adminEditNickname" type="text" autocomplete="off" />
+      </label>
+      <label>ตำแหน่ง
+        <input id="adminEditPosition" type="text" autocomplete="off" />
+      </label>
+      <div class="modal-actions mt-3">
+        <button id="adminEditUserCancelBtn" class="btn btn-light" type="button">ยกเลิก</button>
+        <button id="adminEditUserSaveBtn" class="btn btn-main" type="submit">บันทึกข้อมูล</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -360,10 +434,10 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="supabase-config.js?v=20260915-v2-9-15-filter-upload-audit-ui-fix"></script>
-  <script src="supabase-backend.js?v=20260915-v2-9-15-filter-upload-audit-ui-fix"></script>
-  <script src="script.js?v=20260915-v2-9-15-filter-upload-audit-ui-fix"></script>
-  <script src="auth.js?v=20260915-v2-9-15-filter-upload-audit-ui-fix"></script>
+  <script src="supabase-config.js?v=20260915-v2-9-16-schema-report-user-icons-fix"></script>
+  <script src="supabase-backend.js?v=20260915-v2-9-16-schema-report-user-icons-fix"></script>
+  <script src="script.js?v=20260915-v2-9-16-schema-report-user-icons-fix"></script>
+  <script src="auth.js?v=20260915-v2-9-16-schema-report-user-icons-fix"></script>
 
 </body>
 </html>

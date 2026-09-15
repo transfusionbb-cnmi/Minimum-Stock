@@ -2063,6 +2063,8 @@
     const analysis = parsed.outreachAnalysis || {};
     const validation = analysis.validation || {};
     const filterOptions = analysis.filterOptions || {};
+    const { data: userData } = await client.auth.getUser();
+    const currentUserId = userData?.user?.id || null;
 
     const { data, error } = await client
       .from("minimum_stock_outreach_batches")
@@ -2078,12 +2080,13 @@
         unique_bag_count: Number(analysis.totalUniqueBags || 0),
         excluded_component_count: Number(analysis.excludedComponentCount || 0),
         validation,
-        filter_options: filterOptions
+        filter_options: filterOptions,
+        created_by: currentUserId
       })
       .select("id")
       .single();
 
-    if (error) throw new Error("สร้างชุดข้อมูลวิเคราะห์ออกหน่วยไม่สำเร็จ: " + error.message);
+    if (error) throw new Error("สร้างชุดข้อมูลวิเคราะห์ออกหน่วยไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.16");
     return data.id;
   }
 
@@ -2162,22 +2165,31 @@
       outreach_analysis: compactOutreachAnalysis(parsed.outreachAnalysis, options.outreachBatchId || "")
     };
 
-    const { data, error } = await client
+    let response = await client
       .from(getTableName())
       .insert(payload)
       .select(SUMMARY_SELECT)
       .single();
 
-    if (error) {
-      const message = String(error.message || "");
-      if (message.includes("outreach_analysis")) {
-        throw new Error("Supabase ยังไม่พร้อมสำหรับ v2.8.1 กรุณารันไฟล์ supabase-auth-security-v2.8.1.sql ก่อน");
-      }
-      throw new Error("บันทึกลง Supabase ไม่สำเร็จ: " + message);
+    // v2.9.16: ไม่ให้คอลัมน์ outreach_analysis รุ่นเก่าทำให้การอัปเดต LIS ทั้งชุดล้ม
+    // ฐาน master ถูกอัปเดตก่อน snapshot อยู่แล้ว จึง retry snapshot แบบ legacy ได้อย่างปลอดภัย
+    if (response.error && /outreach_analysis|PGRST204|column .* does not exist/i.test(String(response.error.message || response.error.code || ""))) {
+      const legacyPayload = { ...payload };
+      delete legacyPayload.outreach_analysis;
+      console.warn("Snapshot schema is legacy; retrying without outreach_analysis.");
+      response = await client
+        .from(getTableName())
+        .insert(legacyPayload)
+        .select(SUMMARY_SELECT)
+        .single();
     }
-    cachedSummarySnapshot = data;
+
+    if (response.error) {
+      throw new Error("บันทึก Dashboard ลง Supabase ไม่สำเร็จ: " + String(response.error.message || response.error));
+    }
+    cachedSummarySnapshot = response.data;
     cachedFullSnapshot = null;
-    return data;
+    return response.data;
   }
 
   async function getDashboard(options = {}) {
@@ -2207,38 +2219,43 @@
 
   async function ensureOutreachSchema() {
     if (!isConfigured()) {
-      throw new Error("รายงานวิเคราะห์ผลถุงเลือดออกหน่วยต้องใช้ Supabase");
+      throw new Error("การอัปเดต LIS ต้องใช้ Supabase");
     }
     const client = getClient();
-    const { error } = await client
-      .from("minimum_stock_outreach_master")
-      .select("component_key")
-      .limit(1);
+
+    // v2.9.16: ห้ามใช้ direct SELECT เป็น schema check เพราะ RLS สามารถทำให้เกิด false error ได้
+    // หาก SQL v2.9.16 ยังไม่ได้ติดตั้ง ให้ไม่ block การอัปโหลดล่วงหน้า และปล่อยให้คำสั่งจริงแจ้ง error ที่ตรงสาเหตุ
+    const { data, error } = await client.rpc("minimum_stock_schema_status_v2916");
+    const missingRpc = error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""));
+    if (missingRpc) return { ok: true, legacy: true };
     if (error) {
-      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.8.1 กรุณารันไฟล์ supabase-auth-security-v2.8.1.sql ใน SQL Editor ก่อน");
+      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.16-SCHEMA-REPORT-USER-FIX.sql");
     }
-    return { ok: true };
+    if (data && data.ok === false) {
+      throw new Error(data.message || "โครงสร้าง Supabase ยังไม่พร้อม | กรุณารัน SQL-v2.9.16-SCHEMA-REPORT-USER-FIX.sql");
+    }
+    return data || { ok: true };
   }
 
   async function getLisDataState() {
     if (!isConfigured()) return { baselineEstablished: false, masterCount: 0, uniqueBags: 0, latestUpload: {} };
     const client = getClient();
 
-    // v2.9.14: ใช้ RPC แบบ security definer สำหรับ Auth ที่แยกตามแอป
-    // เพื่อให้ผลในหน้าเว็บตรงกับข้อมูลจริงในฐาน แม้ตาราง master/upload จะมี RLS
-    let { data, error } = await client.rpc("minimum_stock_lis_data_state_v2914");
+    let { data, error } = await client.rpc("minimum_stock_lis_data_state_v2916");
 
-    // fallback เฉพาะกรณียังไม่ได้ติดตั้ง SQL v2.9.14
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_lis_data_state_v2914");
+      data = previous.data;
+      error = previous.error;
+    }
+
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const legacy = await client.rpc("minimum_stock_lis_data_state");
       data = legacy.data;
       error = legacy.error;
-      if (!error) {
-        console.warn("Using legacy minimum_stock_lis_data_state; install SQL v2.9.14 for app-specific auth.");
-      }
     }
 
-    if (error) throw new Error("โหลดสถานะฐาน LIS ไม่สำเร็จ: " + error.message);
+    if (error) throw new Error("โหลดสถานะฐาน LIS ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.16");
     return data || { baselineEstablished: false, masterCount: 0, uniqueBags: 0, latestUpload: {} };
   }
 
@@ -2273,7 +2290,12 @@
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2915", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2916", params);
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_master_report_v2915", params);
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const legacy = await client.rpc("minimum_stock_outreach_master_report_v280", params);
       data = legacy.data;
@@ -2295,7 +2317,12 @@
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2915", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2916", params);
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2915", params);
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const legacy = await client.rpc("minimum_stock_outreach_monthly_trend_v280", params);
       data = legacy.data;
@@ -2307,7 +2334,12 @@
 
   async function getOutreachFilterOptions() {
     const client = getClient();
-    let { data, error } = await client.rpc("minimum_stock_outreach_filter_options_v2915");
+    let { data, error } = await client.rpc("minimum_stock_outreach_filter_options_v2916");
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_filter_options_v2915");
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const legacy = await client.rpc("minimum_stock_outreach_filter_options");
       data = legacy.data;
@@ -2484,7 +2516,12 @@
       p_excluded_component_count: Number(analysis.excludedComponentCount || 0),
       p_validation: analysis.validation || {}
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_merge_batch_to_master_v2915", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_merge_batch_to_master_v2916", params);
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_merge_batch_to_master_v2915", params);
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const legacy = await client.rpc("minimum_stock_outreach_merge_batch_to_master", params);
       data = legacy.data;
@@ -2756,19 +2793,30 @@
   async function adminListUsers() {
     const client = getClient();
     if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
-    const { data, error } = await client.rpc("minimum_stock_admin_list_users");
-    if (error) throw new Error("โหลดรายชื่อผู้ใช้งานไม่สำเร็จ: " + error.message);
+    let { data, error } = await client.rpc("minimum_stock_admin_list_users_v2916");
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const legacy = await client.rpc("minimum_stock_admin_list_users");
+      data = legacy.data;
+      error = legacy.error;
+    }
+    if (error) throw new Error("โหลดรายชื่อผู้ใช้งานไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.16");
     return data || [];
   }
 
   async function adminSetUserActive(email, isActive) {
     const client = getClient();
     if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
-    const { data, error } = await client.rpc("minimum_stock_admin_set_user_active", {
+    const params = {
       p_email: String(email || "").trim().toLowerCase(),
       p_is_active: Boolean(isActive)
-    });
-    if (error) throw new Error("เปลี่ยนสถานะผู้ใช้งานไม่สำเร็จ: " + error.message);
+    };
+    let { data, error } = await client.rpc("minimum_stock_admin_set_user_active_v2916", params);
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const legacy = await client.rpc("minimum_stock_admin_set_user_active", params);
+      data = legacy.data;
+      error = legacy.error;
+    }
+    if (error) throw new Error("เปลี่ยนสถานะผู้ใช้งานไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.16");
     return data || { ok: true };
   }
 
@@ -2788,6 +2836,41 @@
     }
     if (!data?.ok) throw new Error(data?.message || "ตั้ง/รีเซ็ตรหัส Minimum Stock ไม่สำเร็จ");
     return data;
+  }
+
+  async function adminCreateUser(payload = {}) {
+    const client = getClient();
+    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+    const username = normalizeAuthUsername(payload.username);
+    if (!username) throw new Error("กรุณากรอก Username");
+    const { data, error } = await client.rpc("minimum_stock_admin_create_user_v2916", {
+      p_username: username,
+      p_display_name: String(payload.displayName || "").trim(),
+      p_nickname: String(payload.nickname || "").trim(),
+      p_position: String(payload.position || "").trim(),
+      p_is_active: payload.isActive !== false
+    });
+    if (error) {
+      const message = String(error.message || error);
+      if (/username_exists/i.test(message)) throw new Error("Username นี้มีอยู่ใน Minimum Stock แล้ว");
+      throw new Error("เพิ่มผู้ใช้งานไม่สำเร็จ: " + message + " | กรุณารัน SQL v2.9.16");
+    }
+    return data || { ok: true, username };
+  }
+
+  async function adminUpdateUser(payload = {}) {
+    const client = getClient();
+    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+    const username = normalizeAuthUsername(payload.username);
+    if (!username) throw new Error("ไม่พบ Username");
+    const { data, error } = await client.rpc("minimum_stock_admin_update_user_v2916", {
+      p_username: username,
+      p_display_name: String(payload.displayName || "").trim(),
+      p_nickname: String(payload.nickname || "").trim(),
+      p_position: String(payload.position || "").trim()
+    });
+    if (error) throw new Error("แก้ไขข้อมูลผู้ใช้งานไม่สำเร็จ: " + String(error.message || error) + " | กรุณารัน SQL v2.9.16");
+    return data || { ok: true, username };
   }
 
   async function adminGetAuditLogs(limit = 100) {
@@ -2822,6 +2905,8 @@
     adminListUsers,
     adminSetUserActive,
     adminSetInitialPassword,
+    adminCreateUser,
+    adminUpdateUser,
     adminGetAuditLogs,
     uploadExcel,
     getDashboard,

@@ -323,8 +323,8 @@ minimum.${username}@auth.cnmiblood.com
   }
 
   function userStatusText(user) {
-    if (!user.is_active) return '<span class="access-badge is-disabled">ปิดสิทธิ์ Blood Stock</span>';
-    if (!user.user_id) return '<span class="access-badge is-never">ยังไม่มีบัญชี Minimum</span>';
+    if (!user.is_active) return '<span class="access-badge is-disabled">ปิดใช้งาน</span>';
+    if (!user.user_id) return '<span class="access-badge is-never">ยังไม่ได้ตั้งรหัส</span>';
     if (user.must_change_password) return '<span class="access-badge is-pending">รอเปลี่ยนรหัสครั้งแรก</span>';
     return '<span class="access-badge is-active">ใช้งานได้</span>';
   }
@@ -335,12 +335,14 @@ minimum.${username}@auth.cnmiblood.com
       LOGOUT: "ออกจากระบบ",
       ACCOUNT_REGISTER: "เปิดบัญชีกลางครั้งแรก",
       ACCOUNT_BOOTSTRAP: "เปิดบัญชีด้วยรหัสเริ่มต้น",
-      INITIAL_PASSWORD_SET: "Admin ตั้งรหัสเริ่มต้น",
+      INITIAL_PASSWORD_SET: "Admin ตั้ง/รีเซ็ตรหัส",
       FIRST_PASSWORD_CHANGED: "เปลี่ยนรหัสหลัง Login ครั้งแรก",
       ADMIN_FIRST_PASSWORD_SET: "Admin เปิดบัญชีและตั้งรหัสครั้งแรก",
       PASSWORD_RESET: "ตั้งรหัสผ่านใหม่",
       PASSWORD_CHANGED: "เปลี่ยนรหัสผ่าน",
       LIS_UPLOAD: "อัปเดตข้อมูล LIS",
+      USER_CREATED: "เพิ่มผู้ใช้งาน",
+      USER_PROFILE_UPDATED: "แก้ไขข้อมูลผู้ใช้งาน",
       USER_ACCESS_CHANGE: "เปิด/ปิดสิทธิ์ Blood Stock",
       CLEAR_SNAPSHOTS: "ล้าง Dashboard",
       CLEAR_LIS_MASTER: "ล้างฐานประวัติ LIS"
@@ -353,16 +355,24 @@ minimum.${username}@auth.cnmiblood.com
     if (log.action === "LIS_UPLOAD") {
       return `${d.fileName || "ไฟล์ LIS"}${d.upserted != null ? ` · ${Number(d.upserted).toLocaleString()} รายการ` : ""}`;
     }
+    if (log.action === "USER_CREATED") {
+      return `${d.username || d.targetEmail || "ผู้ใช้"}${d.displayName ? ` · ${d.displayName}` : ""}`;
+    }
+    if (log.action === "USER_PROFILE_UPDATED") {
+      return `${d.username || d.targetEmail || "ผู้ใช้"}${d.displayName ? ` · ${d.displayName}` : ""}`;
+    }
     if (log.action === "USER_ACCESS_CHANGE") {
       return `${d.targetEmail || "ผู้ใช้"} · ${d.afterActive ? "เปิดใช้งาน" : "ปิดใช้งาน"}`;
     }
     if (log.action === "INITIAL_PASSWORD_SET") {
-      return `${d.targetEmail || "ผู้ใช้"} · กำหนดรหัสเริ่มต้นแล้ว`;
+      return `${d.targetEmail || "ผู้ใช้"} · กำหนดรหัสชั่วคราวแล้ว`;
     }
     if (log.action === "CLEAR_SNAPSHOTS") return `ลบ ${Number(d.deleted || 0).toLocaleString()} snapshot`;
     if (log.action === "CLEAR_LIS_MASTER") return `ลบ master ${Number(d.deletedMasterRows || 0).toLocaleString()} รายการ`;
     return "";
   }
+
+  let adminUsersCache = [];
 
   async function loadAdminPanel() {
     if (currentAccess?.role !== "admin" || !currentAccess?.active) return;
@@ -372,76 +382,92 @@ minimum.${username}@auth.cnmiblood.com
 
     try {
       const users = await backend.adminListUsers();
+      adminUsersCache = Array.isArray(users) ? users : [];
 
-      const activeCount = users.filter(x => x.is_active).length;
-      const disabledCount = users.filter(x => !x.is_active).length;
-      const neverCount = users.filter(x => !x.user_id).length;
-      const pendingPasswordCount = users.filter(x => x.user_id && x.must_change_password).length;
-      const adminCount = users.filter(x => x.role === "admin").length;
+      const activeCount = adminUsersCache.filter(x => x.is_active).length;
+      const disabledCount = adminUsersCache.filter(x => !x.is_active).length;
+      const neverCount = adminUsersCache.filter(x => !x.user_id).length;
+      const pendingPasswordCount = adminUsersCache.filter(x => x.user_id && x.must_change_password).length;
       if (summaryBox) {
         summaryBox.innerHTML = `
-          <div class="admin-stat"><span>มีสิทธิ์ Blood Stock</span><strong>${activeCount}</strong></div>
-          <div class="admin-stat"><span>ปิดสิทธิ์</span><strong>${disabledCount}</strong></div>
-          <div class="admin-stat"><span>ยังไม่มีบัญชีกลาง</span><strong>${neverCount}</strong></div>
+          <div class="admin-stat"><span>เปิดใช้งาน</span><strong>${activeCount}</strong></div>
+          <div class="admin-stat"><span>ปิดใช้งาน</span><strong>${disabledCount}</strong></div>
+          <div class="admin-stat"><span>ยังไม่ได้ตั้งรหัส</span><strong>${neverCount}</strong></div>
           <div class="admin-stat"><span>รอเปลี่ยนรหัสครั้งแรก</span><strong>${pendingPasswordCount}</strong></div>
         `;
       }
 
       if (usersBox) {
-        usersBox.innerHTML = users.length ? users.map(user => {
+        usersBox.innerHTML = adminUsersCache.length ? adminUsersCache.map(user => {
           const isSelf = String(user.email || "").toLowerCase() === String(currentAccess.email || "").toLowerCase();
-          const safeEmail = escapeHtml(user.email || "");
-          const title = `${user.display_name || user.username || "ผู้ใช้งาน"}${user.nickname ? ` (${user.nickname})` : ""}`;
-          const loginMeta = user.last_login_at ? ` · Login ล่าสุด ${formatDateTime(user.last_login_at)}` : " · ยังไม่เคย Login Blood Stock";
+          const username = String(user.username || "");
+          const safeUsername = escapeHtml(username);
+          const title = `${user.display_name || username || "ผู้ใช้งาน"}${user.nickname ? ` (${user.nickname})` : ""}`;
+          const loginMeta = user.last_login_at ? `Login ล่าสุด ${formatDateTime(user.last_login_at)}` : "ยังไม่เคย Login Minimum Stock";
           return `
-            <div class="admin-user-row" data-email="${safeEmail}">
+            <div class="admin-user-row" data-username="${safeUsername}">
               <div class="admin-user-main">
                 <div class="admin-user-title">${escapeHtml(title)}</div>
-                <div class="admin-user-position">${escapeHtml(user.position || "")}</div>
-                <div class="admin-user-meta">${escapeHtml(user.username || "")}@mahidol.ac.th${escapeHtml(loginMeta)}</div>
+                <div class="admin-user-position">${escapeHtml(user.position || "ไม่ระบุตำแหน่ง")}</div>
+                <div class="admin-user-meta">${escapeHtml(username)}@mahidol.ac.th · ${escapeHtml(loginMeta)}</div>
               </div>
               <div class="admin-user-status">${userStatusText(user)}</div>
-              <div class="admin-user-role-fixed">${user.role === "admin" ? "Admin" : "Staff BB"}</div>
-              <div class="admin-password-cell">
-                ${user.is_active && !isSelf ? `<button class="btn btn-sm btn-light admin-init-password" type="button">${user.user_id ? "รีเซ็ตรหัส" : "ตั้งรหัสชั่วคราว"}</button>` : `<span class="admin-password-state">${isSelf ? "บัญชีของคุณ" : "-"}</span>`}
+              <div class="admin-user-role-fixed">${user.role === "admin" ? "Admin" : "Staff"}</div>
+              <div class="admin-user-actions">
+                <button class="btn btn-sm btn-light admin-edit-user" type="button">แก้ไข</button>
+                ${user.is_active && !isSelf ? `<button class="btn btn-sm btn-light admin-init-password" type="button">${user.user_id ? "รีเซ็ตรหัส" : "ตั้งรหัสชั่วคราว"}</button>` : ""}
               </div>
-              <label class="admin-switch-wrap">
+              <label class="admin-switch-wrap ${isSelf ? "is-self" : ""}">
                 <input class="form-check-input admin-active-toggle" type="checkbox" ${user.is_active ? "checked" : ""} ${isSelf ? "disabled" : ""}>
-                <span>${user.is_active ? "เปิด" : "ปิด"}</span>
+                <span>${isSelf ? "บัญชีของคุณ" : (user.is_active ? "เปิด" : "ปิด")}</span>
               </label>
-              <button class="btn btn-sm btn-main admin-save-user" type="button" ${isSelf ? "disabled" : ""}>บันทึก</button>
             </div>
           `;
         }).join("") : '<div class="small-muted">ไม่พบรายชื่อผู้ใช้งาน</div>';
 
-        usersBox.querySelectorAll(".admin-init-password").forEach(btn => {
+        usersBox.querySelectorAll(".admin-edit-user").forEach(btn => {
           btn.addEventListener("click", () => {
             const row = btn.closest(".admin-user-row");
-            const email = row?.dataset.email;
-            const title = row?.querySelector(".admin-user-title")?.textContent || email || "ผู้ใช้งาน";
-            if (email) openAdminPasswordModal(email, title);
+            const username = row?.dataset.username || "";
+            const user = adminUsersCache.find(item => String(item.username || "") === username);
+            if (user) openAdminEditUserModal(user);
           });
         });
 
-        usersBox.querySelectorAll(".admin-save-user").forEach(btn => {
-          btn.addEventListener("click", async () => {
+        usersBox.querySelectorAll(".admin-init-password").forEach(btn => {
+          btn.addEventListener("click", () => {
             const row = btn.closest(".admin-user-row");
-            const email = row?.dataset.email;
-            const active = Boolean(row?.querySelector(".admin-active-toggle")?.checked);
-            if (!email) return;
-            setBusy(btn, true, "กำลังบันทึก...");
+            const username = row?.dataset.username || "";
+            const user = adminUsersCache.find(item => String(item.username || "") === username);
+            if (!user) return;
+            const title = `${user.display_name || user.username || "ผู้ใช้งาน"}${user.nickname ? ` (${user.nickname})` : ""}`;
+            openAdminPasswordModal(user.email || `${username}@mahidol.ac.th`, title);
+          });
+        });
+
+        usersBox.querySelectorAll(".admin-active-toggle").forEach(toggle => {
+          toggle.addEventListener("change", async () => {
+            const row = toggle.closest(".admin-user-row");
+            const username = row?.dataset.username || "";
+            const user = adminUsersCache.find(item => String(item.username || "") === username);
+            if (!user) return;
+            const active = Boolean(toggle.checked);
+            toggle.disabled = true;
+            const text = row?.querySelector(".admin-switch-wrap span");
+            if (text) text.textContent = "กำลังบันทึก...";
             try {
-              await backend.adminSetUserActive(email, active);
+              await backend.adminSetUserActive(user.email || `${username}@mahidol.ac.th`, active);
               await loadAdminPanel();
             } catch (err) {
+              toggle.checked = !active;
+              toggle.disabled = false;
+              if (text) text.textContent = toggle.checked ? "เปิด" : "ปิด";
               if (window.showModal) window.showModal("error", "เปลี่ยนสถานะไม่สำเร็จ", err.message);
               else alert(err.message);
-              setBusy(btn, false, "");
             }
           });
         });
       }
-
     } catch (err) {
       if (usersBox) usersBox.innerHTML = `<div class="auth-message is-bad">${escapeHtml(err.message)}</div>`;
     }
@@ -466,6 +492,150 @@ minimum.${username}@auth.cnmiblood.com
       `).join("") : '<div class="small-muted">ยังไม่มี Audit Log</div>';
     } catch (err) {
       auditBox.innerHTML = `<div class="auth-message is-bad">${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  async function handleAdminAddUser(event) {
+    event.preventDefault();
+    if (currentAccess?.role !== "admin") return;
+
+    const button = el("adminAddUserSaveBtn");
+    const username = normalizeUsername(el("adminNewUsername")?.value || "");
+    const displayName = String(el("adminNewDisplayName")?.value || "").trim();
+    const nickname = String(el("adminNewNickname")?.value || "").trim();
+    const position = String(el("adminNewPosition")?.value || "").trim();
+    const password = String(el("adminNewPassword")?.value || "");
+    const confirm = String(el("adminNewPasswordConfirm")?.value || "");
+    const isActive = Boolean(el("adminNewActive")?.checked);
+
+    if (!validUsername(username)) {
+      if (window.showModal) window.showModal("error", "Username ไม่ถูกต้อง", "กรอกเฉพาะ Username Mahidol เช่น somchai.jai");
+      return;
+    }
+    if (!displayName) {
+      if (window.showModal) window.showModal("error", "กรอกชื่อ - นามสกุล", "กรุณาระบุชื่อ - นามสกุลของผู้ใช้งาน");
+      return;
+    }
+    if (password.length < 8) {
+      if (window.showModal) window.showModal("error", "รหัสสั้นเกินไป", "รหัสชั่วคราวต้องมีอย่างน้อย 8 ตัวอักษร");
+      return;
+    }
+    if (password !== confirm) {
+      if (window.showModal) window.showModal("error", "รหัสไม่ตรงกัน", "กรุณากรอกรหัสชั่วคราวและยืนยันให้ตรงกัน");
+      return;
+    }
+
+    setBusy(button, true, "กำลังเพิ่มผู้ใช้...");
+    let directoryCreated = false;
+    try {
+      await backend.adminCreateUser({
+        username,
+        displayName,
+        nickname,
+        position,
+        isActive
+      });
+      directoryCreated = true;
+
+      if (isActive) {
+        await backend.adminSetInitialPassword(`${username}@mahidol.ac.th`, password);
+      }
+
+      try {
+        await backend.logAudit("USER_CREATED", {
+          username,
+          targetEmail: `${username}@mahidol.ac.th`,
+          displayName,
+          nickname,
+          position,
+          isActive
+        });
+      } catch (_) {}
+      if (isActive) {
+        try { await backend.logAudit("INITIAL_PASSWORD_SET", { targetEmail: `${username}@mahidol.ac.th`, app: "minimum_stock" }); } catch (_) {}
+      }
+
+      event.currentTarget.reset();
+      if (el("adminNewActive")) el("adminNewActive").checked = true;
+      if (window.showModal) {
+        window.showModal(
+          "success",
+          "เพิ่มผู้ใช้งานแล้ว",
+          isActive
+            ? `${displayName} ใช้ Username ${username} และรหัสชั่วคราวที่กำหนดเพื่อ Login ครั้งแรกได้เลย`
+            : `${displayName} ถูกเพิ่มในรายชื่อแล้ว แต่ยังปิดใช้งานอยู่`
+        );
+      }
+      await loadAdminPanel();
+    } catch (err) {
+      const message = directoryCreated
+        ? `เพิ่มรายชื่อผู้ใช้แล้ว แต่ตั้งรหัสชั่วคราวไม่สำเร็จ: ${err.message}\nสามารถไปที่ “จัดการผู้ใช้” แล้วกดตั้งรหัสชั่วคราวได้`
+        : err.message;
+      if (window.showModal) window.showModal("error", "เพิ่มผู้ใช้งานไม่สำเร็จ", message);
+      else alert(message);
+      if (directoryCreated) await loadAdminPanel();
+    } finally {
+      setBusy(button, false, "");
+    }
+  }
+
+  let adminEditUsername = "";
+
+  function openAdminEditUserModal(user) {
+    adminEditUsername = String(user?.username || "");
+    if (!adminEditUsername) return;
+    if (el("adminEditUserAccount")) el("adminEditUserAccount").textContent = `${adminEditUsername}@mahidol.ac.th`;
+    if (el("adminEditDisplayName")) el("adminEditDisplayName").value = user?.display_name || "";
+    if (el("adminEditNickname")) el("adminEditNickname").value = user?.nickname || "";
+    if (el("adminEditPosition")) el("adminEditPosition").value = user?.position || "";
+    if (el("adminEditUserOverlay")) el("adminEditUserOverlay").style.display = "flex";
+    setTimeout(() => el("adminEditDisplayName")?.focus(), 20);
+  }
+
+  function closeAdminEditUserModal() {
+    adminEditUsername = "";
+    if (el("adminEditUserOverlay")) el("adminEditUserOverlay").style.display = "none";
+  }
+
+  async function handleAdminEditUser(event) {
+    event.preventDefault();
+    if (!adminEditUsername) return;
+    const button = el("adminEditUserSaveBtn");
+    const displayName = String(el("adminEditDisplayName")?.value || "").trim();
+    const nickname = String(el("adminEditNickname")?.value || "").trim();
+    const position = String(el("adminEditPosition")?.value || "").trim();
+    if (!displayName) {
+      if (window.showModal) window.showModal("error", "กรอกชื่อ - นามสกุล", "ชื่อ - นามสกุลต้องไม่ว่าง");
+      return;
+    }
+
+    setBusy(button, true, "กำลังบันทึก...");
+    const targetUsername = adminEditUsername;
+    try {
+      await backend.adminUpdateUser({
+        username: targetUsername,
+        displayName,
+        nickname,
+        position
+      });
+      try {
+        await backend.logAudit("USER_PROFILE_UPDATED", {
+          username: targetUsername,
+          targetEmail: `${targetUsername}@mahidol.ac.th`,
+          displayName,
+          nickname,
+          position
+        });
+      } catch (_) {}
+      closeAdminEditUserModal();
+      if (window.showModal) window.showModal("success", "บันทึกแล้ว", "อัปเดตชื่อและข้อมูลผู้ใช้งานเรียบร้อย");
+      await loadAdminPanel();
+      if (targetUsername === currentAccess?.username) await refreshAccess({ silent: true });
+    } catch (err) {
+      if (window.showModal) window.showModal("error", "บันทึกไม่สำเร็จ", err.message);
+      else alert(err.message);
+    } finally {
+      setBusy(button, false, "");
     }
   }
 
@@ -523,6 +693,8 @@ minimum.${username}@auth.cnmiblood.com
     el("toggleLoginPasswordBtn")?.addEventListener("click", () => togglePasswordField("loginPassword", "toggleLoginPasswordBtn"));
     el("toggleNewPasswordBtn")?.addEventListener("click", () => togglePasswordField("newPassword", "toggleNewPasswordBtn"));
     el("toggleConfirmPasswordBtn")?.addEventListener("click", () => togglePasswordField("confirmNewPassword", "toggleConfirmPasswordBtn"));
+    el("toggleAdminNewPasswordBtn")?.addEventListener("click", () => togglePasswordField("adminNewPassword", "toggleAdminNewPasswordBtn"));
+    el("toggleAdminNewPasswordConfirmBtn")?.addEventListener("click", () => togglePasswordField("adminNewPasswordConfirm", "toggleAdminNewPasswordConfirmBtn"));
 
     el("forgotPasswordBtn")?.addEventListener("click", () => {
       const username = normalizeUsername(el("loginUsername")?.value || "");
@@ -530,6 +702,10 @@ minimum.${username}@auth.cnmiblood.com
       showAuthPanel("forgot");
     });
     el("forgotBackBtn")?.addEventListener("click", () => showAuthPanel("login"));
+    el("adminAddUserForm")?.addEventListener("submit", handleAdminAddUser);
+    el("adminEditUserForm")?.addEventListener("submit", handleAdminEditUser);
+    el("adminEditUserCancelBtn")?.addEventListener("click", closeAdminEditUserModal);
+    el("adminEditUserOverlay")?.addEventListener("click", (event) => { if (event.target === el("adminEditUserOverlay")) closeAdminEditUserModal(); });
     el("adminPasswordForm")?.addEventListener("submit", handleAdminInitialPassword);
     el("adminPasswordCancelBtn")?.addEventListener("click", closeAdminPasswordModal);
     el("adminPasswordOverlay")?.addEventListener("click", (event) => { if (event.target === el("adminPasswordOverlay")) closeAdminPasswordModal(); });
