@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-9-icon-soft-match";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-10-app-specific-auth";
 const APP_SHELL = [
   "./",
   "./index.html",

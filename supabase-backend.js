@@ -2478,12 +2478,19 @@
   function normalizeAuthUsername(value) {
     let username = String(value || "").trim().toLowerCase();
     username = username.replace(/@mahidol\.ac\.th$/i, "");
+    username = username.replace(/@auth\.cnmiblood\.com$/i, "");
+    username = username.replace(/^minimum\./i, "");
     return username;
   }
 
   function usernameToMahidolEmail(value) {
     const username = normalizeAuthUsername(value);
     return username ? `${username}@mahidol.ac.th` : "";
+  }
+
+  function usernameToMinimumAuthEmail(value) {
+    const username = normalizeAuthUsername(value);
+    return username ? `minimum.${username}@auth.cnmiblood.com` : "";
   }
 
   async function authGetSession() {
@@ -2497,7 +2504,7 @@
   async function authSignIn(username, password) {
     const client = getClient();
     if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
-    const email = usernameToMahidolEmail(username);
+    const email = usernameToMinimumAuthEmail(username);
     if (!email) throw new Error("กรุณากรอก Username");
     const { data, error } = await client.auth.signInWithPassword({
       email,
@@ -2515,46 +2522,14 @@
     const { data, error } = await client.rpc("minimum_stock_can_bootstrap_user", {
       p_username: normalized
     });
-    if (error) throw new Error("ตรวจสอบบัญชีไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.2");
+    if (error) throw new Error("ตรวจสอบบัญชีไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.10");
     return data || { allowed: false, username: normalized, hasAccount: false };
   }
 
-  function isFirstAdminBootstrapAllowed(info, normalized) {
-    const role = String(info?.role || info?.userRole || info?.user_role || "").toLowerCase();
-    return role === "admin" || normalized === "parichat.ink";
-  }
-
   async function authStartAdminFirstLogin(username) {
-    const client = getClient();
-    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
-
     const normalized = normalizeAuthUsername(username);
-    if (!normalized) throw new Error("กรุณากรอก Username");
-
-    const info = await authRegistrationStatus(normalized);
-    if (!info?.allowed) throw new Error("Username นี้ไม่มีสิทธิ์ Blood Stock หรือถูกปิดใช้งาน");
-    if (info?.hasAccount) throw new Error("บัญชี Admin นี้เปิดใช้งานแล้ว กรุณา Login ด้วยรหัสเดิมหรือกดลืมรหัสผ่าน");
-    if (!isFirstAdminBootstrapAllowed(info, normalized)) {
-      throw new Error("บัญชีนี้ไม่ใช่ Admin สำหรับการเปิดบัญชีครั้งแรก");
-    }
-
-    const email = String(info.email || usernameToMahidolEmail(normalized)).toLowerCase();
-    const redirectTo = window.location.origin + window.location.pathname + "?adminFirstLogin=1";
-    const { data, error } = await client.auth.signInWithOtp({
-      email,
-      options: {
-        shouldCreateUser: true,
-        emailRedirectTo: redirectTo,
-        data: {
-          display_name: info.displayName || normalized,
-          nickname: info.nickname || "",
-          username: normalized,
-          minimum_stock_admin_first_login: true
-        }
-      }
-    });
-    if (error) throw new Error("ส่งลิงก์เปิดบัญชี Admin ไม่สำเร็จ: " + error.message);
-    return { ...(data || {}), email };
+    const authEmail = usernameToMinimumAuthEmail(normalized);
+    throw new Error(`Admin คนแรกต้องสร้างบัญชี Minimum Stock ใน Supabase Authentication 1 ครั้งก่อน: ${authEmail}`);
   }
 
   async function authVerifyInitialPassword(username, password) {
@@ -2566,7 +2541,7 @@
       p_username: normalized,
       p_password: String(password || "")
     });
-    if (error) throw new Error("ตรวจรหัสเริ่มต้นไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.2");
+    if (error) throw new Error("ตรวจรหัสเริ่มต้นไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.10");
     return data || { allowed: false, matched: false, hasAccount: false, passwordConfigured: false };
   }
 
@@ -2584,7 +2559,7 @@
     if (!info.passwordConfigured) throw new Error("Admin ยังไม่ได้กำหนดรหัสเริ่มต้นให้บัญชีนี้");
     if (!info.matched) throw new Error("รหัสเริ่มต้นไม่ถูกต้อง กรุณาตรวจสอบรหัสที่ได้รับจาก Admin");
 
-    const email = String(info.email || usernameToMahidolEmail(normalized)).toLowerCase();
+    const email = usernameToMinimumAuthEmail(normalized);
     const { data, error } = await client.auth.signUp({
       email,
       password: pwd,
@@ -2593,6 +2568,8 @@
           display_name: info.displayName || normalized,
           nickname: info.nickname || "",
           username: normalized,
+          app: "minimum_stock",
+          mahidol_email: usernameToMahidolEmail(normalized),
           minimum_stock_force_change_password: true
         },
         emailRedirectTo: window.location.origin + window.location.pathname
@@ -2614,7 +2591,7 @@
     if (!info.allowed) throw new Error("Username นี้ไม่ได้รับสิทธิ์ Blood Stock หรือถูก Admin ปิดใช้งาน");
     if (info.hasAccount) throw new Error("Username นี้มีบัญชี Supabase อยู่แล้ว กรุณา Login ด้วยรหัสเดิมหรือใช้ลืมรหัสผ่าน");
 
-    const email = String(info.email || usernameToMahidolEmail(normalized)).toLowerCase();
+    const email = usernameToMinimumAuthEmail(normalized);
     const { data, error } = await client.auth.signUp({
       email,
       password: pwd,
@@ -2622,7 +2599,9 @@
         data: {
           display_name: info.displayName || normalized,
           nickname: info.nickname || "",
-          username: normalized
+          username: normalized,
+          app: "minimum_stock",
+          mahidol_email: usernameToMahidolEmail(normalized)
         },
         emailRedirectTo: window.location.origin + window.location.pathname
       }
@@ -2632,20 +2611,12 @@
   }
 
   async function authSendPasswordReset(username) {
-    const client = getClient();
-    if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
     const normalized = normalizeAuthUsername(username);
     if (!normalized) throw new Error("กรุณากรอก Username");
-
     const info = await authRegistrationStatus(normalized);
-    if (!info.allowed) throw new Error("Username นี้ไม่มีสิทธิ์ Blood Stock หรือถูกปิดใช้งาน");
-    if (!info.hasAccount) throw new Error("Username นี้ยังไม่มีบัญชีกลาง กรุณาติดต่อ Admin เพื่อกำหนดรหัสเริ่มต้น");
-
-    const email = String(info.email || usernameToMahidolEmail(normalized)).toLowerCase();
-    const redirectTo = window.location.origin + window.location.pathname + "?recovery=1";
-    const { data, error } = await client.auth.resetPasswordForEmail(email, { redirectTo });
-    if (error) throw new Error("ส่งอีเมลตั้งรหัสใหม่ไม่สำเร็จ: " + error.message);
-    return data || { ok: true };
+    if (!info?.allowed) throw new Error("Username นี้ไม่มีสิทธิ์ Minimum Stock หรือถูกปิดใช้งาน");
+    if (!info?.hasAccount) throw new Error("บัญชี Minimum Stock นี้ยังไม่ถูกสร้าง กรุณาติดต่อ Admin");
+    throw new Error("Minimum Stock ใช้บัญชีแยกจากแอปอื่น กรุณาติดต่อ Admin ให้รีเซ็ตรหัสจากเมนู “จัดการผู้ใช้งาน”");
   }
 
   async function authUpdatePassword(newPassword) {
@@ -2692,7 +2663,7 @@
 
     const { data, error } = await client.rpc("minimum_stock_current_user_access");
     if (error) {
-      throw new Error("ระบบสิทธิ์ผู้ใช้งานยังไม่พร้อม: " + error.message + " | กรุณารัน SQL v2.9.2");
+      throw new Error("ระบบสิทธิ์ผู้ใช้งานยังไม่พร้อม: " + error.message + " | กรุณารัน SQL v2.9.10");
     }
     return data || { authenticated: true, active: false, role: "", mustChangePassword: false };
   }
@@ -2731,13 +2702,18 @@
     const client = getClient();
     if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
     const pwd = String(password || "");
-    if (pwd.length < 8) throw new Error("รหัสเริ่มต้นต้องมีอย่างน้อย 8 ตัวอักษร");
-    const { data, error } = await client.rpc("minimum_stock_admin_set_initial_password", {
-      p_email: String(email || "").trim().toLowerCase(),
-      p_password: pwd
+    if (pwd.length < 8) throw new Error("รหัสชั่วคราวต้องมีอย่างน้อย 8 ตัวอักษร");
+    const username = normalizeAuthUsername(email);
+    if (!username) throw new Error("ไม่พบ Username");
+
+    const { data, error } = await client.functions.invoke("minimum-stock-auth-admin", {
+      body: { action: "set_password", username, password: pwd }
     });
-    if (error) throw new Error("ตั้งรหัสเริ่มต้นไม่สำเร็จ: " + error.message + " | กรุณารัน SQL v2.9.2");
-    return data || { ok: true };
+    if (error) {
+      throw new Error("ตั้ง/รีเซ็ตรหัส Minimum Stock ไม่สำเร็จ: " + (error.message || error) + " | ตรวจว่า Deploy Edge Function minimum-stock-auth-admin แล้ว");
+    }
+    if (!data?.ok) throw new Error(data?.message || "ตั้ง/รีเซ็ตรหัส Minimum Stock ไม่สำเร็จ");
+    return data;
   }
 
   async function adminGetAuditLogs(limit = 100) {

@@ -6,7 +6,6 @@
   let appStarted = false;
   let accessTimer = null;
   let recoveryMode = /[?&]recovery=1\b/i.test(window.location.search) || /type=recovery/i.test(window.location.hash);
-  let adminFirstLoginMode = /[?&]adminFirstLogin=1\b/i.test(window.location.search);
 
   function el(id) { return document.getElementById(id); }
 
@@ -139,16 +138,6 @@
       return;
     }
 
-    if (adminFirstLoginMode) {
-      if (app) app.style.display = "none";
-      if (authShell) authShell.style.display = "grid";
-      if (el("changePasswordHelp")) {
-        el("changePasswordHelp").textContent = "ยืนยันอีเมล Admin สำเร็จแล้ว กรุณาตั้งรหัสผ่านของคุณอย่างน้อย 8 ตัวอักษร ก่อนเข้าใช้งานระบบ";
-      }
-      showAuthPanel("password");
-      toggleAdminUI(false);
-      return;
-    }
 
     if (!currentAccess.active) {
       clearMinimumStockCaches();
@@ -223,7 +212,6 @@
       scrubProtectedData();
       appStarted = false;
       recoveryMode = false;
-      adminFirstLoginMode = false;
       currentAccess = null;
       window.MinimumStockAccess = null;
       await applyAccess({ authenticated: false, active: false, role: "" });
@@ -269,23 +257,15 @@
           const info = await backend.authRegistrationStatus(username);
           if (info?.allowed && !info?.hasAccount) {
             const role = String(info?.role || info?.userRole || info?.user_role || "").toLowerCase();
-            const isFirstAdmin = role === "admin" || username === "parichat.ink";
-            if (isFirstAdmin) {
-              const result = await backend.authStartAdminFirstLogin(username);
-              setAuthMessage(`ส่งลิงก์เปิดบัญชี Admin ไปที่ ${result?.email || username + "@mahidol.ac.th"} แล้ว\nเปิดอีเมล Mahidol แล้วกดลิงก์จากอุปกรณ์นี้ ระบบจะพาไปตั้งรหัสผ่านใหม่ทันที`, true);
+            if (role === "admin" || username === "parichat.ink") {
+              setAuthMessage(`บัญชี Admin ของ Minimum Stock ยังไม่ถูกสร้าง
+สร้างใน Supabase Authentication 1 ครั้งด้วยอีเมล:
+minimum.${username}@auth.cnmiblood.com
+จากนั้นกลับมา Login ด้วย Username ${username}`, false);
               return;
             }
-            if (info.passwordConfigured === false || info.hasInitialPassword === false) {
-              setAuthMessage("บัญชีนี้ยังไม่มีรหัสเริ่มต้นจาก Admin\nกรุณาให้ Admin ไปที่ “จัดการผู้ใช้งาน” แล้วกดตั้งรหัสเริ่มต้นก่อน", false);
-              return;
-            }
-            const result = await backend.authBootstrapWithInitialPassword(username, password);
-            if (result?.session) {
-              try { await backend.logAudit("ACCOUNT_BOOTSTRAP", { source: "admin-initial-password" }); } catch (_) {}
-              await refreshAccess();
-            } else {
-              setAuthMessage("เปิดบัญชีจากรหัสเริ่มต้นแล้ว กรุณายืนยันอีเมล Mahidol 1 ครั้ง จากนั้น Login ด้วยรหัสเริ่มต้น ระบบจะพาเปลี่ยนรหัสทันที", true);
-            }
+            setAuthMessage(`บัญชี Minimum Stock นี้ยังไม่ถูกสร้าง
+กรุณาให้ Admin ไปที่ “จัดการผู้ใช้งาน” แล้วตั้งรหัสชั่วคราวก่อน`, false);
             return;
           }
         } catch (bootstrapErr) {
@@ -301,20 +281,9 @@
 
   async function handleForgotPassword(event) {
     event.preventDefault();
-    const button = el("forgotSendBtn");
     const username = normalizeUsername(el("forgotUsername")?.value || "");
     if (!validUsername(username)) return setAuthMessage("กรุณากรอก Username เช่น parichat.ink", false);
-
-    setBusy(button, true, "กำลังส่งอีเมล...");
-    setAuthMessage("", true);
-    try {
-      await backend.authSendPasswordReset(username);
-      setAuthMessage("ส่งลิงก์ตั้งรหัสใหม่ไปที่อีเมล Mahidol แล้ว กรุณาเปิดอีเมลและกดลิงก์จากอุปกรณ์นี้", true);
-    } catch (err) {
-      setAuthMessage(String(err?.message || err), false);
-    } finally {
-      setBusy(button, false, "");
-    }
+    setAuthMessage("Minimum Stock ใช้รหัสแยกจากแอปอื่น กรุณาติดต่อ Admin ให้รีเซ็ตรหัสจากเมนู “จัดการผู้ใช้งาน”", false);
   }
 
   async function handleChangePassword(event) {
@@ -330,15 +299,13 @@
     setAuthMessage("", true);
     try {
       const wasFirstLogin = Boolean(currentAccess?.mustChangePassword);
-      const wasAdminFirstLogin = Boolean(adminFirstLoginMode);
       await backend.authUpdatePassword(password);
       if (wasFirstLogin) await backend.markPasswordChanged();
-      const auditAction = wasAdminFirstLogin ? "ADMIN_FIRST_PASSWORD_SET" : (wasFirstLogin ? "FIRST_PASSWORD_CHANGED" : (recoveryMode ? "PASSWORD_RESET" : "PASSWORD_CHANGED"));
-      try { await backend.logAudit(auditAction, { sharedAuth: true }); } catch (_) {}
+      const auditAction = wasFirstLogin ? "FIRST_PASSWORD_CHANGED" : (recoveryMode ? "PASSWORD_RESET" : "PASSWORD_CHANGED");
+      try { await backend.logAudit(auditAction, { app: "minimum_stock" }); } catch (_) {}
       if (el("newPassword")) el("newPassword").value = "";
       if (el("confirmNewPassword")) el("confirmNewPassword").value = "";
       recoveryMode = false;
-      adminFirstLoginMode = false;
       if (history.replaceState) history.replaceState({}, document.title, window.location.pathname);
       await refreshAccess();
     } catch (err) {
@@ -350,8 +317,7 @@
 
   function userStatusText(user) {
     if (!user.is_active) return '<span class="access-badge is-disabled">ปิดสิทธิ์ Blood Stock</span>';
-    if (!user.user_id && user.has_initial_password) return '<span class="access-badge is-pending">รหัสเริ่มต้นพร้อม</span>';
-    if (!user.user_id) return '<span class="access-badge is-never">รอตั้งรหัสเริ่มต้น</span>';
+    if (!user.user_id) return '<span class="access-badge is-never">ยังไม่มีบัญชี Minimum</span>';
     if (user.must_change_password) return '<span class="access-badge is-pending">รอเปลี่ยนรหัสครั้งแรก</span>';
     return '<span class="access-badge is-active">ใช้งานได้</span>';
   }
@@ -408,14 +374,14 @@
       const activeCount = users.filter(x => x.is_active).length;
       const disabledCount = users.filter(x => !x.is_active).length;
       const neverCount = users.filter(x => !x.user_id).length;
-      const readyInitialCount = users.filter(x => !x.user_id && x.has_initial_password).length;
+      const pendingPasswordCount = users.filter(x => x.user_id && x.must_change_password).length;
       const adminCount = users.filter(x => x.role === "admin").length;
       if (summaryBox) {
         summaryBox.innerHTML = `
           <div class="admin-stat"><span>มีสิทธิ์ Blood Stock</span><strong>${activeCount}</strong></div>
           <div class="admin-stat"><span>ปิดสิทธิ์</span><strong>${disabledCount}</strong></div>
           <div class="admin-stat"><span>ยังไม่มีบัญชีกลาง</span><strong>${neverCount}</strong></div>
-          <div class="admin-stat"><span>รหัสเริ่มต้นพร้อม</span><strong>${readyInitialCount}</strong></div>
+          <div class="admin-stat"><span>รอเปลี่ยนรหัสครั้งแรก</span><strong>${pendingPasswordCount}</strong></div>
         `;
       }
 
@@ -435,7 +401,7 @@
               <div class="admin-user-status">${userStatusText(user)}</div>
               <div class="admin-user-role-fixed">${user.role === "admin" ? "Admin" : "Staff BB"}</div>
               <div class="admin-password-cell">
-                ${!user.user_id && user.is_active ? `<button class="btn btn-sm btn-light admin-init-password" type="button">${user.has_initial_password ? "ตั้งรหัสใหม่" : "ตั้งรหัสเริ่มต้น"}</button>` : `<span class="admin-password-state">${user.user_id ? "บัญชีกลางแล้ว" : "-"}</span>`}
+                ${user.is_active && !isSelf ? `<button class="btn btn-sm btn-light admin-init-password" type="button">${user.user_id ? "รีเซ็ตรหัส" : "ตั้งรหัสชั่วคราว"}</button>` : `<span class="admin-password-state">${isSelf ? "บัญชีของคุณ" : "-"}</span>`}
               </div>
               <label class="admin-switch-wrap">
                 <input class="form-check-input admin-active-toggle" type="checkbox" ${user.is_active ? "checked" : ""} ${isSelf ? "disabled" : ""}>
@@ -496,6 +462,7 @@
 
   function openAdminPasswordModal(email, title) {
     adminPasswordTargetEmail = String(email || "").toLowerCase();
+    if (el("adminPasswordTitle")) el("adminPasswordTitle").textContent = "ตั้ง / รีเซ็ตรหัส Minimum Stock";
     if (el("adminPasswordTarget")) el("adminPasswordTarget").textContent = `${title} · ${adminPasswordTargetEmail}`;
     if (el("adminInitialPassword")) el("adminInitialPassword").value = "";
     if (el("adminInitialPasswordConfirm")) el("adminInitialPasswordConfirm").value = "";
@@ -515,21 +482,22 @@
     const confirm = String(el("adminInitialPasswordConfirm")?.value || "");
     if (!adminPasswordTargetEmail) return;
     if (password.length < 8) {
-      if (window.showModal) window.showModal("error", "รหัสสั้นเกินไป", "รหัสเริ่มต้นต้องมีอย่างน้อย 8 ตัวอักษร");
+      if (window.showModal) window.showModal("error", "รหัสสั้นเกินไป", "รหัสชั่วคราวต้องมีอย่างน้อย 8 ตัวอักษร");
       return;
     }
     if (password !== confirm) {
-      if (window.showModal) window.showModal("error", "รหัสไม่ตรงกัน", "กรุณากรอกรหัสเริ่มต้นและยืนยันให้ตรงกัน");
+      if (window.showModal) window.showModal("error", "รหัสไม่ตรงกัน", "กรุณากรอกรหัสชั่วคราวและยืนยันให้ตรงกัน");
       return;
     }
     setBusy(button, true, "กำลังบันทึก...");
     try {
       await backend.adminSetInitialPassword(adminPasswordTargetEmail, password);
+      try { await backend.logAudit("INITIAL_PASSWORD_SET", { targetEmail: adminPasswordTargetEmail, app: "minimum_stock" }); } catch (_) {}
       closeAdminPasswordModal();
-      if (window.showModal) window.showModal("success", "ตั้งรหัสเริ่มต้นแล้ว", "แจ้ง Username และรหัสเริ่มต้นให้เจ้าหน้าที่ได้เลย เมื่อ Login ครั้งแรกระบบจะบังคับเปลี่ยนรหัสใหม่");
+      if (window.showModal) window.showModal("success", "ตั้ง/รีเซ็ตรหัสแล้ว", "รหัสนี้ใช้เฉพาะ Minimum Stock เท่านั้น เมื่อ Staff Login ระบบจะบังคับตั้งรหัสใหม่");
       await loadAdminPanel();
     } catch (err) {
-      if (window.showModal) window.showModal("error", "ตั้งรหัสไม่สำเร็จ", err.message);
+      if (window.showModal) window.showModal("error", "ตั้ง/รีเซ็ตรหัสไม่สำเร็จ", err.message);
       else alert(err.message);
     } finally {
       setBusy(button, false, "");
@@ -568,7 +536,7 @@
       return;
     }
     bindUI();
-    showAuthPanel((recoveryMode || adminFirstLoginMode) ? "password" : "login");
+    showAuthPanel(recoveryMode ? "password" : "login");
 
     backend.onAuthStateChange?.((event) => {
       if (event === "PASSWORD_RECOVERY") {
@@ -577,8 +545,7 @@
       } else if (event === "SIGNED_OUT") {
         appStarted = false;
         recoveryMode = false;
-        adminFirstLoginMode = false;
-        applyAccess({ authenticated: false, active: false, role: "" });
+          applyAccess({ authenticated: false, active: false, role: "" });
       }
     });
 
