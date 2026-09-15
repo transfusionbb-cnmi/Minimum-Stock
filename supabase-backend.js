@@ -2305,15 +2305,35 @@
     );
     if (!hasFilters && !options.forceRefresh && cachedOutreachSnapshot) return cachedOutreachSnapshot;
 
-    const [state, latestUpload, filterOptions, report] = await Promise.all([
+    const [state, latestUpload, report] = await Promise.all([
       getLisDataState(),
       getLatestLisUpload(),
-      getOutreachFilterOptions(),
       runOutreachReport(filters)
     ]);
 
     if (!state.baselineEstablished) {
       return { ok: true, message: "ยังไม่มีข้อมูลวิเคราะห์ผลถุงเลือดออกหน่วย", report: { summary: {}, groups: [], sources: [] }, filterOptions: {} };
+    }
+
+    // v2.9.12: ตัวกรองเป็นข้อมูลประกอบ ไม่ควรทำให้ทั้งรายงานเปิดไม่ได้
+    // หาก RPC ตัวกรอง scan ฐานย้อนหลังนานจน statement timeout ให้เปิดรายงานหลักต่อ
+    // และใช้ช่วงวันที่จาก data state เป็น fallback แทน
+    let filterOptions = {
+      minDate: state.masterMinDate || "",
+      maxDate: state.masterMaxDate || "",
+      sourceGroups: [],
+      sources: [],
+      products: [],
+      bloodGroups: [],
+      rhs: []
+    };
+    let filterWarning = "";
+    try {
+      const loadedFilterOptions = await getOutreachFilterOptions();
+      filterOptions = { ...filterOptions, ...(loadedFilterOptions || {}) };
+    } catch (filterErr) {
+      filterWarning = String(filterErr?.message || filterErr || "");
+      console.warn("outreach filter options fallback", filterErr);
     }
 
     let reviewRows = [];
@@ -2333,6 +2353,7 @@
       excludedComponentCount: Number(latestUpload?.excluded_component_count || 0),
       validation: { ...(latestUpload?.validation || {}), masterReviewCount: Number(state.reviewCount || 0) },
       filterOptions,
+      filterWarning,
       reviewRows,
       report,
       filters,

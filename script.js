@@ -1263,11 +1263,17 @@ async function loadOutreachAnalysis(forceRefresh = false) {
     currentOutreachSourceSummary = normalizeOutreachSourceSummary(data?.report?.sources || []);
     renderOutreachAnalysis();
   } catch (err) {
+    const message = String(err?.message || err || "");
+    const isTimeout = /statement timeout|canceling statement/i.test(message);
     container.innerHTML = `
       <div class="hero-card mt-4 outreach-error-card">
-        <h4 class="fw-bold mb-2">เปิดรายงานไม่ได้</h4>
-        <div class="small-muted mb-3">${escapeOutreachHtml(err.message)}</div>
-        <button class="btn btn-main" type="button" onclick="scrollToUpload()">ไปหน้า Upload File</button>
+        <h4 class="fw-bold mb-2">${isTimeout ? "รายงานใช้เวลานานเกินไป" : "เปิดรายงานไม่ได้"}</h4>
+        <div class="small-muted mb-3">${isTimeout ? "ข้อมูลที่อัปโหลดไว้ไม่ได้ถูกลบ แต่คำสั่งสรุปรายงานใช้เวลานานจน Supabase ยกเลิกคำสั่ง" : escapeOutreachHtml(message)}</div>
+        ${isTimeout ? `<div class="small-muted mb-3">ลองโหลดใหม่ได้เลย โดยยังไม่ต้องอัปโหลดไฟล์ LIS ซ้ำ</div>` : ""}
+        <div class="d-flex gap-2 flex-wrap">
+          <button class="btn btn-main" type="button" onclick="loadOutreachAnalysis(true)">ลองโหลดรายงานอีกครั้ง</button>
+          <button class="btn btn-light" type="button" onclick="scrollToUpload()">ไปหน้า Upload File</button>
+        </div>
       </div>
     `;
   }
@@ -1369,6 +1375,7 @@ function renderOutreachAnalysis() {
         </div>
       </details>
 
+      ${data.filterWarning ? `<div class="data-quality-strip mb-3"><strong>ตัวกรองบางรายการโหลดช้า</strong><span>รายงานหลักยังใช้ข้อมูลเดิมในฐานได้ตามปกติ · ${escapeOutreachHtml(data.filterWarning)}</span></div>` : ""}
       <div id="outreachValidationBox"></div>
       <div id="outreachSummaryCards"></div>
 

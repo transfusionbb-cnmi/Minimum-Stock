@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-11-access-sync-fix";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-12-report-timeout-recovery";
 const APP_SHELL = [
   "./",
   "./index.html",
