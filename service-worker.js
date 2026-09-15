@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-8-minimal-bubble-login";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-9-icon-soft-match";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -13,7 +13,8 @@ const APP_SHELL = [
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/icon-maskable-512.png",
-  "./icons/apple-touch-icon.png"
+  "./icons/apple-touch-icon.png",
+  "./icons/login-brand-soft.png"
 ];
 
 self.addEventListener("install", (event) => {

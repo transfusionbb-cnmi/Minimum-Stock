@@ -2411,3 +2411,36 @@ main .summary-card {
     border-radius: 0 0 16px 16px;
   }
 }
+
+
+/* ==================== v2.9.9 Icon soft match ==================== */
+
+.auth-brand-mark-image,
+.brand-mark-image {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0;
+  overflow: hidden;
+}
+.auth-brand-mark-image img,
+.brand-mark-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: saturate(.94) contrast(.95) brightness(.99);
+}
+.auth-card-minimal .auth-brand-mark {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+}
+.side-brand .brand-mark {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+}
+.auth-card-minimal {
+  box-shadow: 0 12px 28px rgba(22, 50, 79, .055);
+}
