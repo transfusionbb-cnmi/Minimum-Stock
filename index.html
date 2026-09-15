@@ -10,8 +10,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Blood Stock" />
-  <link rel="manifest" href="manifest.webmanifest?v=20260915-v2-9-5-admin-first-login-fix" />
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260915-v2-9-5-admin-first-login-fix" />
+  <link rel="manifest" href="manifest.webmanifest?v=20260915-v2-9-6-login-declutter" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260915-v2-9-6-login-declutter" />
 
 
   <script>
@@ -19,7 +19,7 @@
       "use strict";
 
       // เปลี่ยนเลขนี้ทุกครั้งที่ออก ZIP ใหม่ เพื่อให้เครื่องผู้ใช้เริ่มเหมือนแอพใหม่
-      const APP_VERSION = "20260915-v2-9-5-admin-first-login-fix";
+      const APP_VERSION = "20260915-v2-9-6-login-declutter";
       const VERSION_KEY = "minimumStock.__appVersion";
       const FORCE_RESET = /[?&](fresh|reset|clearCache)=1/i.test(window.location.search);
 
@@ -77,7 +77,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="style.css?v=20260915-v2-9-5-admin-first-login-fix">
+  <link rel="stylesheet" href="style.css?v=20260915-v2-9-6-login-declutter">
 </head>
 
 <body>
@@ -98,48 +98,15 @@
       </div>
 
       <div class="auth-hero-body">
-        <div class="auth-kicker">BLOOD STOCK MANAGEMENT</div>
-        <h1>ดูสต๊อกให้ไว<br>ตัดสินใจหน้างานได้ง่ายขึ้น</h1>
-        <p>รวมข้อมูลสต๊อกขั้นต่ำ ใกล้หมดอายุ วางแผนออกหน่วย และผลถุงเลือดไว้ในหน้าเดียว เพื่อให้ทีมทำงานได้เร็วขึ้นแบบไม่รกตา</p>
+        <div class="auth-kicker">CNMI BLOOD STOCK</div>
+        <h1>ดูสต๊อกได้ง่าย<br>ใช้งานได้ไวขึ้น</h1>
+        <p>ระบบสำหรับติดตามสต๊อกขั้นต่ำ ดูหน่วยใกล้หมดอายุ วางแผนออกหน่วย และสรุปผลถุงเลือด แบบหน้าตาสะอาด อ่านง่าย ใช้งานได้ทั้งคอมและมือถือ</p>
 
-        <div class="auth-hero-stats">
-          <div class="auth-stat-chip">
-            <strong>4</strong>
-            <span>dashboard หลัก</span>
-          </div>
-          <div class="auth-stat-chip">
-            <strong>1</strong>
-            <span>ไฟล์ LIS ต่อรอบ</span>
-          </div>
-          <div class="auth-stat-chip">
-            <strong>Real-time</strong>
-            <span>พร้อมใช้งานหลังอัปเดต</span>
-          </div>
-        </div>
-
-        <div class="auth-feature-grid">
-          <div class="auth-feature-card">
-            <div class="auth-feature-icon">✓</div>
-            <div>
-              <strong>ดูง่ายขึ้น</strong>
-              <span>หน้าแรกอ่านไว โทนสะอาด ใช้งานบนมือถือได้ดีขึ้น</span>
-            </div>
-          </div>
-          <div class="auth-feature-card">
-            <div class="auth-feature-icon">↻</div>
-            <div>
-              <strong>อัปเดตสะดวก</strong>
-              <span>อัปโหลดไฟล์ LIS ไฟล์เดียว แล้ว dashboard จะอัปเดตต่อให้เอง</span>
-            </div>
-          </div>
-          <div class="auth-feature-card">
-            <div class="auth-feature-icon">⚕</div>
-            <div>
-              <strong>เหมาะกับงานจริง</strong>
-              <span>โฟกัสข้อมูลสำคัญก่อน ลดความรกและลดการมองข้ามเคสเสี่ยง</span>
-            </div>
-          </div>
-        </div>
+        <ul class="auth-hero-points">
+          <li><strong>อัปเดตจาก LIS ได้ง่าย</strong><span>อัปโหลดไฟล์แล้วระบบอัปเดต dashboard ให้ต่ออัตโนมัติ</span></li>
+          <li><strong>จัดลำดับข้อมูลสำคัญก่อน</strong><span>ช่วยให้ดูเคสที่ต้องจัดการก่อนเร็วขึ้น</span></li>
+          <li><strong>เหมาะกับงานหน้างานจริง</strong><span>ลดความรกของหน้าจอและทำให้กดใช้งานง่ายขึ้น</span></li>
+        </ul>
       </div>
 
       <div class="auth-hero-footer">CNMI Blood Bank · Mahidol University</div>
@@ -415,10 +382,10 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="supabase-config.js?v=20260915-v2-9-5-admin-first-login-fix"></script>
-  <script src="supabase-backend.js?v=20260915-v2-9-5-admin-first-login-fix"></script>
-  <script src="script.js?v=20260915-v2-9-5-admin-first-login-fix"></script>
-  <script src="auth.js?v=20260915-v2-9-5-admin-first-login-fix"></script>
+  <script src="supabase-config.js?v=20260915-v2-9-6-login-declutter"></script>
+  <script src="supabase-backend.js?v=20260915-v2-9-6-login-declutter"></script>
+  <script src="script.js?v=20260915-v2-9-6-login-declutter"></script>
+  <script src="auth.js?v=20260915-v2-9-6-login-declutter"></script>
 
 </body>
 </html>
