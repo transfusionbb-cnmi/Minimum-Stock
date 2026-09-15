@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-7-login-visual-balance";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-8-minimal-bubble-login";
 const APP_SHELL = [
   "./",
   "./index.html",
