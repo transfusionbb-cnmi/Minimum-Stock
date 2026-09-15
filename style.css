@@ -2444,3 +2444,107 @@ main .summary-card {
 .auth-card-minimal {
   box-shadow: 0 12px 28px rgba(22, 50, 79, .055);
 }
+
+
+/* ==================== v2.9.13 Light blue UI ==================== */
+
+:root {
+  --bg:#f3f9ff;
+  --panel:#ffffff;
+  --line:#d9eaf7;
+  --text:#31556f;
+  --muted:#7893a8;
+  --accent:#6fb8f4;
+  --accent-strong:#4da3e8;
+  --accent-soft:#eaf6ff;
+}
+body {
+  background:linear-gradient(180deg,#f1f8fe 0%,#f7fbff 100%);
+  color:var(--text);
+}
+.app-layout { gap:18px; }
+.side-menu {
+  background:rgba(255,255,255,.97);
+  border:1px solid #dcecf8;
+  box-shadow:0 10px 28px rgba(75,140,190,.06);
+}
+.side-brand { border-bottom-color:#e8f2fa; }
+.side-brand strong,
+.side-user-name { color:#31556f; }
+.side-btn {
+  color:#52758d;
+  font-weight:700;
+  border-radius:14px;
+  padding:11px 12px;
+}
+.side-btn:hover { background:#f0f8ff; color:#3b769f; }
+.side-btn.active {
+  background:#e2f2ff;
+  color:#2c78ab;
+  box-shadow:none;
+  border:1px solid #cde8fb;
+}
+.side-icon {
+  width:34px !important;
+  height:34px;
+  min-width:34px;
+  border-radius:11px;
+  display:grid !important;
+  place-items:center;
+  background:#f1f8fe;
+  color:#62aee6;
+  border:1px solid #e0effa;
+}
+.side-btn.active .side-icon {
+  background:#fff;
+  color:#4b9fdc;
+  border-color:#c9e5f8;
+}
+.side-icon svg {
+  width:18px;
+  height:18px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.install-app-btn { border-color:#d7eaf8 !important; }
+.side-user-card {
+  background:#f5faff;
+  border-top-color:#e5f1f9;
+}
+.side-user-role { background:#e7f4ff; color:#4a90c3; }
+.side-logout-btn { color:#688298; border-color:#dce8f2; }
+.simple-page-head h1,
+.simple-panel h1,
+.simple-panel h2,
+.simple-panel h3,
+.panel-heading-row h3 { color:#31556f; }
+.simple-panel,
+.simple-kpi,
+.result-table,
+.priority-card,
+.purpose-card,
+.admin-stat,
+.summary-card,
+.upload-guide-card {
+  border-color:#dcebf6 !important;
+  box-shadow:0 8px 22px rgba(75,140,190,.045) !important;
+}
+.btn-main {
+  background:linear-gradient(135deg,#76bdf5,#5aacec);
+  color:#fff;
+  box-shadow:none;
+}
+.btn-main:hover,.btn-main:focus { background:linear-gradient(135deg,#65b4f1,#4da3e8); color:#fff; }
+.mobile-menu-btn { background:#70b8ef; box-shadow:none; }
+.tab-btn.active { background:#dff1ff; color:#367eaf; box-shadow:none; }
+.simple-kpi strong { color:#31556f; }
+.page-subline,.small-muted { color:#7893a8; }
+.status-box { background:#f0f8ff; border-color:#d6ebfa; }
+.auth-card-minimal { border-color:#dbeaf6; box-shadow:0 12px 28px rgba(75,140,190,.055); }
+.auth-card-minimal h1,.auth-brand strong { color:#31556f; }
+@media (max-width:768px) {
+  .side-menu { box-shadow:0 18px 40px rgba(75,140,190,.12); }
+}

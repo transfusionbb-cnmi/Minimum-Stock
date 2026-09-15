@@ -1954,16 +1954,26 @@
     const client = getClient();
     if (!client) return null;
 
-    // หน้า Dashboard ใช้แค่ข้อมูลสรุป จึงไม่ดึง stock_rows / history jsonb ก้อนใหญ่
-    // ส่วน Mobile Unit Planning ค่อยดึงแบบ full เฉพาะตอนเปิดเมนูนั้น
-    const { data, error } = await client
-      .from(getTableName())
-      .select(full ? FULL_SELECT : SUMMARY_SELECT)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) throw new Error("โหลดข้อมูลจาก Supabase ไม่สำเร็จ: " + error.message);
+    // v2.9.13: หลังแยก Auth รายแอป RLS เดิมของ snapshot อาจมอง Auth ใหม่ไม่เห็น
+    // อ่านผ่าน RPC ที่ตรวจสิทธิ์ Minimum Stock โดยตรงก่อน เพื่อไม่ให้หน้า Dashboard แสดงว่าไม่มีข้อมูลทั้งที่ snapshot ยังอยู่
+    let data = null;
+    const rpcResult = await client.rpc("minimum_stock_get_latest_snapshot", { p_full: full });
+    if (!rpcResult.error) {
+      data = rpcResult.data || null;
+    } else {
+      // fallback สำหรับช่วงที่ยังไม่ได้รัน SQL v2.9.13
+      const direct = await client
+        .from(getTableName())
+        .select(full ? FULL_SELECT : SUMMARY_SELECT)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (direct.error) throw new Error("โหลดข้อมูลจาก Supabase ไม่สำเร็จ: " + direct.error.message);
+      data = direct.data || null;
+      if (!data && /function|schema cache|does not exist|could not find/i.test(String(rpcResult.error.message || ""))) {
+        throw new Error("พบฐานข้อมูลเดิม แต่ยังไม่ได้เปิดสิทธิ์ Snapshot สำหรับ Auth แบบแยกแอป กรุณารัน SQL v2.9.13 หนึ่งครั้ง");
+      }
+    }
 
     if (full) {
       cachedFullSnapshot = data;
