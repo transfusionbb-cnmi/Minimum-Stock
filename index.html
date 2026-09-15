@@ -10,8 +10,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Blood Stock" />
-  <link rel="manifest" href="manifest.webmanifest?v=20260915-v2-9-6-login-declutter" />
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260915-v2-9-6-login-declutter" />
+  <link rel="manifest" href="manifest.webmanifest?v=20260915-v2-9-7-login-visual-balance" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=20260915-v2-9-7-login-visual-balance" />
 
 
   <script>
@@ -19,7 +19,7 @@
       "use strict";
 
       // เปลี่ยนเลขนี้ทุกครั้งที่ออก ZIP ใหม่ เพื่อให้เครื่องผู้ใช้เริ่มเหมือนแอพใหม่
-      const APP_VERSION = "20260915-v2-9-6-login-declutter";
+      const APP_VERSION = "20260915-v2-9-7-login-visual-balance";
       const VERSION_KEY = "minimumStock.__appVersion";
       const FORCE_RESET = /[?&](fresh|reset|clearCache)=1/i.test(window.location.search);
 
@@ -77,7 +77,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="style.css?v=20260915-v2-9-6-login-declutter">
+  <link rel="stylesheet" href="style.css?v=20260915-v2-9-7-login-visual-balance">
 </head>
 
 <body>
@@ -98,15 +98,39 @@
       </div>
 
       <div class="auth-hero-body">
-        <div class="auth-kicker">CNMI BLOOD STOCK</div>
-        <h1>ดูสต๊อกได้ง่าย<br>ใช้งานได้ไวขึ้น</h1>
-        <p>ระบบสำหรับติดตามสต๊อกขั้นต่ำ ดูหน่วยใกล้หมดอายุ วางแผนออกหน่วย และสรุปผลถุงเลือด แบบหน้าตาสะอาด อ่านง่าย ใช้งานได้ทั้งคอมและมือถือ</p>
+        <div class="auth-hero-visual" aria-hidden="true">
+          <div class="hero-window">
+            <div class="hero-window-top">
+              <span class="hero-window-dot"></span>
+              <span class="hero-window-dot"></span>
+              <span class="hero-window-dot"></span>
+            </div>
+            <div class="hero-window-body">
+              <div class="hero-preview-card hero-preview-main">
+                <div class="hero-preview-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3.2c-2.7 3.6-6.2 7.4-6.2 11.1A6.2 6.2 0 0 0 12 20.5a6.2 6.2 0 0 0 6.2-6.2C18.2 10.6 14.7 6.8 12 3.2Z"></path>
+                    <path d="M9.4 14.2c.2 1.6 1.3 2.7 2.9 2.9"></path>
+                  </svg>
+                </div>
+                <div>
+                  <strong>CNMI Blood Stock</strong>
+                  <span>clean dashboard</span>
+                </div>
+              </div>
+              <div class="hero-preview-grid">
+                <div class="hero-preview-card"><strong>สต๊อกขั้นต่ำ</strong><span>ดูไวขึ้น</span></div>
+                <div class="hero-preview-card"><strong>ใกล้หมดอายุ</strong><span>จัดลำดับก่อน</span></div>
+                <div class="hero-preview-card"><strong>ออกหน่วย</strong><span>วางแผนง่าย</span></div>
+                <div class="hero-preview-card"><strong>ผลถุงเลือด</strong><span>สรุปชัด</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-        <ul class="auth-hero-points">
-          <li><strong>อัปเดตจาก LIS ได้ง่าย</strong><span>อัปโหลดไฟล์แล้วระบบอัปเดต dashboard ให้ต่ออัตโนมัติ</span></li>
-          <li><strong>จัดลำดับข้อมูลสำคัญก่อน</strong><span>ช่วยให้ดูเคสที่ต้องจัดการก่อนเร็วขึ้น</span></li>
-          <li><strong>เหมาะกับงานหน้างานจริง</strong><span>ลดความรกของหน้าจอและทำให้กดใช้งานง่ายขึ้น</span></li>
-        </ul>
+        <div class="auth-kicker">CNMI BLOOD STOCK</div>
+        <h1>สวยขึ้นแบบพอดี<br>ไม่รก และน่าใช้กว่าเดิม</h1>
+        <p>ติดตามงานสำคัญได้ในหน้าที่เรียบขึ้น ดูง่ายขึ้น และยังคงเหมาะกับงานจริงของหน่วย</p>
       </div>
 
       <div class="auth-hero-footer">CNMI Blood Bank · Mahidol University</div>
@@ -125,7 +149,7 @@
 
       <div id="authLoginPanel">
         <h1>เข้าสู่ระบบ</h1>
-        <p class="auth-help">กรอก Username Mahidol และรหัสผ่านเพื่อเข้าใช้งานระบบ</p>
+        <p class="auth-help">กรอก Username Mahidol และรหัสผ่านเพื่อเข้าใช้งาน</p>
         <form id="loginForm" class="auth-form">
           <label>Username
             <div class="username-input-wrap">
@@ -382,10 +406,10 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="supabase-config.js?v=20260915-v2-9-6-login-declutter"></script>
-  <script src="supabase-backend.js?v=20260915-v2-9-6-login-declutter"></script>
-  <script src="script.js?v=20260915-v2-9-6-login-declutter"></script>
-  <script src="auth.js?v=20260915-v2-9-6-login-declutter"></script>
+  <script src="supabase-config.js?v=20260915-v2-9-7-login-visual-balance"></script>
+  <script src="supabase-backend.js?v=20260915-v2-9-7-login-visual-balance"></script>
+  <script src="script.js?v=20260915-v2-9-7-login-visual-balance"></script>
+  <script src="auth.js?v=20260915-v2-9-7-login-visual-balance"></script>
 
 </body>
 </html>
