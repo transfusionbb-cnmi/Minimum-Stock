@@ -94,6 +94,16 @@
     button.textContent = busy ? text : button.dataset.originalText;
   }
 
+  function togglePasswordField(inputId, buttonId) {
+    const input = el(inputId);
+    const button = el(buttonId);
+    if (!input || !button) return;
+    const nextType = input.type === "password" ? "text" : "password";
+    input.type = nextType;
+    button.textContent = nextType === "password" ? "ดู" : "ซ่อน";
+    button.setAttribute("aria-pressed", nextType === "text" ? "true" : "false");
+  }
+
   function toggleAdminUI(isAdmin) {
     document.querySelectorAll(".admin-only").forEach(node => {
       node.style.display = isAdmin ? "" : "none";
@@ -245,6 +255,11 @@
         try {
           const info = await backend.authRegistrationStatus(username);
           if (info?.allowed && !info?.hasAccount) {
+            if (info.passwordConfigured === false || info.hasInitialPassword === false) {
+              setAuthMessage("บัญชีนี้ยังไม่มีรหัสเริ่มต้นจาก Admin
+กรุณาให้ Admin ไปที่ “จัดการผู้ใช้งาน” แล้วกดตั้งรหัสเริ่มต้นก่อน", false);
+              return;
+            }
             const result = await backend.authBootstrapWithInitialPassword(username, password);
             if (result?.session) {
               try { await backend.logAudit("ACCOUNT_BOOTSTRAP", { source: "admin-initial-password" }); } catch (_) {}
@@ -502,6 +517,10 @@
     el("loginForm")?.addEventListener("submit", handleLogin);
     el("forgotPasswordForm")?.addEventListener("submit", handleForgotPassword);
     el("changePasswordForm")?.addEventListener("submit", handleChangePassword);
+
+    el("toggleLoginPasswordBtn")?.addEventListener("click", () => togglePasswordField("loginPassword", "toggleLoginPasswordBtn"));
+    el("toggleNewPasswordBtn")?.addEventListener("click", () => togglePasswordField("newPassword", "toggleNewPasswordBtn"));
+    el("toggleConfirmPasswordBtn")?.addEventListener("click", () => togglePasswordField("confirmNewPassword", "toggleConfirmPasswordBtn"));
 
     el("forgotPasswordBtn")?.addEventListener("click", () => {
       const username = normalizeUsername(el("loginUsername")?.value || "");
