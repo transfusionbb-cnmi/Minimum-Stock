@@ -250,7 +250,7 @@ let currentOutreachFilteredRows = [];
 let currentOutreachSourceSummary = [];
 let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260914-v2-9-2-clean-auth-reset";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260916-v2-9-20-hard-exclude-1b6-eqa-test";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -1283,21 +1283,50 @@ function renderProductMultiSelect(products, selectedProducts) {
   const selected = new Set(Array.isArray(selectedProducts) ? selectedProducts : []);
   const label = selected.size === 0 ? "ทุกชนิด" : selected.size === 1 ? Array.from(selected)[0] : `เลือก ${selected.size} ชนิด`;
   return `
-    <details class="product-multi-select" id="outreachProductPicker">
-      <summary><span>ชนิดผลิตภัณฑ์</span><strong id="outreachProductLabel">${escapeOutreachHtml(label)}</strong></summary>
-      <div class="product-multi-menu">
+    <details class="product-multi-select" id="outreachProductPicker" ontoggle="handleOutreachProductPickerToggle(this)">
+      <summary>
+        <span>ชนิดผลิตภัณฑ์</span>
+        <strong id="outreachProductLabel">${escapeOutreachHtml(label)}</strong>
+        <span class="product-picker-chevron" aria-hidden="true">⌄</span>
+      </summary>
+      <button class="product-multi-backdrop" type="button" aria-label="ปิดตัวเลือกผลิตภัณฑ์" onclick="cancelOutreachProductSelection()"></button>
+      <div class="product-multi-menu" role="dialog" aria-modal="true" aria-label="เลือกชนิดผลิตภัณฑ์">
+        <div class="product-multi-head">
+          <div>
+            <strong>เลือกผลิตภัณฑ์</strong>
+            <span id="outreachProductDraftCount">${selected.size ? `เลือกแล้ว ${selected.size} รายการ` : "ยังไม่ได้จำกัดชนิด"}</span>
+          </div>
+          <button type="button" class="product-picker-close" aria-label="ยกเลิกและปิด" onclick="cancelOutreachProductSelection()">×</button>
+        </div>
+
+        <div class="product-multi-search-wrap">
+          <span aria-hidden="true">⌕</span>
+          <input id="outreachProductSearch" class="product-multi-search" type="search" placeholder="ค้นหาชื่อผลิตภัณฑ์" autocomplete="off" oninput="filterOutreachProductOptions(this.value)" />
+        </div>
+
         <div class="product-multi-actions">
           <button type="button" onclick="setAllOutreachProducts(true)">เลือกทั้งหมด</button>
-          <button type="button" onclick="setAllOutreachProducts(false)">ล้าง</button>
+          <button type="button" onclick="setAllOutreachProducts(false)">ล้างทั้งหมด</button>
         </div>
-        ${(products || []).map((product, index) => `
-          <label class="product-check-row">
-            <input class="outreach-product-check" type="checkbox" value="${escapeOutreachHtml(product)}" ${selected.has(product) ? "checked" : ""} onchange="handleOutreachProductChange()" />
-            <span>${escapeOutreachHtml(product)}</span>
-          </label>`).join("")}
+
+        <div class="product-multi-list" id="outreachProductList">
+          ${(products || []).map((product) => `
+            <label class="product-check-row" data-product-search="${escapeOutreachHtml(String(product).toLowerCase())}">
+              <input class="outreach-product-check" type="checkbox" value="${escapeOutreachHtml(product)}" ${selected.has(product) ? "checked" : ""} onchange="handleOutreachProductChange()" />
+              <span>${escapeOutreachHtml(product)}</span>
+            </label>`).join("")}
+          <div class="product-search-empty" id="outreachProductSearchEmpty" hidden>ไม่พบผลิตภัณฑ์ที่ค้นหา</div>
+        </div>
+
+        <div class="product-multi-footer">
+          <button type="button" class="btn-product-cancel" onclick="cancelOutreachProductSelection()">ยกเลิก</button>
+          <button type="button" class="btn-product-apply" id="outreachProductApply" onclick="commitOutreachProductSelection()">ใช้ตัวกรอง${selected.size ? ` (${selected.size})` : ""}</button>
+        </div>
       </div>
     </details>`;
 }
+
+let outreachProductSelectionSnapshot = [];
 
 function getSelectedOutreachProducts() {
   return Array.from(document.querySelectorAll(".outreach-product-check:checked"))
@@ -1312,14 +1341,146 @@ function updateOutreachProductLabel() {
   label.textContent = selected.length === 0 ? "ทุกชนิด" : selected.length === 1 ? selected[0] : `เลือก ${selected.length} ชนิด`;
 }
 
+function updateOutreachProductDraftCount() {
+  const selected = getSelectedOutreachProducts();
+  const count = document.getElementById("outreachProductDraftCount");
+  const apply = document.getElementById("outreachProductApply");
+  if (count) count.textContent = selected.length ? `เลือกแล้ว ${selected.length} รายการ` : "ยังไม่ได้จำกัดชนิด";
+  if (apply) apply.textContent = selected.length ? `ใช้ตัวกรอง (${selected.length})` : "ใช้ทุกชนิด";
+}
+
+function formatThaiDateShort(value) {
+  if (!value) return "";
+  const text = String(value);
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) {
+    const monthNames = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+    const y = Number(match[1]);
+    const m = Number(match[2]);
+    const d = Number(match[3]);
+    if (Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d)) {
+      return `${d} ${monthNames[m - 1] || ""} ${y + 543}`.trim();
+    }
+  }
+  return text;
+}
+
+function getOutreachPreferredTrendYear(filters) {
+  const monthValue = document.getElementById("outreachMonth")?.value || "";
+  if (monthValue) {
+    const y = Number(monthValue.split("-")[0]);
+    if (Number.isFinite(y)) return y;
+  }
+  const dateFrom = String(filters?.dateFrom || document.getElementById("outreachDateFrom")?.value || "");
+  const dateTo = String(filters?.dateTo || document.getElementById("outreachDateTo")?.value || "");
+  const getYear = (value) => {
+    const y = Number(String(value || "").slice(0, 4));
+    return Number.isFinite(y) && y > 1900 ? y : null;
+  };
+  const yearFrom = getYear(dateFrom);
+  const yearTo = getYear(dateTo);
+  if (yearFrom && yearTo && yearFrom === yearTo) return yearFrom;
+  return yearTo || yearFrom || null;
+}
+
+function renderOutreachFilterSummary(filters) {
+  const box = document.getElementById("outreachFilterSummary");
+  if (!box) return;
+  const chips = [];
+  if (filters?.dateFrom || filters?.dateTo) {
+    chips.push(`ช่วงวันที่: ${formatThaiDateShort(filters?.dateFrom) || "เริ่มต้น"} → ${formatThaiDateShort(filters?.dateTo) || "ล่าสุด"}`);
+  }
+  if (filters?.sourceGroup) chips.push(`กลุ่ม: ${filters.sourceGroup}`);
+  if (filters?.source) chips.push(`จุด/แหล่ง: ${filters.source}`);
+  if (Array.isArray(filters?.productTypes) && filters.productTypes.length) {
+    chips.push(filters.productTypes.length === 1 ? `ผลิตภัณฑ์: ${filters.productTypes[0]}` : `ผลิตภัณฑ์: ${filters.productTypes.length} ชนิด`);
+  }
+  if (filters?.bloodGroup) chips.push(`หมู่เลือด: ${filters.bloodGroup}`);
+  if (filters?.rh) chips.push(`Rh: ${filters.rh}`);
+
+  if (!chips.length) {
+    box.innerHTML = `
+      <div class="filter-summary-strip is-default">
+        <strong>กำลังดูข้อมูลทั้งหมด</strong>
+        <span>ยังไม่ได้จำกัดตัวกรองเพิ่มเติม</span>
+      </div>`;
+    return;
+  }
+
+  box.innerHTML = `
+    <div class="filter-summary-strip">
+      <strong>กำลังดูข้อมูลตามตัวกรองนี้</strong>
+      <div class="filter-summary-chips">${chips.map(text => `<span>${escapeOutreachHtml(text)}</span>`).join("")}</div>
+    </div>`;
+}
+
+function renderOutreachTrendInsight(data) {
+  const box = document.getElementById("outreachTrendInsight");
+  if (!box) return;
+  const year = Number(data?.year || currentOutreachTrendYear || new Date().getFullYear());
+  const preferredYear = getOutreachPreferredTrendYear(getOutreachFilterValues());
+  const synced = preferredYear && preferredYear === year;
+  box.innerHTML = `
+    <div class="trend-focus-strip${synced ? " is-synced" : ""}">
+      <strong>กราฟนี้กำลังแสดงปี ${year + 543}</strong>
+      <span>${synced ? "ปีของกราฟตรงกับช่วงวันที่ที่เลือกอยู่แล้ว" : "กราฟรายเดือนใช้ปีที่เลือกในช่องนี้ และอาจต่างจากช่วงวันที่ด้านบนได้"}</span>
+    </div>`;
+}
+
+function handleOutreachProductPickerToggle(details) {
+  if (!details) return;
+  const isMobile = window.matchMedia && window.matchMedia("(max-width: 560px)").matches;
+  if (details.open) {
+    outreachProductSelectionSnapshot = getSelectedOutreachProducts();
+    const search = document.getElementById("outreachProductSearch");
+    if (search) search.value = "";
+    filterOutreachProductOptions("");
+    updateOutreachProductDraftCount();
+    if (isMobile) document.body.classList.add("product-picker-open");
+  } else {
+    document.body.classList.remove("product-picker-open");
+  }
+}
+
+function filterOutreachProductOptions(query) {
+  const normalized = String(query || "").trim().toLowerCase();
+  let visible = 0;
+  document.querySelectorAll(".product-check-row").forEach(row => {
+    const text = String(row.dataset.productSearch || row.textContent || "").toLowerCase();
+    const show = !normalized || text.includes(normalized);
+    row.hidden = !show;
+    if (show) visible += 1;
+  });
+  const empty = document.getElementById("outreachProductSearchEmpty");
+  if (empty) empty.hidden = visible > 0;
+}
+
 function setAllOutreachProducts(selectAll) {
   document.querySelectorAll(".outreach-product-check").forEach(el => { el.checked = Boolean(selectAll); });
-  updateOutreachProductLabel();
-  applyOutreachFilters();
+  updateOutreachProductDraftCount();
 }
 
 function handleOutreachProductChange() {
+  updateOutreachProductDraftCount();
+}
+
+function restoreOutreachProductSnapshot() {
+  const previous = new Set(outreachProductSelectionSnapshot || []);
+  document.querySelectorAll(".outreach-product-check").forEach(el => { el.checked = previous.has(el.value); });
+}
+
+function cancelOutreachProductSelection() {
+  restoreOutreachProductSnapshot();
+  updateOutreachProductDraftCount();
+  const picker = document.getElementById("outreachProductPicker");
+  if (picker) picker.open = false;
+}
+
+function commitOutreachProductSelection() {
   updateOutreachProductLabel();
+  outreachProductSelectionSnapshot = getSelectedOutreachProducts();
+  const picker = document.getElementById("outreachProductPicker");
+  if (picker) picker.open = false;
   applyOutreachFilters();
 }
 
@@ -1377,16 +1538,21 @@ function renderOutreachAnalysis() {
 
       ${data.filterWarning ? `<div class="data-quality-strip mb-3"><strong>ตัวกรองบางรายการโหลดช้า</strong><span>รายงานหลักยังใช้ข้อมูลเดิมในฐานได้ตามปกติ · ${escapeOutreachHtml(data.filterWarning)}</span></div>` : ""}
       <div id="outreachValidationBox"></div>
+      <div id="outreachFilterSummary" class="mb-3"></div>
       <div id="outreachSummaryCards"></div>
 
       <div class="simple-panel mb-3 trend-panel">
-        <div class="panel-heading-row">
+        <div class="panel-heading-row trend-head-row">
           <div>
             <h3>แนวโน้มรายเดือน</h3>
-            <div class="small-muted">จำนวน Stock in / Released / Expired ของแต่ละเดือน · กราฟใช้ปีที่เลือก ส่วนตัวกรองวันที่ด้านบนใช้กับตาราง/สรุป</div>
+            <div class="small-muted">สรุปทั้งปีแบบอ่านง่าย พร้อมตารางตัวเลขรายเดือนชัด ๆ ใต้กราฟ</div>
           </div>
-          <select id="outreachTrendYear" class="form-select trend-year-select" onchange="changeOutreachTrendYear(this.value)"></select>
+          <div class="trend-head-controls">
+            <label class="trend-year-label" for="outreachTrendYear">ปีที่ดูกราฟ</label>
+            <select id="outreachTrendYear" class="form-select trend-year-select" onchange="changeOutreachTrendYear(this.value)"></select>
+          </div>
         </div>
+        <div id="outreachTrendInsight" class="mb-2"></div>
         <div id="outreachTrendChart"><div class="small-muted py-4">กำลังโหลดกราฟ...</div></div>
       </div>
 
@@ -1402,11 +1568,12 @@ function renderOutreachAnalysis() {
 
       <details class="simple-details mb-4">
         <summary>วิธีนับ</summary>
-        <div class="pt-3 small-muted">ติดตามระดับ BagNumber + ProductType + DateStockIn · Released = ใช้/จ่ายออก · Dedicated = ส่งต่อ/แลก/ยืม/จำหน่ายให้ รพ.อื่น · Expired/Rejected = ทิ้ง/ทำลาย · Be Transformed = แปรรูปต่อ · ข้อมูลสอน/ทดสอบถูกตัดออกจาก CQI/KPI</div>
+        <div class="pt-3 small-muted">นับผลปลายทางระดับ “ถุงต้นทาง” โดย BagNumber หลักและ .S1/.S2/... ถือเป็นถุงเดียวกัน · ถ้ามี Released/Dedicated อย่างน้อย 1 รายการ ให้นับว่าใช้/จ่ายเพียง 1 ถุง และไม่นับ Expired ของถุงหลักซ้ำ · ตัด 1B6 / EQA / Test / เลขถุง 10062Q79877 / 10067R02375 ออกจากการคำนวณทุกกรณี รวมทั้งข้อมูลสอน/ทดสอบและถุงรับต่อจากรามาธิบดี/พญาไท</div>
       </details>
     </div>`;
 
   renderOutreachValidation(validation, data.reviewRows || []);
+  renderOutreachFilterSummary(f);
   renderOutreachReportSections(data.report || {});
   loadOutreachTrend();
 }
@@ -1462,6 +1629,7 @@ function applyOutreachMonthFilter() {
     const lastDay = new Date(year, monthNumber, 0).getDate();
     from.value = `${year}-${String(monthNumber).padStart(2, "0")}-01`;
     to.value = `${year}-${String(monthNumber).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+    if (Number.isFinite(year)) currentOutreachTrendYear = year;
   }
   applyOutreachFilters();
 }
@@ -1473,6 +1641,7 @@ function resetOutreachFilters() {
   });
   document.querySelectorAll(".outreach-product-check").forEach(el => { el.checked = false; });
   updateOutreachProductLabel();
+  currentOutreachTrendYear = new Date().getFullYear();
   applyOutreachFilters();
 }
 
@@ -1484,6 +1653,8 @@ async function applyOutreachFilters() {
 
   try {
     const filters = getOutreachFilterValues();
+    const preferredTrendYear = getOutreachPreferredTrendYear(filters);
+    if (preferredTrendYear) currentOutreachTrendYear = preferredTrendYear;
     const data = await MinimumStockBackend.getOutreachAnalysis({ filters });
     if (requestId !== outreachRequestSeq) return;
 
@@ -1493,6 +1664,7 @@ async function applyOutreachFilters() {
     }
     currentOutreachAnalysisData = data;
     currentOutreachSourceSummary = normalizeOutreachSourceSummary(data?.report?.sources || []);
+    renderOutreachFilterSummary(filters);
     renderOutreachReportSections(data.report || {});
     loadOutreachTrend(currentOutreachTrendYear);
   } catch (err) {
@@ -1517,16 +1689,39 @@ async function loadOutreachTrend(year) {
   box.innerHTML = `<div class="small-muted py-4">กำลังโหลดกราฟ...</div>`;
   try {
     const filters = getOutreachFilterValues();
-    const result = await MinimumStockBackend.getOutreachMonthlyTrend(year || currentOutreachTrendYear, filters);
+    const preferredTrendYear = getOutreachPreferredTrendYear(filters);
+    let requestedYear = Number(year || preferredTrendYear || currentOutreachTrendYear || new Date().getFullYear());
+    if (!Number.isFinite(requestedYear)) requestedYear = new Date().getFullYear();
+
+    let result = await MinimumStockBackend.getOutreachMonthlyTrend(requestedYear, filters);
+    let years = Array.isArray(result?.years) ? result.years.map(Number).filter(Number.isFinite) : [];
+
+    // v2.9.19: ถ้าช่วงวันที่ด้านบนอยู่ปีเดียว ให้กราฟตามปีนั้นก่อนเสมอ
+    // ป้องกันกรณี dropdown แสดง 2569 แต่ข้อมูลที่กรองจริงเป็นปี 2568 ทำให้ ต.ค.–ธ.ค. ดูเหมือนหาย
+    if (preferredTrendYear && years.includes(Number(preferredTrendYear)) && Number(result?.year) !== Number(preferredTrendYear)) {
+      requestedYear = Number(preferredTrendYear);
+      result = await MinimumStockBackend.getOutreachMonthlyTrend(requestedYear, filters);
+      years = Array.isArray(result?.years) ? result.years.map(Number).filter(Number.isFinite) : years;
+    }
+
+    if (years.length && !years.includes(Number(requestedYear))) {
+      // ถ้าปีที่ร้องขอไม่มีจริง ให้เลือกปีที่ใกล้ช่วง filter มากที่สุด แล้ว fetch ใหม่ก่อน render
+      const fallbackYear = preferredTrendYear && years.includes(Number(preferredTrendYear))
+        ? Number(preferredTrendYear)
+        : Math.max(...years);
+      requestedYear = fallbackYear;
+      result = await MinimumStockBackend.getOutreachMonthlyTrend(requestedYear, filters);
+      years = Array.isArray(result?.years) ? result.years.map(Number).filter(Number.isFinite) : years;
+    }
+
+    currentOutreachTrendYear = requestedYear;
     currentOutreachTrendData = result;
-    const years = Array.isArray(result?.years) ? result.years.map(Number).filter(Number.isFinite) : [];
-    if (years.length) {
-      if (!years.includes(Number(currentOutreachTrendYear))) currentOutreachTrendYear = Math.max(...years);
-      if (select) {
-        select.innerHTML = years.sort((a,b)=>b-a).map(y => `<option value="${y}" ${Number(currentOutreachTrendYear)===y?"selected":""}>${y + 543}</option>`).join("");
-      }
+    if (select) {
+      const options = years.length ? [...new Set(years)].sort((a,b)=>b-a) : [requestedYear];
+      select.innerHTML = options.map(y => `<option value="${y}" ${Number(requestedYear)===Number(y)?"selected":""}>${Number(y) + 543}</option>`).join("");
     }
     renderOutreachTrendChart(result);
+    renderOutreachTrendInsight(result);
   } catch (err) {
     box.innerHTML = `<div class="data-quality-strip"><strong>โหลดกราฟไม่ได้</strong><span>${escapeOutreachHtml(err.message)}</span></div>`;
   }
@@ -1542,10 +1737,12 @@ function renderOutreachTrendChart(data) {
   }
 
   const monthNames = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+  const monthNamesLong = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
   const maxValue = Math.max(1, ...months.flatMap(m => [Number(m.stockIn||0), Number(m.released||0), Number(m.expired||0)]));
   const totalIn = months.reduce((s,m)=>s+Number(m.stockIn||0),0);
   const totalReleased = months.reduce((s,m)=>s+Number(m.released||0),0);
   const totalExpired = months.reduce((s,m)=>s+Number(m.expired||0),0);
+  const year = Number(data?.year || currentOutreachTrendYear || new Date().getFullYear());
 
   box.innerHTML = `
     <div class="trend-summary-row">
@@ -1553,23 +1750,51 @@ function renderOutreachTrendChart(data) {
       <span><i class="trend-dot trend-released"></i>Released <b>${totalReleased.toLocaleString()}</b></span>
       <span><i class="trend-dot trend-expired"></i>Expired <b>${totalExpired.toLocaleString()}</b></span>
     </div>
-    <div class="monthly-trend-chart" role="img" aria-label="กราฟ Stock in Released Expired รายเดือน">
+    <div class="monthly-trend-chart" role="img" aria-label="กราฟ Stock in Released Expired รายเดือน ปี ${year + 543}">
       ${months.map((m, i) => {
-        const hIn = Math.max(2, Math.round((Number(m.stockIn||0)/maxValue)*100));
-        const hRel = Math.max(2, Math.round((Number(m.released||0)/maxValue)*100));
-        const hExp = Number(m.expired||0) ? Math.max(2, Math.round((Number(m.expired||0)/maxValue)*100)) : 0;
+        const stockIn = Number(m.stockIn || 0);
+        const released = Number(m.released || 0);
+        const expired = Number(m.expired || 0);
+        const hIn = Math.max(stockIn ? 10 : 2, Math.round((stockIn / maxValue) * 100));
+        const hRel = Math.max(released ? 10 : 2, Math.round((released / maxValue) * 100));
+        const hExp = expired ? Math.max(10, Math.round((expired / maxValue) * 100)) : 0;
         return `
           <div class="month-group">
+            <div class="month-top-value">${Math.max(stockIn, released, expired).toLocaleString()}</div>
             <div class="month-bars">
-              <span class="month-bar trend-in" style="height:${hIn}%" title="Stock in ${Number(m.stockIn||0).toLocaleString()}"></span>
-              <span class="month-bar trend-released" style="height:${hRel}%" title="Released ${Number(m.released||0).toLocaleString()}"></span>
-              <span class="month-bar trend-expired" style="height:${hExp}%" title="Expired ${Number(m.expired||0).toLocaleString()}"></span>
+              <span class="month-bar trend-in" style="height:${hIn}%" title="${monthNamesLong[i] || m.month} · Stock in ${stockIn.toLocaleString()}"></span>
+              <span class="month-bar trend-released" style="height:${hRel}%" title="${monthNamesLong[i] || m.month} · Released ${released.toLocaleString()}"></span>
+              <span class="month-bar trend-expired" style="height:${hExp}%" title="${monthNamesLong[i] || m.month} · Expired ${expired.toLocaleString()}"></span>
             </div>
             <div class="month-label">${monthNames[i] || m.month}</div>
           </div>`;
       }).join("")}
     </div>
-    <div class="small-muted mt-2">Stock in ใช้ DateStockIn · Released/Expired ใช้ DateStockOut ของสถานะนั้น</div>`;
+    <div class="trend-note-row">
+      <div class="small-muted">เลขเหนือแต่ละเดือนคือค่าที่มากที่สุดของเดือนนั้น เพื่อกะภาพรวมได้เร็ว ส่วนตัวเลขละเอียดดูในตารางด้านล่าง</div>
+    </div>
+    <div class="trend-table-wrap mt-3">
+      <table class="table table-sm trend-data-table align-middle mb-0">
+        <thead>
+          <tr>
+            <th>เดือน</th>
+            <th class="text-end">Stock in</th>
+            <th class="text-end">Released</th>
+            <th class="text-end">Expired</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${months.map((m, i) => `
+            <tr>
+              <td><strong>${monthNamesLong[i] || m.month}</strong></td>
+              <td class="text-end">${Number(m.stockIn || 0).toLocaleString()}</td>
+              <td class="text-end">${Number(m.released || 0).toLocaleString()}</td>
+              <td class="text-end">${Number(m.expired || 0).toLocaleString()}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div class="small-muted mt-2">กราฟนี้สรุปทั้งปี ${year + 543} · นับ 1 ครั้งต่อถุงต้นทาง (.S1/.S2 รวมกับถุงหลัก) · Stock in ใช้ DateStockIn · Released/Expired ใช้ DateStockOut</div>`;
 }
 
 function renderOutreachReportSections(report) {
@@ -1587,7 +1812,7 @@ function renderOutreachSummaryCards(s) {
   if (!box) return;
   box.innerHTML = `
     <div class="simple-kpi-grid outreach-key-kpis mb-3">
-      <div class="simple-kpi"><span>รับเข้าทั้งหมด</span><strong>${Number(s.received||0).toLocaleString()}</strong><small>ผลิตภัณฑ์ · ${Number(s.uniqueBags||0).toLocaleString()} เลขถุง</small></div>
+      <div class="simple-kpi"><span>รับเข้าทั้งหมด</span><strong>${Number(s.received||0).toLocaleString()}</strong><small>ถุงต้นทาง · นับ .S1/.S2 รวมกับถุงหลัก</small></div>
       <div class="simple-kpi is-good"><span>ใช้ / จ่าย / ส่งต่อ</span><strong>${Number(s.used||0).toLocaleString()}</strong><small>${s.usePercent.toFixed(1)}% · Dedicated ${Number(s.dedicated||0).toLocaleString()}</small></div>
       <div class="simple-kpi is-alert"><span>ทิ้ง / ทำลาย</span><strong>${Number(s.destroyed||0).toLocaleString()}</strong><small>${s.destroyPercent.toFixed(1)}%</small></div>
       <div class="simple-kpi"><span>ยังไม่จบผล</span><strong>${(Number(s.unresolved||0)+Number(s.transformed||0)).toLocaleString()}</strong><small>คงเหลือ/อื่น ${Number(s.unresolved||0).toLocaleString()} · แปรรูป ${Number(s.transformed||0).toLocaleString()}</small></div>

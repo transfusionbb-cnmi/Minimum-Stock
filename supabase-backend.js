@@ -393,6 +393,7 @@
     const unique = new Map();
 
     dataRows.forEach((row, rowIndex) => {
+      if (isExcludedCalculationRow(row)) return;
       const bagNumber = row[EXCEL_COL.bagNumber];
       const productType = String(row[EXCEL_COL.productType] || "").trim();
       const bloodGroup = String(row[EXCEL_COL.bloodGroup] || "").trim();
@@ -478,6 +479,7 @@
     });
 
     dataRows.forEach(row => {
+      if (isExcludedCalculationRow(row)) return;
       const bagNumber = row[EXCEL_COL.bagNumber];
       const productType = String(row[EXCEL_COL.productType] || "").trim();
       const bloodGroup = String(row[EXCEL_COL.bloodGroup] || "").trim();
@@ -636,13 +638,7 @@
   }
 
   function isExcludedDonateSource(value) {
-    const text = String(value || "").trim();
-    const excludedSources = [
-      "External Quality Assessment (EQA)",
-      "Test สอนแพทย์ พยาบาล",
-      "ห้องรับบริจาคโลหิต รามาธิบดีจักรีนฤบดินทร์ (1B6)"
-    ];
-    return excludedSources.includes(text);
+    return isExcludedOutreachSource(value);
   }
 
   function mapDonateSource(value) {
@@ -663,6 +659,7 @@
       const rh = String(row[EXCEL_COL.rh] || "").trim();
       const location = String(row[EXCEL_COL.location] || "").trim();
       const donateSourceRaw = String(row[EXCEL_COL.donateSource] || "").trim();
+      const sourceInfo = classifyOutreachRowSource(donateSourceRaw, location, bagNumber);
       const collectDate = row[EXCEL_COL.collectDate];
       const expireDate = row[EXCEL_COL.expireDate];
       const status = String(row[EXCEL_COL.status] || "").trim();
@@ -673,7 +670,7 @@
       if (isSplitSubunitBagNumber(bagNumber)) return;
 
       const matchedGroup = record.matchedGroup;
-      if (isExcludedDonateSource(donateSourceRaw)) return;
+      if (sourceInfo.excluded) return;
 
       output.push({
         bagNumber: String(bagNumber || ""),
@@ -711,6 +708,7 @@
       const status = String(row[EXCEL_COL.status] || "").trim();
       const dateStockOut = row[EXCEL_COL.dateStockOut];
 
+      if (isExcludedCalculationRow(row)) return;
       if (status !== "Released") return;
       if (isSplitSubunitBagNumber(bagNumber)) return;
 
@@ -760,8 +758,8 @@
 
       const matchedGroup = matchProductGroup(productType);
       if (!matchedGroup || matchedGroup.type !== "LPRC / LDPRC") return;
+      if (isExcludedCalculationRow(row)) return;
       if (isSplitSubunitBagNumber(bagNumber)) return;
-      if (isExcludedDonateSource(donateSourceRaw)) return;
       if (mapDonateSource(donateSourceRaw) !== "CNMI") return;
 
       const cleanDateText = normalizeAnyDate(dateStockIn);
@@ -825,7 +823,7 @@
     "DestroyReason"
   ];
 
-  const OUTREACH_OPTIONAL_HEADERS = ["BloodGroup", "Rh"];
+  const OUTREACH_OPTIONAL_HEADERS = ["BloodGroup", "Rh", "Location"];
 
   function normalizeHeaderName(value) {
     return String(value || "")
@@ -925,11 +923,28 @@
     "120", "9009", "X201", "X202", "X203", "X204"
   ]);
 
+  // v2.9.20: ผู้ใช้ยืนยันให้ตัดเลขถุงเหล่านี้ออกจากการคำนวณทุกกรณี
+  // รวมถุงแบ่ง .S1/.S2/... ของเลขถุงต้นทางเดียวกันด้วย
+  const OUTREACH_HARD_EXCLUDED_BAG_KEYS = new Set([
+    "10062Q79877",
+    "10067R02375"
+  ]);
+
   function normalizeTrainingBagKey(value) {
     let key = normalizeBagKey(value);
     // CSV จาก LIS บางช่วง export เลขถุงแบบ numeric แล้วเติม .00
     if (/^\d+\.00$/.test(key)) key = key.slice(0, -3);
     return key;
+  }
+
+  function normalizeOutreachFamilyBagKey(value) {
+    let key = normalizeTrainingBagKey(value);
+    key = key.replace(/\.S\d+$/i, "");
+    return key;
+  }
+
+  function isHardExcludedOutreachBag(value) {
+    return OUTREACH_HARD_EXCLUDED_BAG_KEYS.has(normalizeOutreachFamilyBagKey(value));
   }
 
   function isExcludedTrainingBag(value) {
@@ -940,22 +955,63 @@
     const text = String(value || "").trim();
     if (!text) return false;
 
-    const exactExcluded = new Set([
-      "ห้องรับบริจาคโลหิต รามาธิบดีจักรีนฤบดินทร์ (1B6)",
-      "10062Q79877",
-      "10067R02375",
-      "External Quality Assessment (EQA)",
-      "Test สอนแพทย์ พยาบาล"
-    ]);
-    if (exactExcluded.has(text)) return true;
+    // v2.9.20 hard exclusion: 1B6 / EQA / Test ต้องไม่ถูกนำไปคิดเลย
+    if (/1b6|eqa|test/i.test(text)) return true;
+    if (/ทดสอบ|ข้อมูลทดสอบ|สอนแพทย์|สอนพยาบาล|สอนเจ้าหน้าที่/i.test(text)) return true;
 
-    const lower = text.toLowerCase();
-    if (/external quality assessment|\beqa\b|\btest\b|ทดสอบ|สอนแพทย์|สอนพยาบาล/i.test(lower)) return true;
-
-    // DonateSource ที่มีหน้าตาเป็นเลขถุง เช่น 10067R02375 เป็นข้อมูลสมมติ/ทดสอบ ไม่ใช่สถานที่รับบริจาค
-    if (/^\d{5,}[a-z]\d{3,}$/i.test(text.replace(/\s+/g, ""))) return true;
+    // กรณีระบบต้นทางเผลอนำเลขถุงไปอยู่ใน DonateSource
+    const compact = text.replace(/\s+/g, "").toUpperCase();
+    if (OUTREACH_HARD_EXCLUDED_BAG_KEYS.has(compact)) return true;
 
     return false;
+  }
+
+  function isExcludedOutreachLocation(value) {
+    const text = String(value || "").trim();
+    if (!text) return false;
+
+    // v2.9.20: 1B6 ไม่ว่าจะเขียนเดี่ยว ๆ หรือ 1B6/Test ให้ตัดทั้งหมด
+    // รวม EQA / Test / ข้อมูลทดสอบ / ใช้สอน
+    return /1b6|eqa|test/i.test(text) ||
+      /ทดสอบ|ข้อมูลทดสอบ|สอนแพทย์|สอนพยาบาล|สอนเจ้าหน้าที่/i.test(text);
+  }
+
+  function isExcludedExternalTransferSource(donateSourceValue, locationValue) {
+    const donateSource = String(donateSourceValue || "").trim();
+    const location = String(locationValue || "").trim();
+    const combined = `${donateSource} ${location}`.trim();
+    if (!combined) return false;
+
+    // โรงพยาบาลของหน่วยเองต้องไม่โดนคำว่า “รามาธิบดี” จับผิดเป็น transfer
+    if (/จักรีนฤบดินทร์/i.test(combined)) return false;
+
+    // v2.9.19: ถุงที่รับต่อมาจากรามาธิบดี/พญาไท (รวมถุงกาชาดที่ส่งต่อมา)
+    // ไม่ใช่ผลการบริจาค/ออกหน่วยของ CNMI จึงตัดออกจาก CQI/KPI
+    return /รามาธิบดี|ramathibodi|พญาไท|phyathai/i.test(combined);
+  }
+
+  function classifyOutreachRowSource(donateSourceValue, locationValue, bagValue) {
+    if (isHardExcludedOutreachBag(bagValue)) {
+      return { group: OUTREACH_SOURCE_GROUPS.EXCLUDED, eligible: false, excluded: true, reason: "เลขถุงอยู่ในรายการห้ามนำไปคำนวณ" };
+    }
+    if (isExcludedTrainingBag(bagValue)) {
+      return { group: OUTREACH_SOURCE_GROUPS.EXCLUDED, eligible: false, excluded: true, reason: "ข้อมูลสมมติ/ทดสอบ/สอน (BagNumber)" };
+    }
+    if (isExcludedOutreachLocation(locationValue)) {
+      return { group: OUTREACH_SOURCE_GROUPS.EXCLUDED, eligible: false, excluded: true, reason: "Location ระบุ Test/EQA/สอน/ทดสอบ" };
+    }
+    if (isExcludedExternalTransferSource(donateSourceValue, locationValue)) {
+      return { group: OUTREACH_SOURCE_GROUPS.EXCLUDED, eligible: false, excluded: true, reason: "รับต่อจากรามาธิบดี/พญาไท" };
+    }
+    return classifyOutreachSource(donateSourceValue);
+  }
+
+  function isExcludedCalculationRow(row) {
+    if (!row) return false;
+    const bagNumber = row[EXCEL_COL.bagNumber];
+    const donateSource = row[EXCEL_COL.donateSource];
+    const location = row[EXCEL_COL.location];
+    return classifyOutreachRowSource(donateSource, location, bagNumber).excluded;
   }
 
   function classifyOutreachSource(value) {
@@ -1296,13 +1352,11 @@
       const productType = String(getHeaderValue(row, headerMap, "ProductType") || "").trim();
       const status = normalizeOutreachStatus(getHeaderValue(row, headerMap, "Status"));
       const donateSource = String(getHeaderValue(row, headerMap, "DonateSource") || "").trim();
+      const location = String(getHeaderValue(row, headerMap, "Location") || "").trim();
       const dateStockInRaw = getHeaderValue(row, headerMap, "DateStockIn");
       const dateStockOutRaw = getHeaderValue(row, headerMap, "DateStockOut");
       const destroyReason = String(getHeaderValue(row, headerMap, "DestroyReason") || "").trim();
-      const trainingBagExcluded = isExcludedTrainingBag(bagRaw);
-      const sourceInfo = trainingBagExcluded
-        ? { group: OUTREACH_SOURCE_GROUPS.EXCLUDED, eligible: false, excluded: true, reason: "ข้อมูลสมมติ/ทดสอบ/สอน (BagNumber)" }
-        : classifyOutreachSource(donateSource);
+      const sourceInfo = classifyOutreachRowSource(donateSource, location, bagRaw);
 
       if (sourceInfo.excluded) excludedRawRowCount += 1;
 
@@ -1312,18 +1366,21 @@
       }
 
       const dateStockIn = normalizeAnyDateStrict(dateStockInRaw);
-      if (!dateStockInRaw || !dateStockIn) {
-        invalidDateCount += 1;
-        issues.push({ type: "invalid_date", bagNumber, message: `DateStockIn ไม่ถูกต้อง (แถวข้อมูล ${excelRow})` });
-      }
-      if (dateStockOutRaw && !normalizeAnyDateStrict(dateStockOutRaw)) {
-        invalidDateCount += 1;
-        issues.push({ type: "invalid_date", bagNumber, message: `DateStockOut ไม่ถูกต้อง (แถวข้อมูล ${excelRow})` });
-      }
+      // ข้อมูลที่ตั้งใจตัดออกไม่ควรกลับมาสร้าง Warning/Review เพราะวันที่หรือ Status ของข้อมูลทดสอบ
+      if (!sourceInfo.excluded) {
+        if (!dateStockInRaw || !dateStockIn) {
+          invalidDateCount += 1;
+          issues.push({ type: "invalid_date", bagNumber, message: `DateStockIn ไม่ถูกต้อง (แถวข้อมูล ${excelRow})` });
+        }
+        if (dateStockOutRaw && !normalizeAnyDateStrict(dateStockOutRaw)) {
+          invalidDateCount += 1;
+          issues.push({ type: "invalid_date", bagNumber, message: `DateStockOut ไม่ถูกต้อง (แถวข้อมูล ${excelRow})` });
+        }
 
-      if (!status || !isKnownOutreachStatus(status)) {
-        const key = status || "(ว่าง)";
-        unknownStatuses.set(key, (unknownStatuses.get(key) || 0) + 1);
+        if (!status || !isKnownOutreachStatus(status)) {
+          const key = status || "(ว่าง)";
+          unknownStatuses.set(key, (unknownStatuses.get(key) || 0) + 1);
+        }
       }
 
       if (!sourceInfo.excluded && !sourceInfo.eligible) {
@@ -1342,6 +1399,7 @@
         bloodGroup: String(getHeaderValue(row, headerMap, "BloodGroup") || "").trim(),
         rh: String(getHeaderValue(row, headerMap, "Rh") || "").trim(),
         donateSource,
+        location,
         sourceInfo,
         dateStockIn,
         dateStockOut: normalizeDateTimeDisplay(dateStockOutRaw),
@@ -1374,7 +1432,36 @@
 
       const usableItems = items.filter(item => !item.sourceInfo.excluded);
       if (!usableItems.length) {
+        // v2.9.19: เก็บ component ที่ถูกตัดออกลง staging/master แบบ aggregate_eligible=false
+        // เพื่อให้การอัปโหลดครั้งใหม่สามารถ “ปิด” รายการที่เวอร์ชันเก่าเคยนับเข้า KPI ได้
         excludedComponentCount += 1;
+        const first = items[0] || {};
+        const bagNumber = chooseUniqueText(items.map(item => item.bagNumber));
+        const productType = chooseUniqueText(items.map(item => item.productType));
+        const bloodGroup = chooseUniqueText(items.map(item => item.bloodGroup));
+        const rh = chooseUniqueText(items.map(item => item.rh));
+        const source = chooseUniqueText(items.map(item => item.donateSource));
+        const statuses = chooseUniqueText(items.map(item => item.status));
+        const reasons = chooseUniqueText(items.map(item => item.destroyReason));
+        const dateStockIns = Array.from(new Set(items.map(item => item.dateStockIn).filter(Boolean))).sort();
+        const dateStockOuts = items.map(item => item.dateStockOut).filter(Boolean);
+        rows.push({
+          componentKey,
+          bagNumber: bagNumber.value,
+          productType: productType.value,
+          bloodGroup: bloodGroup.value,
+          rh: rh.value,
+          donateSource: source.value,
+          sourceGroup: OUTREACH_SOURCE_GROUPS.EXCLUDED,
+          dateStockIn: dateStockIns[0] || normalizeAnyDateStrict(first?.row?.[EXCEL_COL.dateStockIn]) || "",
+          dateStockOut: dateStockOuts[dateStockOuts.length - 1] || "",
+          status: statuses.conflict ? statuses.values.join(" | ") : statuses.value,
+          destroyReason: reasons.conflict ? reasons.values.join(" | ") : reasons.value,
+          outcomeCode: OUTREACH_OUTCOME.UNRESOLVED,
+          aggregateEligible: false,
+          duplicateCount: items.length,
+          needsReview: false
+        });
         return;
       }
 
@@ -2223,16 +2310,18 @@
     }
     const client = getClient();
 
-    // v2.9.16: ห้ามใช้ direct SELECT เป็น schema check เพราะ RLS สามารถทำให้เกิด false error ได้
-    // หาก SQL v2.9.16 ยังไม่ได้ติดตั้ง ให้ไม่ block การอัปโหลดล่วงหน้า และปล่อยให้คำสั่งจริงแจ้ง error ที่ตรงสาเหตุ
-    const { data, error } = await client.rpc("minimum_stock_schema_status_v2916");
+    // v2.9.20 ยืนยัน hard exclusion: 1B6 / EQA / Test / 10062Q79877 / 10067R02375
+    // โดยยังใช้ RPC รายงาน/Bag family ของ v2.9.19 เดิม
+    const { data, error } = await client.rpc("minimum_stock_schema_status_v2920");
     const missingRpc = error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""));
-    if (missingRpc) return { ok: true, legacy: true };
+    if (missingRpc) {
+      throw new Error("Supabase ยังไม่ได้ติดตั้งกติกา v2.9.20 | กรุณารัน SQL-v2.9.20-HARD-EXCLUDE-1B6-EQA-TEST-BAGS.sql ก่อนอัปโหลด LIS");
+    }
     if (error) {
-      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.16-SCHEMA-REPORT-USER-FIX.sql");
+      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.20-HARD-EXCLUDE-1B6-EQA-TEST-BAGS.sql");
     }
     if (data && data.ok === false) {
-      throw new Error(data.message || "โครงสร้าง Supabase ยังไม่พร้อม | กรุณารัน SQL-v2.9.16-SCHEMA-REPORT-USER-FIX.sql");
+      throw new Error(data.message || "โครงสร้าง Supabase v2.9.20 ยังไม่พร้อม | กรุณารัน SQL-v2.9.20-HARD-EXCLUDE-1B6-EQA-TEST-BAGS.sql");
     }
     return data || { ok: true };
   }
@@ -2290,7 +2379,12 @@
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2916", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2919", params);
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_master_report_v2916", params);
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_master_report_v2915", params);
       data = previous.data;
@@ -2317,7 +2411,12 @@
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2916", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2919", params);
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2916", params);
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2915", params);
       data = previous.data;
@@ -2375,6 +2474,7 @@
 
   async function getOutreachAnalysis(options = {}) {
     if (!isConfigured()) throw new Error("รายงานวิเคราะห์ผลถุงเลือดออกหน่วยต้องใช้ Supabase");
+    await ensureOutreachSchema();
     if (options.forceRefresh) cachedOutreachSnapshot = null;
 
     const filters = normalizeOutreachFilters(options.filters || {});
@@ -2516,7 +2616,12 @@
       p_excluded_component_count: Number(analysis.excludedComponentCount || 0),
       p_validation: analysis.validation || {}
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_merge_batch_to_master_v2916", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_merge_batch_to_master_v2919", params);
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_merge_batch_to_master_v2916", params);
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_merge_batch_to_master_v2915", params);
       data = previous.data;
@@ -2934,7 +3039,12 @@
       normalizeCurrentStockLocation,
       isSplitSubunitBagNumber,
       classifyOutreachSource,
+      classifyOutreachRowSource,
+      isExcludedOutreachLocation,
+      isExcludedExternalTransferSource,
       isExcludedTrainingBag,
+      isHardExcludedOutreachBag,
+      isExcludedCalculationRow,
       classifyOutreachOutcome,
       buildOutreachAnalysis,
       buildOutreachValidation,
