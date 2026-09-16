@@ -1280,13 +1280,19 @@ async function loadOutreachAnalysis(forceRefresh = false) {
 }
 
 function renderProductMultiSelect(products, selectedProducts) {
-  const selected = new Set(Array.isArray(selectedProducts) ? selectedProducts : []);
-  const label = selected.size === 0 ? "ทุกชนิด" : selected.size === 1 ? Array.from(selected)[0] : `เลือก ${selected.size} ชนิด`;
+  const selected = Array.isArray(selectedProducts) ? Array.from(new Set(selectedProducts)) : [];
+  const selectedSet = new Set(selected);
+  const label = selected.length === 0 ? "ทุกชนิด" : selected.length === 1 ? selected[0] : `เลือกแล้ว ${selected.length} ชนิด`;
+  const helper = selected.length === 0 ? "แตะเพื่อเลือกหลายชนิด" : selected.length === 1 ? "เลือกอยู่ 1 ชนิด" : `เลือกอยู่ ${selected.length} ชนิด`;
+  const preview = selected.length
+    ? selected.slice(0, 3).map(product => `<span>${escapeOutreachHtml(product)}</span>`).join("") + (selected.length > 3 ? `<span>+${selected.length - 3}</span>` : "")
+    : `<span class="is-placeholder">ยังไม่ได้เลือกเฉพาะชนิด</span>`;
   return `
     <details class="product-multi-select" id="outreachProductPicker" ontoggle="handleOutreachProductPickerToggle(this)">
       <summary>
-        <span>ชนิดผลิตภัณฑ์</span>
+        <span class="product-picker-label">ชนิดผลิตภัณฑ์</span>
         <strong id="outreachProductLabel">${escapeOutreachHtml(label)}</strong>
+        <small id="outreachProductHelper">${escapeOutreachHtml(helper)}</small>
         <span class="product-picker-chevron" aria-hidden="true">⌄</span>
       </summary>
       <button class="product-multi-backdrop" type="button" aria-label="ปิดตัวเลือกผลิตภัณฑ์" onclick="cancelOutreachProductSelection()"></button>
@@ -1294,10 +1300,12 @@ function renderProductMultiSelect(products, selectedProducts) {
         <div class="product-multi-head">
           <div>
             <strong>เลือกผลิตภัณฑ์</strong>
-            <span id="outreachProductDraftCount">${selected.size ? `เลือกแล้ว ${selected.size} รายการ` : "ยังไม่ได้จำกัดชนิด"}</span>
+            <span id="outreachProductDraftCount">${selected.length ? `เลือกแล้ว ${selected.length} รายการ` : "ยังไม่ได้จำกัดชนิด"}</span>
           </div>
           <button type="button" class="product-picker-close" aria-label="ยกเลิกและปิด" onclick="cancelOutreachProductSelection()">×</button>
         </div>
+
+        <div class="product-selection-preview" id="outreachProductPreview">${preview}</div>
 
         <div class="product-multi-search-wrap">
           <span aria-hidden="true">⌕</span>
@@ -1312,7 +1320,7 @@ function renderProductMultiSelect(products, selectedProducts) {
         <div class="product-multi-list" id="outreachProductList">
           ${(products || []).map((product) => `
             <label class="product-check-row" data-product-search="${escapeOutreachHtml(String(product).toLowerCase())}">
-              <input class="outreach-product-check" type="checkbox" value="${escapeOutreachHtml(product)}" ${selected.has(product) ? "checked" : ""} onchange="handleOutreachProductChange()" />
+              <input class="outreach-product-check" type="checkbox" value="${escapeOutreachHtml(product)}" ${selectedSet.has(product) ? "checked" : ""} onchange="handleOutreachProductChange()" />
               <span>${escapeOutreachHtml(product)}</span>
             </label>`).join("")}
           <div class="product-search-empty" id="outreachProductSearchEmpty" hidden>ไม่พบผลิตภัณฑ์ที่ค้นหา</div>
@@ -1320,7 +1328,7 @@ function renderProductMultiSelect(products, selectedProducts) {
 
         <div class="product-multi-footer">
           <button type="button" class="btn-product-cancel" onclick="cancelOutreachProductSelection()">ยกเลิก</button>
-          <button type="button" class="btn-product-apply" id="outreachProductApply" onclick="commitOutreachProductSelection()">ใช้ตัวกรอง${selected.size ? ` (${selected.size})` : ""}</button>
+          <button type="button" class="btn-product-apply" id="outreachProductApply" onclick="commitOutreachProductSelection()">ใช้ตัวกรอง${selected.length ? ` (${selected.length})` : ""}</button>
         </div>
       </div>
     </details>`;
@@ -1334,11 +1342,29 @@ function getSelectedOutreachProducts() {
     .filter(Boolean);
 }
 
+function updateOutreachProductPreview() {
+  const preview = document.getElementById("outreachProductPreview");
+  if (!preview) return;
+  const selected = getSelectedOutreachProducts();
+  if (!selected.length) {
+    preview.innerHTML = '<span class="is-placeholder">ยังไม่ได้เลือกเฉพาะชนิด</span>';
+    return;
+  }
+  preview.innerHTML = selected.slice(0, 6)
+    .map(value => `<span>${escapeOutreachHtml(value)}</span>`)
+    .join("") + (selected.length > 6 ? `<span>+${selected.length - 6}</span>` : "");
+}
+
 function updateOutreachProductLabel() {
   const selected = getSelectedOutreachProducts();
   const label = document.getElementById("outreachProductLabel");
-  if (!label) return;
-  label.textContent = selected.length === 0 ? "ทุกชนิด" : selected.length === 1 ? selected[0] : `เลือก ${selected.length} ชนิด`;
+  const helper = document.getElementById("outreachProductHelper");
+  if (label) {
+    label.textContent = selected.length === 0 ? "ทุกชนิด" : selected.length === 1 ? selected[0] : `เลือกแล้ว ${selected.length} ชนิด`;
+  }
+  if (helper) {
+    helper.textContent = selected.length === 0 ? "แตะเพื่อเลือกหลายชนิด" : selected.length === 1 ? "เลือกอยู่ 1 ชนิด" : `เลือกอยู่ ${selected.length} ชนิด`;
+  }
 }
 
 function updateOutreachProductDraftCount() {
@@ -1347,6 +1373,7 @@ function updateOutreachProductDraftCount() {
   const apply = document.getElementById("outreachProductApply");
   if (count) count.textContent = selected.length ? `เลือกแล้ว ${selected.length} รายการ` : "ยังไม่ได้จำกัดชนิด";
   if (apply) apply.textContent = selected.length ? `ใช้ตัวกรอง (${selected.length})` : "ใช้ทุกชนิด";
+  updateOutreachProductPreview();
 }
 
 function formatThaiDateShort(value) {
@@ -1365,22 +1392,77 @@ function formatThaiDateShort(value) {
   return text;
 }
 
-function getOutreachPreferredTrendYear(filters) {
-  const monthValue = document.getElementById("outreachMonth")?.value || "";
-  if (monthValue) {
-    const y = Number(monthValue.split("-")[0]);
-    if (Number.isFinite(y)) return y;
+function formatThaiMonthYear(value) {
+  if (!value) return "";
+  const match = String(value).match(/^(\d{4})-(\d{2})/);
+  if (!match) return String(value);
+  const monthNames = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  return `${monthNames[m - 1] || ""} ${y + 543}`.trim();
+}
+
+function outreachMonthValueFromDate(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}` : "";
+}
+
+function outreachLastDayOfMonth(monthValue) {
+  const match = String(monthValue || "").match(/^(\d{4})-(\d{2})$/);
+  if (!match) return "";
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const lastDay = new Date(year, month, 0).getDate();
+  return `${match[1]}-${match[2]}-${String(lastDay).padStart(2, "0")}`;
+}
+
+function renderOutreachMonthOptions(minDate, maxDate, selectedValue, placeholderLabel) {
+  const monthNames = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+  const minMonth = outreachMonthValueFromDate(minDate);
+  const maxMonth = outreachMonthValueFromDate(maxDate);
+  const selected = String(selectedValue || "");
+  const options = [`<option value="">${escapeOutreachHtml(placeholderLabel || "ทั้งหมด")}</option>`];
+  if (!minMonth || !maxMonth) return options.join("");
+  const [sy, sm] = minMonth.split("-").map(Number);
+  const [ey, em] = maxMonth.split("-").map(Number);
+  const cursor = new Date(sy, sm - 1, 1);
+  const end = new Date(ey, em - 1, 1);
+  let guard = 0;
+  while (cursor <= end && guard < 240) {
+    const y = cursor.getFullYear();
+    const m = cursor.getMonth() + 1;
+    const value = `${y}-${String(m).padStart(2,"0")}`;
+    options.push(`<option value="${value}" ${value === selected ? "selected" : ""}>${monthNames[m-1]} ${y + 543}</option>`);
+    cursor.setMonth(cursor.getMonth() + 1);
+    guard += 1;
   }
-  const dateFrom = String(filters?.dateFrom || document.getElementById("outreachDateFrom")?.value || "");
-  const dateTo = String(filters?.dateTo || document.getElementById("outreachDateTo")?.value || "");
-  const getYear = (value) => {
-    const y = Number(String(value || "").slice(0, 4));
-    return Number.isFinite(y) && y > 1900 ? y : null;
-  };
-  const yearFrom = getYear(dateFrom);
-  const yearTo = getYear(dateTo);
-  if (yearFrom && yearTo && yearFrom === yearTo) return yearFrom;
-  return yearTo || yearFrom || null;
+  return options.join("");
+}
+
+function isOutreachFullMonthRange(filters) {
+  const from = String(filters?.dateFrom || "");
+  const to = String(filters?.dateTo || "");
+  if (!from && !to) return false;
+  const fromMonth = outreachMonthValueFromDate(from);
+  const toMonth = outreachMonthValueFromDate(to);
+  const fromIsBoundary = !from || from === `${fromMonth}-01`;
+  const toIsBoundary = !to || to === outreachLastDayOfMonth(toMonth);
+  return fromIsBoundary && toIsBoundary;
+}
+
+function getOutreachTrendYearRange(filters = {}) {
+  const fallbackStart = currentOutreachAnalysisData?.filterOptions?.minDate || currentOutreachAnalysisData?.sourceStartDate || "";
+  const fallbackEnd = currentOutreachAnalysisData?.filterOptions?.maxDate || currentOutreachAnalysisData?.sourceEndDate || "";
+  const from = String(filters.dateFrom || fallbackStart || "");
+  const to = String(filters.dateTo || fallbackEnd || "");
+  const startYear = Number(from.slice(0,4));
+  const endYear = Number(to.slice(0,4));
+  if (Number.isFinite(startYear) && Number.isFinite(endYear) && startYear > 1900 && endYear > 1900) {
+    return { startYear: Math.min(startYear,endYear), endYear: Math.max(startYear,endYear) };
+  }
+  const only = Number((to || from).slice(0,4));
+  const safe = Number.isFinite(only) && only > 1900 ? only : new Date().getFullYear();
+  return { startYear: safe, endYear: safe };
 }
 
 function renderOutreachFilterSummary(filters) {
@@ -1388,7 +1470,11 @@ function renderOutreachFilterSummary(filters) {
   if (!box) return;
   const chips = [];
   if (filters?.dateFrom || filters?.dateTo) {
-    chips.push(`ช่วงวันที่: ${formatThaiDateShort(filters?.dateFrom) || "เริ่มต้น"} → ${formatThaiDateShort(filters?.dateTo) || "ล่าสุด"}`);
+    if (isOutreachFullMonthRange(filters)) {
+      chips.push(`ช่วงเดือน: ${formatThaiMonthYear(filters?.dateFrom) || "เริ่มต้น"} → ${formatThaiMonthYear(filters?.dateTo) || "ล่าสุด"}`);
+    } else {
+      chips.push(`ช่วงวันที่: ${formatThaiDateShort(filters?.dateFrom) || "เริ่มต้น"} → ${formatThaiDateShort(filters?.dateTo) || "ล่าสุด"}`);
+    }
   }
   if (filters?.sourceGroup) chips.push(`กลุ่ม: ${filters.sourceGroup}`);
   if (filters?.source) chips.push(`จุด/แหล่ง: ${filters.source}`);
@@ -1417,13 +1503,17 @@ function renderOutreachFilterSummary(filters) {
 function renderOutreachTrendInsight(data) {
   const box = document.getElementById("outreachTrendInsight");
   if (!box) return;
-  const year = Number(data?.year || currentOutreachTrendYear || new Date().getFullYear());
-  const preferredYear = getOutreachPreferredTrendYear(getOutreachFilterValues());
-  const synced = preferredYear && preferredYear === year;
+  const filters = getOutreachFilterValues();
+  const months = Array.isArray(data?.months) ? data.months : [];
+  const first = months[0];
+  const last = months[months.length - 1];
+  const rangeText = first && last
+    ? `${formatThaiMonthYear(`${first.year}-${String(first.month).padStart(2,"0")}`)} → ${formatThaiMonthYear(`${last.year}-${String(last.month).padStart(2,"0")}`)}`
+    : (filters.dateFrom || filters.dateTo ? `${formatThaiMonthYear(filters.dateFrom) || "เริ่มต้น"} → ${formatThaiMonthYear(filters.dateTo) || "ล่าสุด"}` : "ข้อมูลทั้งหมด");
   box.innerHTML = `
-    <div class="trend-focus-strip${synced ? " is-synced" : ""}">
-      <strong>กราฟนี้ใช้ตัวกรองด้านบนทั้งหมด · กำลังแสดงปี ${year + 543}</strong>
-      <span>${synced ? "ปีของกราฟตรงกับช่วงวันที่รับเข้าที่เลือก" : "ถ้าช่วงวันที่คร่อมหลายปี ให้เลือกปีที่ต้องการดู โดยชุดถุงยังยึดตามตัวกรองด้านบนทั้งหมด"}</span>
+    <div class="trend-focus-strip is-synced">
+      <strong>กราฟใช้ตัวกรองด้านบนชุดเดียวกันทั้งหมด · ${escapeOutreachHtml(rangeText)}</strong>
+      <span>ไม่มีตัวกรองปีแยกใต้กราฟแล้ว การ์ด กราฟ ตาราง และสรุปแหล่งรับเข้าใช้ช่วงข้อมูลเดียวกัน</span>
     </div>`;
 }
 
@@ -1503,6 +1593,8 @@ function renderOutreachAnalysis() {
   const options = data.filterOptions || {};
   const f = data.filters || {};
   const validation = data.validation || {};
+  const availableMinDate = options.minDate || data.sourceStartDate || "";
+  const availableMaxDate = options.maxDate || data.sourceEndDate || "";
 
   container.innerHTML = `
     <div class="outreach-report-shell">
@@ -1521,14 +1613,23 @@ function renderOutreachAnalysis() {
       <details class="simple-details filter-details mb-3 no-print">
         <summary>กรองข้อมูล</summary>
         <div class="outreach-filter-grid pt-3">
-          <label class="outreach-filter-item">วันที่รับเข้า ตั้งแต่<input id="outreachDateFrom" type="date" class="form-control" min="${escapeOutreachHtml(options.minDate || "")}" max="${escapeOutreachHtml(options.maxDate || "")}" value="${escapeOutreachHtml(f.dateFrom || "")}" onchange="applyOutreachFilters()" /></label>
-          <label class="outreach-filter-item">ถึง<input id="outreachDateTo" type="date" class="form-control" min="${escapeOutreachHtml(options.minDate || "")}" max="${escapeOutreachHtml(options.maxDate || "")}" value="${escapeOutreachHtml(f.dateTo || "")}" onchange="applyOutreachFilters()" /></label>
-          <label class="outreach-filter-item">เดือน / ปี<input id="outreachMonth" type="month" class="form-control" onchange="applyOutreachMonthFilter()" /></label>
+          <div class="outreach-range-pair">
+            <label class="outreach-filter-item">เดือน / ปี ตั้งแต่<select id="outreachMonthFrom" class="form-select" onchange="applyOutreachMonthRangeFilter()">${renderOutreachMonthOptions(availableMinDate, availableMaxDate, outreachMonthValueFromDate(f.dateFrom || availableMinDate), "ตั้งแต่ต้น")}</select></label>
+            <span class="outreach-range-arrow" aria-hidden="true">→</span>
+            <label class="outreach-filter-item">ถึง<select id="outreachMonthTo" class="form-select" onchange="applyOutreachMonthRangeFilter()">${renderOutreachMonthOptions(availableMinDate, availableMaxDate, outreachMonthValueFromDate(f.dateTo || availableMaxDate), "ถึงล่าสุด")}</select></label>
+          </div>
           <label class="outreach-filter-item">กลุ่มแหล่งรับเข้า<select id="outreachSourceGroup" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(options.sourceGroups || [], f.sourceGroup || "", "ทั้งหมด")}</select></label>
           <label class="outreach-filter-item">จุดออกหน่วย / แหล่งรับเข้า<select id="outreachSource" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(options.sources || [], f.source || "", "ทุกจุด")}</select></label>
           ${renderProductMultiSelect(options.products || [], f.productTypes || [])}
           <label class="outreach-filter-item">หมู่เลือด<select id="outreachBloodGroup" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(options.bloodGroups || [], f.bloodGroup || "", "ทุกหมู่")}</select></label>
           <label class="outreach-filter-item">Rh<select id="outreachRh" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(options.rhs || [], f.rh || "", "ทุก Rh")}</select></label>
+          <details class="outreach-advanced-date">
+            <summary>วันที่แบบละเอียด</summary>
+            <div class="outreach-exact-date-grid">
+              <label class="outreach-filter-item">วันที่รับเข้า ตั้งแต่<input id="outreachDateFrom" type="date" class="form-control" min="${escapeOutreachHtml(availableMinDate)}" max="${escapeOutreachHtml(availableMaxDate)}" value="${escapeOutreachHtml(f.dateFrom || "")}" onchange="applyOutreachExactDateFilter()" /></label>
+              <label class="outreach-filter-item">ถึง<input id="outreachDateTo" type="date" class="form-control" min="${escapeOutreachHtml(availableMinDate)}" max="${escapeOutreachHtml(availableMaxDate)}" value="${escapeOutreachHtml(f.dateTo || "")}" onchange="applyOutreachExactDateFilter()" /></label>
+            </div>
+          </details>
         </div>
         <div class="d-flex justify-content-between align-items-center gap-2 mt-3">
           <div id="outreachFilterLoading" class="small-muted" style="display:none;">กำลังคำนวณ...</div>
@@ -1545,11 +1646,7 @@ function renderOutreachAnalysis() {
         <div class="panel-heading-row trend-head-row">
           <div>
             <h3>แนวโน้มรายเดือน</h3>
-            <div class="small-muted">ยึดตามตัวกรองด้านบนทั้งหมด · พร้อมตารางตัวเลขรายเดือนชัด ๆ ใต้กราฟ</div>
-          </div>
-          <div class="trend-head-controls">
-            <label class="trend-year-label" for="outreachTrendYear">ปีที่ดูกราฟ</label>
-            <select id="outreachTrendYear" class="form-select trend-year-select" onchange="changeOutreachTrendYear(this.value)"></select>
+            <div class="small-muted">แสดงต่อเนื่องตามช่วงเดือน/ปีที่เลือกด้านบน · ไม่มีตัวกรองปีซ้ำด้านล่าง</div>
           </div>
         </div>
         <div id="outreachTrendInsight" class="mb-2"></div>
@@ -1620,28 +1717,44 @@ function getOutreachFilterValues() {
   };
 }
 
-function applyOutreachMonthFilter() {
-  const month = document.getElementById("outreachMonth")?.value || "";
-  const from = document.getElementById("outreachDateFrom");
-  const to = document.getElementById("outreachDateTo");
-  if (month && from && to) {
-    const [year, monthNumber] = month.split("-").map(Number);
-    const lastDay = new Date(year, monthNumber, 0).getDate();
-    from.value = `${year}-${String(monthNumber).padStart(2, "0")}-01`;
-    to.value = `${year}-${String(monthNumber).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
-    if (Number.isFinite(year)) currentOutreachTrendYear = year;
+function applyOutreachMonthRangeFilter() {
+  const fromMonthEl = document.getElementById("outreachMonthFrom");
+  const toMonthEl = document.getElementById("outreachMonthTo");
+  const fromDateEl = document.getElementById("outreachDateFrom");
+  const toDateEl = document.getElementById("outreachDateTo");
+  let monthFrom = fromMonthEl?.value || "";
+  let monthTo = toMonthEl?.value || "";
+
+  if (monthFrom && monthTo && monthFrom > monthTo) {
+    if (document.activeElement === fromMonthEl) monthTo = monthFrom;
+    else monthFrom = monthTo;
+    if (fromMonthEl) fromMonthEl.value = monthFrom;
+    if (toMonthEl) toMonthEl.value = monthTo;
   }
+
+  if (fromDateEl) fromDateEl.value = monthFrom ? `${monthFrom}-01` : "";
+  if (toDateEl) toDateEl.value = monthTo ? outreachLastDayOfMonth(monthTo) : "";
+  applyOutreachFilters();
+}
+
+function applyOutreachExactDateFilter() {
+  const fromDate = document.getElementById("outreachDateFrom")?.value || "";
+  const toDate = document.getElementById("outreachDateTo")?.value || "";
+  const fromMonth = document.getElementById("outreachMonthFrom");
+  const toMonth = document.getElementById("outreachMonthTo");
+  if (fromMonth) fromMonth.value = outreachMonthValueFromDate(fromDate);
+  if (toMonth) toMonth.value = outreachMonthValueFromDate(toDate);
   applyOutreachFilters();
 }
 
 function resetOutreachFilters() {
-  ["outreachDateFrom", "outreachDateTo", "outreachMonth", "outreachSourceGroup", "outreachSource", "outreachBloodGroup", "outreachRh"].forEach(id => {
+  ["outreachDateFrom", "outreachDateTo", "outreachMonthFrom", "outreachMonthTo", "outreachSourceGroup", "outreachSource", "outreachBloodGroup", "outreachRh"].forEach(id => {
     const element = document.getElementById(id);
     if (element) element.value = "";
   });
   document.querySelectorAll(".outreach-product-check").forEach(el => { el.checked = false; });
   updateOutreachProductLabel();
-  currentOutreachTrendYear = new Date().getFullYear();
+  updateOutreachProductDraftCount();
   applyOutreachFilters();
 }
 
@@ -1653,8 +1766,6 @@ async function applyOutreachFilters() {
 
   try {
     const filters = getOutreachFilterValues();
-    const preferredTrendYear = getOutreachPreferredTrendYear(filters);
-    if (preferredTrendYear) currentOutreachTrendYear = preferredTrendYear;
     const data = await MinimumStockBackend.getOutreachAnalysis({ filters });
     if (requestId !== outreachRequestSeq) return;
 
@@ -1666,7 +1777,7 @@ async function applyOutreachFilters() {
     currentOutreachSourceSummary = normalizeOutreachSourceSummary(data?.report?.sources || []);
     renderOutreachFilterSummary(filters);
     renderOutreachReportSections(data.report || {});
-    loadOutreachTrend(currentOutreachTrendYear);
+    loadOutreachTrend();
   } catch (err) {
     showModal("error", "คำนวณตัวกรองไม่สำเร็จ", err.message);
   } finally {
@@ -1675,51 +1786,48 @@ async function applyOutreachFilters() {
 }
 
 
-function changeOutreachTrendYear(value) {
-  const y = Number(value || new Date().getFullYear());
-  if (Number.isFinite(y)) currentOutreachTrendYear = y;
-  loadOutreachTrend(currentOutreachTrendYear);
-}
-
-async function loadOutreachTrend(year) {
+async function loadOutreachTrend() {
   const box = document.getElementById("outreachTrendChart");
-  const select = document.getElementById("outreachTrendYear");
   if (!box || !currentOutreachAnalysisData?.batchId) return;
 
   box.innerHTML = `<div class="small-muted py-4">กำลังโหลดกราฟ...</div>`;
   try {
     const filters = getOutreachFilterValues();
-    const preferredTrendYear = getOutreachPreferredTrendYear(filters);
-    let requestedYear = Number(year || preferredTrendYear || currentOutreachTrendYear || new Date().getFullYear());
-    if (!Number.isFinite(requestedYear)) requestedYear = new Date().getFullYear();
+    const range = getOutreachTrendYearRange(filters);
+    const yearCount = Math.max(1, range.endYear - range.startYear + 1);
+    const maxYears = 8;
+    const startYear = yearCount > maxYears ? range.endYear - maxYears + 1 : range.startYear;
+    const years = [];
+    for (let y = startYear; y <= range.endYear; y += 1) years.push(y);
 
-    let result = await MinimumStockBackend.getOutreachMonthlyTrend(requestedYear, filters);
-    let years = Array.isArray(result?.years) ? result.years.map(Number).filter(Number.isFinite) : [];
-
-    // v2.9.19: ถ้าช่วงวันที่ด้านบนอยู่ปีเดียว ให้กราฟตามปีนั้นก่อนเสมอ
-    // ป้องกันกรณี dropdown แสดง 2569 แต่ข้อมูลที่กรองจริงเป็นปี 2568 ทำให้ ต.ค.–ธ.ค. ดูเหมือนหาย
-    if (preferredTrendYear && years.includes(Number(preferredTrendYear)) && Number(result?.year) !== Number(preferredTrendYear)) {
-      requestedYear = Number(preferredTrendYear);
-      result = await MinimumStockBackend.getOutreachMonthlyTrend(requestedYear, filters);
-      years = Array.isArray(result?.years) ? result.years.map(Number).filter(Number.isFinite) : years;
+    const results = [];
+    for (const y of years) {
+      results.push(await MinimumStockBackend.getOutreachMonthlyTrend(y, filters));
     }
+    const monthFrom = outreachMonthValueFromDate(filters.dateFrom || currentOutreachAnalysisData?.filterOptions?.minDate || currentOutreachAnalysisData?.sourceStartDate || "");
+    const monthTo = outreachMonthValueFromDate(filters.dateTo || currentOutreachAnalysisData?.filterOptions?.maxDate || currentOutreachAnalysisData?.sourceEndDate || "");
+    const months = [];
 
-    if (years.length && !years.includes(Number(requestedYear))) {
-      // ถ้าปีที่ร้องขอไม่มีจริง ให้เลือกปีที่ใกล้ช่วง filter มากที่สุด แล้ว fetch ใหม่ก่อน render
-      const fallbackYear = preferredTrendYear && years.includes(Number(preferredTrendYear))
-        ? Number(preferredTrendYear)
-        : Math.max(...years);
-      requestedYear = fallbackYear;
-      result = await MinimumStockBackend.getOutreachMonthlyTrend(requestedYear, filters);
-      years = Array.isArray(result?.years) ? result.years.map(Number).filter(Number.isFinite) : years;
-    }
+    results.forEach((result, index) => {
+      const y = years[index];
+      (Array.isArray(result?.months) ? result.months : []).forEach((m) => {
+        const monthNumber = Number(m.month || 0);
+        if (!monthNumber) return;
+        const key = `${y}-${String(monthNumber).padStart(2,"0")}`;
+        if (monthFrom && key < monthFrom) return;
+        if (monthTo && key > monthTo) return;
+        months.push({
+          year: y,
+          month: monthNumber,
+          stockIn: Number(m.stockIn || 0),
+          released: Number(m.released || 0),
+          expired: Number(m.expired || 0)
+        });
+      });
+    });
 
-    currentOutreachTrendYear = requestedYear;
+    const result = { startYear, endYear: range.endYear, years, months };
     currentOutreachTrendData = result;
-    if (select) {
-      const options = years.length ? [...new Set(years)].sort((a,b)=>b-a) : [requestedYear];
-      select.innerHTML = options.map(y => `<option value="${y}" ${Number(requestedYear)===Number(y)?"selected":""}>${Number(y) + 543}</option>`).join("");
-    }
     renderOutreachTrendChart(result);
     renderOutreachTrendInsight(result);
   } catch (err) {
@@ -1732,7 +1840,7 @@ function renderOutreachTrendChart(data) {
   if (!box) return;
   const months = Array.isArray(data?.months) ? data.months : [];
   if (!months.length) {
-    box.innerHTML = `<div class="small-muted py-4">ยังไม่มีข้อมูลของปีนี้</div>`;
+    box.innerHTML = `<div class="small-muted py-4">ยังไม่มีข้อมูลในช่วงเดือน/ปีที่เลือก</div>`;
     return;
   }
 
@@ -1742,7 +1850,9 @@ function renderOutreachTrendChart(data) {
   const totalIn = months.reduce((s,m)=>s+Number(m.stockIn||0),0);
   const totalReleased = months.reduce((s,m)=>s+Number(m.released||0),0);
   const totalExpired = months.reduce((s,m)=>s+Number(m.expired||0),0);
-  const year = Number(data?.year || currentOutreachTrendYear || new Date().getFullYear());
+  const multiYear = new Set(months.map(m => Number(m.year))).size > 1;
+  const ariaStart = months[0] ? `${monthNames[Number(months[0].month)-1]} ${Number(months[0].year)+543}` : "";
+  const ariaEnd = months[months.length-1] ? `${monthNames[Number(months[months.length-1].month)-1]} ${Number(months[months.length-1].year)+543}` : "";
 
   box.innerHTML = `
     <div class="trend-summary-row">
@@ -1750,51 +1860,59 @@ function renderOutreachTrendChart(data) {
       <span><i class="trend-dot trend-released"></i>Released <b>${totalReleased.toLocaleString()}</b></span>
       <span><i class="trend-dot trend-expired"></i>Expired <b>${totalExpired.toLocaleString()}</b></span>
     </div>
-    <div class="monthly-trend-chart" role="img" aria-label="กราฟ Stock in Released Expired รายเดือน ปี ${year + 543}">
-      ${months.map((m, i) => {
+    <div class="monthly-trend-chart" style="--trend-columns:${Math.max(12,months.length)}" role="img" aria-label="กราฟ Stock in Released Expired รายเดือน ${ariaStart} ถึง ${ariaEnd}">
+      ${months.map((m) => {
+        const monthIndex = Math.max(0, Number(m.month || 1) - 1);
+        const year = Number(m.year || 0);
         const stockIn = Number(m.stockIn || 0);
         const released = Number(m.released || 0);
         const expired = Number(m.expired || 0);
         const hIn = Math.max(stockIn ? 10 : 2, Math.round((stockIn / maxValue) * 100));
         const hRel = Math.max(released ? 10 : 2, Math.round((released / maxValue) * 100));
         const hExp = expired ? Math.max(10, Math.round((expired / maxValue) * 100)) : 0;
+        const shortYear = String(year + 543).slice(-2);
+        const label = multiYear ? `${monthNames[monthIndex]} ${shortYear}` : monthNames[monthIndex];
+        const fullLabel = `${monthNamesLong[monthIndex]} ${year + 543}`;
         return `
           <div class="month-group">
             <div class="month-top-value">${Math.max(stockIn, released, expired).toLocaleString()}</div>
             <div class="month-bars">
-              <span class="month-bar trend-in" style="height:${hIn}%" title="${monthNamesLong[i] || m.month} · Stock in ${stockIn.toLocaleString()}"></span>
-              <span class="month-bar trend-released" style="height:${hRel}%" title="${monthNamesLong[i] || m.month} · Released ${released.toLocaleString()}"></span>
-              <span class="month-bar trend-expired" style="height:${hExp}%" title="${monthNamesLong[i] || m.month} · Expired ${expired.toLocaleString()}"></span>
+              <span class="month-bar trend-in" style="height:${hIn}%" title="${fullLabel} · Stock in ${stockIn.toLocaleString()}"></span>
+              <span class="month-bar trend-released" style="height:${hRel}%" title="${fullLabel} · Released ${released.toLocaleString()}"></span>
+              <span class="month-bar trend-expired" style="height:${hExp}%" title="${fullLabel} · Expired ${expired.toLocaleString()}"></span>
             </div>
-            <div class="month-label">${monthNames[i] || m.month}</div>
+            <div class="month-label">${label}</div>
           </div>`;
       }).join("")}
     </div>
     <div class="trend-note-row">
-      <div class="small-muted">เลขเหนือแต่ละเดือนคือค่าที่มากที่สุดของเดือนนั้น เพื่อกะภาพรวมได้เร็ว ส่วนตัวเลขละเอียดดูในตารางด้านล่าง</div>
+      <div class="small-muted">เลขเหนือแต่ละเดือนคือค่าที่มากที่สุดของเดือนนั้น ส่วนตัวเลขละเอียดดูในตารางด้านล่าง</div>
     </div>
     <div class="trend-table-wrap mt-3">
       <table class="table table-sm trend-data-table align-middle mb-0">
         <thead>
           <tr>
-            <th>เดือน</th>
+            <th>เดือน / ปี</th>
             <th class="text-end">Stock in</th>
             <th class="text-end">Released</th>
             <th class="text-end">Expired</th>
           </tr>
         </thead>
         <tbody>
-          ${months.map((m, i) => `
+          ${months.map((m) => {
+            const monthIndex = Math.max(0, Number(m.month || 1) - 1);
+            return `
             <tr>
-              <td><strong>${monthNamesLong[i] || m.month}</strong></td>
+              <td><strong>${monthNamesLong[monthIndex]} ${Number(m.year || 0) + 543}</strong></td>
               <td class="text-end">${Number(m.stockIn || 0).toLocaleString()}</td>
               <td class="text-end">${Number(m.released || 0).toLocaleString()}</td>
               <td class="text-end">${Number(m.expired || 0).toLocaleString()}</td>
-            </tr>`).join("")}
+            </tr>`;
+          }).join("")}
         </tbody>
       </table>
     </div>
-    <div class="small-muted mt-2">กราฟนี้ยึดตัวกรองด้านบนทั้งหมด · ตัวกรองวันที่ใช้ DateStockIn เพื่อเลือกชุดถุง · นับ 1 ครั้งต่อถุงต้นทาง (.S1/.S2 รวมกับถุงหลัก) · Stock in ใช้ DateStockIn · Released/Expired วางตามเดือนของ DateStockOut</div>`;
+    <div class="small-muted mt-2">กราฟยึดตัวกรองด้านบนทั้งหมด · ช่วงเดือน/ปีใช้ DateStockIn เพื่อเลือกชุดถุง · นับ 1 ครั้งต่อถุงต้นทาง (.S1/.S2 รวมกับถุงหลัก) · Stock in ใช้ DateStockIn · Released/Expired วางตามเดือนของ DateStockOut</div>`;
 }
 
 function renderOutreachReportSections(report) {

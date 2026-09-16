@@ -21,6 +21,7 @@
   let cachedSummarySnapshot = null;
   let cachedFullSnapshot = null;
   let cachedOutreachSnapshot = null;
+  let outreachTrendFallbackRowsCache = { key: "", rows: [], at: 0 };
 
   const SUMMARY_SELECT = [
     "id",
@@ -101,6 +102,7 @@
     cachedSummarySnapshot = null;
     cachedFullSnapshot = null;
     cachedOutreachSnapshot = null;
+    outreachTrendFallbackRowsCache = { key: "", rows: [], at: 0 };
   }
 
   async function clearAllSnapshots(options = {}) {
@@ -2367,6 +2369,77 @@
     };
   }
 
+  function getOutreachFamilyKeyFromBagNumber(bagNumber) {
+    const clean = String(bagNumber || "").trim().toUpperCase();
+    if (!clean) return "";
+    return clean.replace(/\.S\d+$/i, "");
+  }
+
+  function buildOutreachMonthlyTrendFromRows(year, rows = [], filters = {}) {
+    const safeYear = Number(year || new Date().getFullYear());
+    const families = new Map();
+
+    (Array.isArray(rows) ? rows : []).forEach((row) => {
+      if (!row || row.aggregateEligible === false) return;
+      const familyKey = getOutreachFamilyKeyFromBagNumber(row.bagNumber);
+      if (!familyKey) return;
+      const stockInDate = parseYmdDate(row.dateStockIn);
+      const outDate = parseYmdDate(row.dateStockOut);
+      const current = families.get(familyKey) || {
+        stockInDate: null,
+        hasUsed: false,
+        hasReleased: false,
+        releasedDate: null,
+        hasExpired: false,
+        expiredDate: null
+      };
+      if (stockInDate && (!current.stockInDate || stockInDate < current.stockInDate)) current.stockInDate = stockInDate;
+      if (String(row.outcomeCode || "") === "used") current.hasUsed = true;
+      if (String(row.status || "") === "Released") {
+        current.hasReleased = true;
+        if (outDate && (!current.releasedDate || outDate < current.releasedDate)) current.releasedDate = outDate;
+      }
+      if (String(row.status || "") === "Expired") {
+        current.hasExpired = true;
+        if (outDate && (!current.expiredDate || outDate < current.expiredDate)) current.expiredDate = outDate;
+      }
+      families.set(familyKey, current);
+    });
+
+    const years = new Set();
+    const months = Array.from({ length: 12 }, (_, index) => ({
+      month: index + 1,
+      stockIn: 0,
+      released: 0,
+      expired: 0
+    }));
+
+    families.forEach((family) => {
+      const stockInDate = family.stockInDate;
+      const releasedDate = family.releasedDate;
+      const expiredDate = family.hasUsed ? null : family.expiredDate;
+
+      if (stockInDate instanceof Date && !isNaN(stockInDate)) {
+        years.add(stockInDate.getFullYear());
+        if (stockInDate.getFullYear() === safeYear) months[stockInDate.getMonth()].stockIn += 1;
+      }
+      if (family.hasReleased && releasedDate instanceof Date && !isNaN(releasedDate)) {
+        years.add(releasedDate.getFullYear());
+        if (releasedDate.getFullYear() === safeYear) months[releasedDate.getMonth()].released += 1;
+      }
+      if (family.hasExpired && expiredDate instanceof Date && !isNaN(expiredDate)) {
+        years.add(expiredDate.getFullYear());
+        if (expiredDate.getFullYear() === safeYear) months[expiredDate.getMonth()].expired += 1;
+      }
+    });
+
+    return {
+      year: safeYear,
+      years: Array.from(years).filter(Number.isFinite).sort((a, b) => b - a),
+      months
+    };
+  }
+
   async function runOutreachReport(filters = {}) {
     const client = getClient();
     const f = normalizeOutreachFilters(filters);
@@ -2430,8 +2503,26 @@
       data = previous.data;
       error = previous.error;
     }
-    if (error) throw new Error("โหลดกราฟแนวโน้มรายเดือนไม่สำเร็จ: " + error.message);
-    return data || { year: safeYear, years: [], months: [] };
+    if (!error) return data || { year: safeYear, years: [], months: [] };
+
+    // v2.9.22: ถ้า RPC กราฟพลาด (เช่นเลือกเฉพาะผลิตภัณฑ์แล้วฐานตอบช้า/ไม่รับ function บางแบบ)
+    // fallback ไปดึงแถวที่กรองแล้วจาก master มา aggregate ใน browser แทน เพื่อให้กราฟยังแสดงได้
+    try {
+      console.warn("outreach monthly trend rpc failed, fallback to client aggregation", error);
+      const cacheKey = JSON.stringify(f);
+      const now = Date.now();
+      let fallbackRows = outreachTrendFallbackRowsCache.key === cacheKey && (now - outreachTrendFallbackRowsCache.at) < 30000
+        ? outreachTrendFallbackRowsCache.rows
+        : null;
+      if (!fallbackRows) {
+        const loaded = await getOutreachRows({ all: true, filters: f, includeIneligible: false });
+        fallbackRows = loaded?.rows || [];
+        outreachTrendFallbackRowsCache = { key: cacheKey, rows: fallbackRows, at: now };
+      }
+      return buildOutreachMonthlyTrendFromRows(safeYear, fallbackRows, f);
+    } catch (fallbackErr) {
+      throw new Error("โหลดกราฟแนวโน้มรายเดือนไม่สำเร็จ: " + (fallbackErr?.message || error.message || error));
+    }
   }
 
   async function getOutreachFilterOptions() {
