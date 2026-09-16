@@ -250,7 +250,7 @@ let currentOutreachFilteredRows = [];
 let currentOutreachSourceSummary = [];
 let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260916-v2-9-20-hard-exclude-1b6-eqa-test";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260916-v2-9-21-filter-synced-charts";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -1422,8 +1422,8 @@ function renderOutreachTrendInsight(data) {
   const synced = preferredYear && preferredYear === year;
   box.innerHTML = `
     <div class="trend-focus-strip${synced ? " is-synced" : ""}">
-      <strong>กราฟนี้กำลังแสดงปี ${year + 543}</strong>
-      <span>${synced ? "ปีของกราฟตรงกับช่วงวันที่ที่เลือกอยู่แล้ว" : "กราฟรายเดือนใช้ปีที่เลือกในช่องนี้ และอาจต่างจากช่วงวันที่ด้านบนได้"}</span>
+      <strong>กราฟนี้ใช้ตัวกรองด้านบนทั้งหมด · กำลังแสดงปี ${year + 543}</strong>
+      <span>${synced ? "ปีของกราฟตรงกับช่วงวันที่รับเข้าที่เลือก" : "ถ้าช่วงวันที่คร่อมหลายปี ให้เลือกปีที่ต้องการดู โดยชุดถุงยังยึดตามตัวกรองด้านบนทั้งหมด"}</span>
     </div>`;
 }
 
@@ -1545,7 +1545,7 @@ function renderOutreachAnalysis() {
         <div class="panel-heading-row trend-head-row">
           <div>
             <h3>แนวโน้มรายเดือน</h3>
-            <div class="small-muted">สรุปทั้งปีแบบอ่านง่าย พร้อมตารางตัวเลขรายเดือนชัด ๆ ใต้กราฟ</div>
+            <div class="small-muted">ยึดตามตัวกรองด้านบนทั้งหมด · พร้อมตารางตัวเลขรายเดือนชัด ๆ ใต้กราฟ</div>
           </div>
           <div class="trend-head-controls">
             <label class="trend-year-label" for="outreachTrendYear">ปีที่ดูกราฟ</label>
@@ -1557,7 +1557,7 @@ function renderOutreachAnalysis() {
       </div>
 
       <details class="simple-details mb-3" open>
-        <summary>เปรียบเทียบแหล่งรับเข้าและจุดออกหน่วย</summary>
+        <summary>เปรียบเทียบแหล่งรับเข้าและจุดออกหน่วย · ตามตัวกรองด้านบน</summary>
         <div class="pt-3" id="outreachCharts"></div>
       </details>
 
@@ -1794,7 +1794,7 @@ function renderOutreachTrendChart(data) {
         </tbody>
       </table>
     </div>
-    <div class="small-muted mt-2">กราฟนี้สรุปทั้งปี ${year + 543} · นับ 1 ครั้งต่อถุงต้นทาง (.S1/.S2 รวมกับถุงหลัก) · Stock in ใช้ DateStockIn · Released/Expired ใช้ DateStockOut</div>`;
+    <div class="small-muted mt-2">กราฟนี้ยึดตัวกรองด้านบนทั้งหมด · ตัวกรองวันที่ใช้ DateStockIn เพื่อเลือกชุดถุง · นับ 1 ครั้งต่อถุงต้นทาง (.S1/.S2 รวมกับถุงหลัก) · Stock in ใช้ DateStockIn · Released/Expired วางตามเดือนของ DateStockOut</div>`;
 }
 
 function renderOutreachReportSections(report) {

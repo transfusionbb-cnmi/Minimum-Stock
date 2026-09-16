@@ -2310,18 +2310,18 @@
     }
     const client = getClient();
 
-    // v2.9.20 ยืนยัน hard exclusion: 1B6 / EQA / Test / 10062Q79877 / 10067R02375
-    // โดยยังใช้ RPC รายงาน/Bag family ของ v2.9.19 เดิม
-    const { data, error } = await client.rpc("minimum_stock_schema_status_v2920");
+    // v2.9.21: กราฟรายเดือนต้องรับตัวกรองเดียวกับการ์ด/กราฟด้านล่างทั้งหมด
+    // และยังคง hard exclusion จาก v2.9.20 ครบถ้วน
+    const { data, error } = await client.rpc("minimum_stock_schema_status_v2921");
     const missingRpc = error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""));
     if (missingRpc) {
-      throw new Error("Supabase ยังไม่ได้ติดตั้งกติกา v2.9.20 | กรุณารัน SQL-v2.9.20-HARD-EXCLUDE-1B6-EQA-TEST-BAGS.sql ก่อนอัปโหลด LIS");
+      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.9.21 | กรุณารัน SQL-v2.9.21-FILTER-SYNCED-CHARTS.sql 1 ครั้ง");
     }
     if (error) {
-      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.20-HARD-EXCLUDE-1B6-EQA-TEST-BAGS.sql");
+      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.21-FILTER-SYNCED-CHARTS.sql");
     }
     if (data && data.ok === false) {
-      throw new Error(data.message || "โครงสร้าง Supabase v2.9.20 ยังไม่พร้อม | กรุณารัน SQL-v2.9.20-HARD-EXCLUDE-1B6-EQA-TEST-BAGS.sql");
+      throw new Error(data.message || "โครงสร้าง Supabase v2.9.21 ยังไม่พร้อม | กรุณารัน SQL-v2.9.21-FILTER-SYNCED-CHARTS.sql");
     }
     return data || { ok: true };
   }
@@ -2405,27 +2405,30 @@
     const safeYear = Number(year || new Date().getFullYear());
     const params = {
       p_year: safeYear,
+      p_date_from: f.dateFrom || null,
+      p_date_to: f.dateTo || null,
       p_source_group: f.sourceGroup || null,
       p_donate_source: f.source || null,
       p_product_types: f.productTypes.length ? f.productTypes : null,
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2919", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2921", params);
+
+    // fallback นี้มีไว้สำหรับหน้าเว็บเก่าที่อาจค้าง cache ชั่วคราวเท่านั้น
+    // v2.9.21 ปกติจะผ่าน ensureOutreachSchema ก่อน จึงควรเรียก v2921 ได้เสมอ
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2916", params);
+      const legacyParams = {
+        p_year: safeYear,
+        p_source_group: f.sourceGroup || null,
+        p_donate_source: f.source || null,
+        p_product_types: f.productTypes.length ? f.productTypes : null,
+        p_blood_group: f.bloodGroup || null,
+        p_rh: f.rh || null
+      };
+      const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2919", legacyParams);
       data = previous.data;
       error = previous.error;
-    }
-    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2915", params);
-      data = previous.data;
-      error = previous.error;
-    }
-    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const legacy = await client.rpc("minimum_stock_outreach_monthly_trend_v280", params);
-      data = legacy.data;
-      error = legacy.error;
     }
     if (error) throw new Error("โหลดกราฟแนวโน้มรายเดือนไม่สำเร็จ: " + error.message);
     return data || { year: safeYear, years: [], months: [] };
