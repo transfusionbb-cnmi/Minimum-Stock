@@ -972,7 +972,9 @@ body {
 }
 .outreach-metric-pill.is-received { background:#eef7fd; border-color:#d8eaf7; }
 .outreach-metric-pill.is-used { background:#eef9f3; border-color:#cfe9dc; }
-.outreach-metric-pill.is-destroyed { background:#fff1f1; border-color:#f1d3d1; }
+.outreach-metric-pill.is-expired { background:#fff1f1; border-color:#f1d3d1; }
+.outreach-metric-pill.is-rejected { background:#fff8e8; border-color:#f0dfb2; }
+.outreach-metric-pill.is-other-discard { background:#f7f3ef; border-color:#e7dbd0; }
 .outreach-metric-pill.is-unresolved { background:#f3f6f9; border-color:#dee6ec; }
 .outreach-metric-pill.is-transformed { background:#f4effb; border-color:#ddd0f2; }
 .outreach-metric-pill.is-conflict { background:#fff8e8; border-color:#f1dfaa; }
@@ -996,9 +998,14 @@ body {
   background: #2d9f73;
 }
 
-.bar-destroyed,
-.legend-destroyed {
+.bar-expired,
+.legend-expired {
   background: #dc6d68;
+}
+
+.bar-rejected,
+.legend-rejected {
+  background: #d7a44b;
 }
 
 .bar-unresolved,
@@ -1084,8 +1091,8 @@ body {
 .mini-received { background:#4f9ed2; }
 .outreach-metric-bar.is-used .outreach-metric-bar-track span,
 .mini-used { background:#2d9f73; }
-.outreach-metric-bar.is-destroyed .outreach-metric-bar-track span,
-.mini-destroyed { background:#dc6d68; }
+.outreach-metric-bar.is-expired .outreach-metric-bar-track span,
+.mini-expired { background:#dc6d68; }
 
 .outreach-percent-row {
   display: grid;
@@ -1165,9 +1172,19 @@ body {
   color: #257252;
 }
 
-.outreach-outcome-badge.is-destroyed {
+.outreach-outcome-badge.is-expired {
   background: #fff0ef;
   color: #a43d38;
+}
+
+.outreach-outcome-badge.is-rejected {
+  background: #fff7df;
+  color: #866215;
+}
+
+.outreach-outcome-badge.is-other-discard {
+  background: #f5f0eb;
+  color: #705846;
 }
 
 .outreach-outcome-badge.is-conflict {
@@ -1413,6 +1430,7 @@ main { min-width:0; }
 .simple-kpi strong { font-size:30px; line-height:1.1; margin-top:6px; }
 .simple-kpi small { color:var(--muted); margin-top:4px; font-size:12px; }
 .simple-kpi.is-alert { background:var(--red-soft); border-color:#f4cfd3; }
+.simple-kpi.is-rejected { background:#fffaf0; border-color:#efdfb7; }
 .simple-kpi.is-good { background:var(--green-soft); border-color:#ccebdd; }
 .attention-strip,.data-quality-strip { border:1px solid #f0d4a4; background:var(--amber-soft); border-radius:16px; padding:12px 14px; margin-bottom:16px; font-size:14px; }
 .attention-strip.is-ok,.data-quality-strip.is-ok { background:var(--green-soft); border-color:#ccebdd; }
@@ -1781,6 +1799,7 @@ main { min-width:0; }
 .trend-in { background:#4b9fd6; }
 .trend-released { background:#46a779; }
 .trend-expired { background:#df6b68; }
+.trend-rejected { background:#d7a44b; }
 .monthly-trend-chart {
   height:320px; display:grid; grid-template-columns:repeat(var(--trend-columns,12),minmax(52px,1fr)); gap:8px; align-items:end;
   padding:12px 6px 0; border-bottom:1px solid #e5edf4; overflow-x:auto;
@@ -3133,4 +3152,43 @@ body {
   .outreach-range-quick-actions button {
     flex:1 1 auto;
   }
+}
+
+/* v2.9.27 outcome semantics */
+.outreach-key-kpis { grid-template-columns:repeat(5,minmax(0,1fr)); }
+@media (max-width: 1100px) { .outreach-key-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media (max-width: 700px) { .outreach-key-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+
+/* ==================== v2.9.29 Family outcome reconciliation ==================== */
+.outreach-reconcile-strip {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 14px;
+  border-radius:14px;
+  border:1px solid #d9e7f1;
+  background:#f8fbfd;
+  color:#31506f;
+}
+.outreach-reconcile-strip strong { font-size:13px; }
+.outreach-reconcile-strip span { font-size:12px; color:#6f8598; font-weight:700; }
+.outreach-reconcile-strip.is-ok { background:#eef9f3; border-color:#cfe9dc; }
+.outreach-reconcile-strip.has-warning { background:#fff8e8; border-color:#efdfb7; }
+
+.outreach-card-balance {
+  margin-top:10px;
+  padding-top:9px;
+  border-top:1px solid #e8f0f5;
+  font-size:12px;
+  font-weight:800;
+  color:#6f8598;
+  text-align:right;
+}
+.outreach-card-balance.is-ok { color:#2b7d59; }
+.outreach-card-balance.has-warning { color:#9a6d12; }
+
+@media (max-width:700px) {
+  .outreach-reconcile-strip { align-items:flex-start; flex-direction:column; gap:3px; }
+  .outreach-card-balance { text-align:left; }
 }

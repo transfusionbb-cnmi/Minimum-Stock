@@ -1149,10 +1149,12 @@ function renderExpiryGroupedRows(rows) {
 
 
 /* ---------------- Outreach blood bag outcome analysis v2.7.1 ---------------- */
-const OUTREACH_USED = "นำไปใช้/จ่ายออก";
-const OUTREACH_DESTROYED = "ทิ้ง/ทำลาย";
-const OUTREACH_TRANSFORMED = "แปรรูปต่อ";
-const OUTREACH_UNKNOWN = "ยังไม่ทราบผล/คงเหลือ/สถานะอื่น";
+const OUTREACH_USED = "ใช้ / จ่าย / ส่งต่อ";
+const OUTREACH_EXPIRED = "หมดอายุ";
+const OUTREACH_REJECTED = "ไม่เหมาะสมต่อการใช้ (Rejected)";
+const OUTREACH_OTHER_DISCARD = "ทำลายด้วยเหตุอื่น";
+const OUTREACH_TRANSFORMED = "แปรรูป (ขั้นตอนกลาง)";
+const OUTREACH_UNKNOWN = "ยังอยู่ในคลัง/ยังไม่มีผลปลายทาง";
 const OUTREACH_CONFLICT = "ข้อมูลขัดแย้ง ต้องตรวจสอบ";
 const OUTREACH_GROUP_SELF_INHOUSE = "หาเอง – รับบริจาคในโรงพยาบาล";
 const OUTREACH_GROUP_SELF_OUTREACH = "หาเอง – ออกหน่วย";
@@ -1182,9 +1184,24 @@ function renderSelectOptions(values, selectedValue, allLabel) {
     (values || []).map(value => `<option value="${escapeOutreachHtml(value)}" ${String(selectedValue || "") === value ? "selected" : ""}>${escapeOutreachHtml(value)}</option>`).join("");
 }
 
+function effectiveOutreachOutcomeCode(row) {
+  const status = String(row?.status || "").trim();
+  const code = String(row?.outcomeCode || "").trim();
+  if (status === "Released" || status === "Dedicated") return "used";
+  if (status === "Rejected") return "rejected";
+  if (status === "Expired") return "expired";
+  if (status === "Be Transformed") return "transformed";
+  if (["Destroyed", "Discarded", "Disposed"].includes(status)) return "other_discard";
+  if (code === "destroyed") return "other_discard"; // legacy master row
+  return code || "unresolved";
+}
+
 function outcomeLabel(code) {
   if (code === "used") return OUTREACH_USED;
-  if (code === "destroyed") return OUTREACH_DESTROYED;
+  if (code === "expired") return OUTREACH_EXPIRED;
+  if (code === "rejected") return OUTREACH_REJECTED;
+  if (code === "other_discard") return OUTREACH_OTHER_DISCARD;
+  if (code === "destroyed") return OUTREACH_OTHER_DISCARD;
   if (code === "transformed") return OUTREACH_TRANSFORMED;
   if (code === "conflict") return OUTREACH_CONFLICT;
   return OUTREACH_UNKNOWN;
@@ -1192,42 +1209,60 @@ function outcomeLabel(code) {
 
 function outcomeLabelForRow(row) {
   const status = String(row?.status || "");
-  if (status.includes("Dedicated")) return "ส่งต่อ/แลกกับ รพ.อื่น (Dedicated)";
-  return outcomeLabel(row?.outcomeCode);
+  if (status === "Dedicated") return "ส่งต่อให้ รพ.อื่น (Dedicated)";
+  return outcomeLabel(effectiveOutreachOutcomeCode(row));
 }
 
 function normalizeOutreachSourceSummary(raw) {
-  return (raw || []).map(item => ({
-    sourceGroup: item.source_group || item.sourceGroup || "",
-    donateSource: item.donate_source || item.donateSource || "",
-    received: Number(item.received || 0),
-    uniqueBags: Number(item.unique_bags || item.uniqueBags || 0),
-    used: Number(item.used || 0),
-    dedicated: Number(item.dedicated || 0),
-    destroyed: Number(item.destroyed || 0),
-    transformed: Number(item.transformed || 0),
-    unresolved: Number(item.unresolved || 0),
-    conflicts: Number(item.conflicts || 0),
-    usePercent: outreachPercent(item.used, item.received),
-    destroyPercent: outreachPercent(item.destroyed, item.received)
-  }));
+  return (raw || []).map(item => {
+    const received = Number(item.received || 0);
+    const expired = Number(item.expired ?? item.destroyed ?? 0);
+    const rejected = Number(item.rejected || 0);
+    const otherDiscarded = Number(item.other_discarded || item.otherDiscarded || 0);
+    const legacyTransformed = Number(item.transformed || 0);
+    return {
+      sourceGroup: item.source_group || item.sourceGroup || "",
+      donateSource: item.donate_source || item.donateSource || "",
+      received,
+      uniqueBags: Number(item.unique_bags || item.uniqueBags || 0),
+      used: Number(item.used || 0),
+      dedicated: Number(item.dedicated || 0),
+      expired,
+      rejected,
+      otherDiscarded,
+      transformed: 0,
+      unresolved: Number(item.unresolved || 0) + legacyTransformed,
+      conflicts: Number(item.conflicts || 0),
+      usePercent: outreachPercent(item.used, received),
+      expiredPercent: outreachPercent(expired, received)
+    };
+  });
 }
 
 function normalizeOutreachGroupSummary(raw) {
-  return (raw || []).map(item => ({
-    sourceGroup: item.source_group || item.sourceGroup || "",
-    received: Number(item.received || 0),
-    used: Number(item.used || 0),
-    dedicated: Number(item.dedicated || 0),
-    destroyed: Number(item.destroyed || 0),
-    transformed: Number(item.transformed || 0),
-    unresolved: Number(item.unresolved || 0),
-    conflicts: Number(item.conflicts || 0)
-  }));
+  return (raw || []).map(item => {
+    const legacyTransformed = Number(item.transformed || 0);
+    return {
+      sourceGroup: item.source_group || item.sourceGroup || "",
+      received: Number(item.received || 0),
+      used: Number(item.used || 0),
+      dedicated: Number(item.dedicated || 0),
+      expired: Number(item.expired ?? item.destroyed ?? 0),
+      rejected: Number(item.rejected || 0),
+      otherDiscarded: Number(item.other_discarded || item.otherDiscarded || 0),
+      transformed: 0,
+      unresolved: Number(item.unresolved || 0) + legacyTransformed,
+      conflicts: Number(item.conflicts || 0)
+    };
+  });
 }
 
 function normalizeOutreachSummary(raw = {}) {
   const received = Number(raw.received || 0);
+  const expired = Number(raw.expired ?? raw.destroyed ?? 0);
+  const rejected = Number(raw.rejected || 0);
+  const otherDiscarded = Number(raw.other_discarded || raw.otherDiscarded || 0);
+  const legacyTransformed = Number(raw.transformed || 0);
   return {
     received,
     uniqueBags: Number(raw.unique_bags || raw.uniqueBags || 0),
@@ -1237,12 +1272,14 @@ function normalizeOutreachSummary(raw = {}) {
     otherHospital: Number(raw.other_hospital || raw.otherHospital || 0),
     used: Number(raw.used || 0),
     dedicated: Number(raw.dedicated || 0),
-    destroyed: Number(raw.destroyed || 0),
-    transformed: Number(raw.transformed || 0),
-    unresolved: Number(raw.unresolved || 0),
+    expired,
+    rejected,
+    otherDiscarded,
+    transformed: 0,
+    unresolved: Number(raw.unresolved || 0) + legacyTransformed,
     conflicts: Number(raw.conflicts || 0),
     usePercent: outreachPercent(raw.used, received),
-    destroyPercent: outreachPercent(raw.destroyed, received)
+    expiredPercent: outreachPercent(expired, received)
   };
 }
 
@@ -1640,7 +1677,7 @@ function renderOutreachAnalysis() {
       <div class="simple-page-head">
         <div>
           <h1>ผลถุงเลือด</h1>
-          <div class="page-subline">ดูว่าเลือดที่รับเข้าถูกใช้ ทิ้ง หรือยังอยู่ในระบบ · อัปเดต ${escapeOutreachHtml(formatDisplayDateTime(data.calculatedAt) || "-")}</div>
+          <div class="page-subline">ดูผลถุงเลือด: ใช้/จ่าย/ส่งต่อ · หมดอายุ · ไม่เหมาะสมต่อการใช้ · ยังอยู่ในคลัง · อัปเดต ${escapeOutreachHtml(formatDisplayDateTime(data.calculatedAt) || "-")}</div>
         </div>
         <div class="compact-actions no-print">
           <button id="outreachExportCsvBtn" class="btn btn-light" type="button" onclick="exportOutreachCsv()">CSV</button>
@@ -1732,7 +1769,7 @@ function renderOutreachAnalysis() {
 
       <details class="simple-details mb-4">
         <summary>หลักการนับ</summary>
-        <div class="pt-3 small-muted">นับระดับถุงต้นทาง (ถุงหลัก + .S1/.S2 = 1 ถุง) · ถ้ามี Released/Dedicated ให้นับใช้/จ่าย 1 ถุง · ตัด 1B6 / EQA / Test / 10062Q79877 / 10067R02375 รวมทั้งข้อมูลสอน/ทดสอบ และถุงรับต่อจากรามาธิบดี/พญาไท ออกทั้งหมด</div>
+        <div class="pt-3 small-muted">นับระดับถุงต้นทาง (ถุงหลัก + .S1/.S2/.S3/... = 1 ถุง) · ถ้ามีสมาชิกใน family ถูก Released/Dedicated แม้เพียง 1 รายการ ให้นับทั้ง family เป็นใช้/จ่าย/ส่งต่อ 1 ถุง และไม่ซ้ำ Expired ของสมาชิกอื่น · Be Transformed เป็นขั้นตอนกลาง ไม่ใช่ผลปลายทาง · Expired = หมดอายุเท่านั้น · Rejected = ไม่เหมาะสมต่อการใช้</div>
       </details>
     </div>`;
 
@@ -1969,17 +2006,19 @@ function renderOutreachTrendChart(data) {
   const totalIn = months.reduce((s,m)=>s+Number(m.stockIn||0),0);
   const totalReleased = months.reduce((s,m)=>s+Number(m.released||0),0);
   const totalExpired = months.reduce((s,m)=>s+Number(m.expired||0),0);
+  const totalRejected = months.reduce((s,m)=>s+Number(m.rejected||0),0);
   const multiYear = new Set(months.map(m => Number(m.year))).size > 1;
   const ariaStart = months[0] ? `${monthNames[Number(months[0].month)-1]} ${Number(months[0].year)+543}` : "";
   const ariaEnd = months[months.length-1] ? `${monthNames[Number(months[months.length-1].month)-1]} ${Number(months[months.length-1].year)+543}` : "";
 
   box.innerHTML = `
     <div class="trend-summary-row">
-      <span><i class="trend-dot trend-in"></i>Stock in <b>${totalIn.toLocaleString()}</b></span>
-      <span><i class="trend-dot trend-released"></i>Released <b>${totalReleased.toLocaleString()}</b></span>
-      <span><i class="trend-dot trend-expired"></i>Expired <b>${totalExpired.toLocaleString()}</b></span>
+      <span><i class="trend-dot trend-in"></i>รับเข้า <b>${totalIn.toLocaleString()}</b></span>
+      <span><i class="trend-dot trend-released"></i>ใช้/จ่าย/ส่งต่อ <b>${totalReleased.toLocaleString()}</b></span>
+      <span><i class="trend-dot trend-expired"></i>หมดอายุ <b>${totalExpired.toLocaleString()}</b></span>
+      ${totalRejected ? `<span><i class="trend-dot trend-rejected"></i>ไม่เหมาะสม <b>${totalRejected.toLocaleString()}</b></span>` : ""}
     </div>
-    <div class="monthly-trend-chart" style="--trend-columns:${Math.max(12,months.length)}" role="img" aria-label="กราฟ Stock in Released Expired รายเดือน ${ariaStart} ถึง ${ariaEnd}">
+    <div class="monthly-trend-chart" style="--trend-columns:${Math.max(12,months.length)}" role="img" aria-label="กราฟรับเข้า ใช้/จ่าย/ส่งต่อ และหมดอายุ รายเดือน ${ariaStart} ถึง ${ariaEnd}">
       ${months.map((m) => {
         const monthIndex = Math.max(0, Number(m.month || 1) - 1);
         const year = Number(m.year || 0);
@@ -1997,8 +2036,8 @@ function renderOutreachTrendChart(data) {
             <div class="month-top-value">${Math.max(stockIn, released, expired).toLocaleString()}</div>
             <div class="month-bars">
               <span class="month-bar trend-in" style="height:${hIn}%" title="${fullLabel} · Stock in ${stockIn.toLocaleString()}"></span>
-              <span class="month-bar trend-released" style="height:${hRel}%" title="${fullLabel} · Released ${released.toLocaleString()}"></span>
-              <span class="month-bar trend-expired" style="height:${hExp}%" title="${fullLabel} · Expired ${expired.toLocaleString()}"></span>
+              <span class="month-bar trend-released" style="height:${hRel}%" title="${fullLabel} · ใช้/จ่าย/ส่งต่อ ${released.toLocaleString()}"></span>
+              <span class="month-bar trend-expired" style="height:${hExp}%" title="${fullLabel} · หมดอายุ ${expired.toLocaleString()}"></span>
             </div>
             <div class="month-label">${label}</div>
           </div>`;
@@ -2012,9 +2051,10 @@ function renderOutreachTrendChart(data) {
         <thead>
           <tr>
             <th>เดือน / ปี</th>
-            <th class="text-end">Stock in</th>
-            <th class="text-end">Released</th>
-            <th class="text-end">Expired</th>
+            <th class="text-end">รับเข้า</th>
+            <th class="text-end">ใช้/จ่าย/ส่งต่อ</th>
+            <th class="text-end">หมดอายุ</th>
+            <th class="text-end">ไม่เหมาะสม</th>
           </tr>
         </thead>
         <tbody>
@@ -2026,6 +2066,7 @@ function renderOutreachTrendChart(data) {
               <td class="text-end">${Number(m.stockIn || 0).toLocaleString()}</td>
               <td class="text-end">${Number(m.released || 0).toLocaleString()}</td>
               <td class="text-end">${Number(m.expired || 0).toLocaleString()}</td>
+              <td class="text-end">${Number(m.rejected || 0).toLocaleString()}</td>
             </tr>`;
           }).join("")}
         </tbody>
@@ -2047,12 +2088,22 @@ function renderOutreachReportSections(report) {
 function renderOutreachSummaryCards(s) {
   const box = document.getElementById("outreachSummaryCards");
   if (!box) return;
+  const unsuitable = Number(s.rejected||0) + Number(s.otherDiscarded||0);
+  const inStock = Number(s.unresolved||0);
+  const review = Number(s.conflicts||0);
+  const accounted = Number(s.used||0) + Number(s.expired||0) + unsuitable + inStock + review;
+  const reconciliationDiff = Number(s.received||0) - accounted;
   box.innerHTML = `
     <div class="simple-kpi-grid outreach-key-kpis mb-3">
-      <div class="simple-kpi"><span>รับเข้าทั้งหมด</span><strong>${Number(s.received||0).toLocaleString()}</strong><small>ถุงต้นทาง · นับ .S1/.S2 รวมกับถุงหลัก</small></div>
+      <div class="simple-kpi"><span>รับเข้าทั้งหมด</span><strong>${Number(s.received||0).toLocaleString()}</strong><small>ถุงต้นทาง</small></div>
       <div class="simple-kpi is-good"><span>ใช้ / จ่าย / ส่งต่อ</span><strong>${Number(s.used||0).toLocaleString()}</strong><small>${s.usePercent.toFixed(1)}% · Dedicated ${Number(s.dedicated||0).toLocaleString()}</small></div>
-      <div class="simple-kpi is-alert"><span>ทิ้ง / ทำลาย</span><strong>${Number(s.destroyed||0).toLocaleString()}</strong><small>${s.destroyPercent.toFixed(1)}%</small></div>
-      <div class="simple-kpi"><span>ยังไม่จบผล</span><strong>${(Number(s.unresolved||0)+Number(s.transformed||0)).toLocaleString()}</strong><small>คงเหลือ/อื่น ${Number(s.unresolved||0).toLocaleString()} · แปรรูป ${Number(s.transformed||0).toLocaleString()}</small></div>
+      <div class="simple-kpi is-alert"><span>หมดอายุ</span><strong>${Number(s.expired||0).toLocaleString()}</strong><small>${s.expiredPercent.toFixed(1)}%</small></div>
+      <div class="simple-kpi is-rejected"><span>ไม่เหมาะสมต่อการใช้</span><strong>${unsuitable.toLocaleString()}</strong><small>Rejected ${Number(s.rejected||0).toLocaleString()}${s.otherDiscarded ? ` · เหตุอื่น ${Number(s.otherDiscarded).toLocaleString()}` : ""}</small></div>
+      <div class="simple-kpi"><span>ยังอยู่ในคลัง</span><strong>${inStock.toLocaleString()}</strong><small>ยังไม่มีผลปลายทาง</small></div>
+    </div>
+    <div class="outreach-reconcile-strip ${reconciliationDiff ? "has-warning" : "is-ok"} mb-3">
+      <strong>${reconciliationDiff ? "⚠ ยอดยังไม่ครบ" : "✓ ผลลัพธ์ครบ"}</strong>
+      <span>${accounted.toLocaleString()} / ${Number(s.received||0).toLocaleString()} ถุง${review ? ` · ต้องตรวจสอบ ${review.toLocaleString()}` : ""}</span>
     </div>
     <div class="source-mini-grid mb-3">
       <div><span>รับบริจาคใน รพ.</span><b>${Number(s.selfInhouse||0).toLocaleString()}</b></div>
@@ -2060,7 +2111,7 @@ function renderOutreachSummaryCards(s) {
       <div><span>กาชาด</span><b>${Number(s.trc||0).toLocaleString()}</b></div>
       <div><span>รพ.อื่น</span><b>${Number(s.otherHospital||0).toLocaleString()}</b></div>
     </div>
-    ${s.conflicts ? `<div class="outreach-conflict-note mb-3">มี ${s.conflicts.toLocaleString()} รายการที่ข้อมูลขัดแย้งและถูกกันออกจากผลลัพธ์ปลายทาง</div>` : ""}
+    ${reconciliationDiff ? `<div class="data-quality-strip mb-3"><strong>ต่าง ${reconciliationDiff > 0 ? "+" : ""}${reconciliationDiff.toLocaleString()} ถุง</strong><span>กรุณาตรวจสอบก่อนใช้รายงาน</span></div>` : ""}
   `;
 }
 
@@ -2085,11 +2136,11 @@ function renderOutreachCharts(groupData, sourceSummary) {
 
   const groupOrder = [OUTREACH_GROUP_SELF_INHOUSE, OUTREACH_GROUP_SELF_OUTREACH, OUTREACH_GROUP_TRC, OUTREACH_GROUP_OTHER_HOSPITAL];
   const map = new Map((groupData || []).map(item => [item.sourceGroup, item]));
-  const groups = groupOrder.map(name => map.get(name) || { sourceGroup: name, received: 0, used: 0, destroyed: 0, transformed: 0, unresolved: 0, conflicts: 0 });
-  const maxGroup = Math.max(1, ...groups.map(item => Math.max(item.received || 0, item.used || 0, item.destroyed || 0, item.unresolved || 0, item.transformed || 0)));
+  const groups = groupOrder.map(name => map.get(name) || { sourceGroup: name, received: 0, used: 0, expired: 0, rejected: 0, otherDiscarded: 0, unresolved: 0, conflicts: 0 });
+  const maxGroup = Math.max(1, ...groups.map(item => Math.max(item.received || 0, item.used || 0, item.expired || 0, (Number(item.rejected||0)+Number(item.otherDiscarded||0)), item.unresolved || 0)));
   const topSources = (sourceSummary || []).slice(0, 12);
-  const maxSource = Math.max(1, ...topSources.map(item => Math.max(item.received || 0, item.used || 0, item.destroyed || 0)));
-  const topDiscard = [...(sourceSummary || [])].sort((a, b) => b.destroyPercent - a.destroyPercent || b.received - a.received).slice(0, 12);
+  const maxSource = Math.max(1, ...topSources.map(item => Math.max(item.received || 0, item.used || 0, item.expired || 0)));
+  const topExpired = [...(sourceSummary || [])].sort((a, b) => b.expiredPercent - a.expiredPercent || b.received - a.received).slice(0, 12);
 
   box.innerHTML = `
     <div class="outreach-chart-grid mb-3">
@@ -2101,42 +2152,52 @@ function renderOutreachCharts(groupData, sourceSummary) {
           </div>
         </div>
         <div class="outreach-group-card-list">
-        ${groups.map(item => `
+        ${groups.map(item => {
+          const unsuitable = Number(item.rejected||0) + Number(item.otherDiscarded||0);
+          const inStock = Number(item.unresolved||0);
+          const accounted = Number(item.used||0) + Number(item.expired||0) + unsuitable + inStock + Number(item.conflicts||0);
+          const balanced = accounted === Number(item.received||0);
+          return `
           <div class="outreach-group-card-row">
             <div class="outreach-chart-topline">
               <div class="outreach-chart-title">${escapeOutreachHtml(item.sourceGroup)}</div>
               <div class="outreach-total-badge">รับเข้า ${item.received.toLocaleString()}</div>
             </div>
             <div class="outreach-pill-row">
-              ${renderOutreachMetricPill("รับเข้า", item.received, "received")}
-              ${renderOutreachMetricPill("ใช้/จ่ายออก", item.used, "used")}
-              ${renderOutreachMetricPill("ทิ้ง/ทำลาย", item.destroyed, "destroyed")}
-              ${renderOutreachMetricPill("คงเหลือ/อื่น", item.unresolved, "unresolved")}
-              ${item.transformed ? renderOutreachMetricPill("แปรรูปต่อ", item.transformed, "transformed") : ""}
-              ${item.conflicts ? renderOutreachMetricPill("ข้อมูลขัดแย้ง", item.conflicts, "conflict") : ""}
+              ${renderOutreachMetricPill("ใช้/จ่าย/ส่งต่อ", item.used, "used")}
+              ${renderOutreachMetricPill("หมดอายุ", item.expired, "expired")}
+              ${renderOutreachMetricPill("ไม่เหมาะสมต่อการใช้", unsuitable, "rejected")}
+              ${renderOutreachMetricPill("ยังอยู่ในคลัง", inStock, "unresolved")}
+              ${item.conflicts ? renderOutreachMetricPill("ต้องตรวจสอบ", item.conflicts, "conflict") : ""}
             </div>
             <div class="outreach-stacked-bar" aria-label="${escapeOutreachHtml(item.sourceGroup)}">
-              <span class="bar-used" style="width:${(Number(item.used || 0) / maxGroup) * 100}%" title="ใช้ ${item.used}"></span>
-              <span class="bar-destroyed" style="width:${(Number(item.destroyed || 0) / maxGroup) * 100}%" title="ทิ้ง ${item.destroyed}"></span>
-              <span class="bar-transformed" style="width:${(Number(item.transformed || 0) / maxGroup) * 100}%" title="แปรรูปต่อ ${item.transformed}"></span>
-              <span class="bar-unresolved" style="width:${(Number(item.unresolved || 0) / maxGroup) * 100}%" title="คงเหลือ/อื่น ${item.unresolved}"></span>
-              <span class="bar-conflict" style="width:${(Number(item.conflicts || 0) / maxGroup) * 100}%" title="ขัดแย้ง ${item.conflicts}"></span>
+              <span class="bar-used" style="width:${(Number(item.used || 0) / maxGroup) * 100}%" title="ใช้/จ่าย/ส่งต่อ ${item.used}"></span>
+              <span class="bar-expired" style="width:${(Number(item.expired || 0) / maxGroup) * 100}%" title="หมดอายุ ${item.expired}"></span>
+              <span class="bar-rejected" style="width:${(unsuitable / maxGroup) * 100}%" title="ไม่เหมาะสมต่อการใช้ ${unsuitable}"></span>
+              <span class="bar-unresolved" style="width:${(inStock / maxGroup) * 100}%" title="ยังอยู่ในคลัง ${inStock}"></span>
+              <span class="bar-conflict" style="width:${(Number(item.conflicts || 0) / maxGroup) * 100}%" title="ต้องตรวจสอบ ${item.conflicts}"></span>
             </div>
-          </div>
-        `).join("")}
+            <div class="outreach-card-balance ${balanced ? "is-ok" : "has-warning"}">${balanced ? "✓ ครบ" : "⚠ ตรวจสอบ"} ${accounted.toLocaleString()}/${Number(item.received||0).toLocaleString()} ถุง</div>
+          </div>`;
+        }).join("")}
         </div>
-        <div class="outreach-legend"><span><i class="legend-used"></i> ใช้/จ่ายออก</span><span><i class="legend-destroyed"></i> ทิ้ง/ทำลาย</span><span><i class="legend-transformed"></i> แปรรูปต่อ</span><span><i class="legend-unresolved"></i> ยังไม่ทราบผล</span><span><i class="legend-conflict"></i> ข้อมูลขัดแย้ง</span></div>
+        <div class="outreach-legend"><span><i class="legend-used"></i> ใช้/จ่าย/ส่งต่อ</span><span><i class="legend-expired"></i> หมดอายุ</span><span><i class="legend-rejected"></i> ไม่เหมาะสมต่อการใช้</span><span><i class="legend-unresolved"></i> ยังอยู่ในคลัง</span></div>
       </div>
 
       <div class="hero-card outreach-chart-card">
         <div class="outreach-section-head mb-3">
           <div>
-            <h5 class="fw-bold mb-1">รับเข้า / ใช้ / ทิ้ง ตามจุด</h5>
+            <h5 class="fw-bold mb-1">รับเข้า / ใช้ / หมดอายุ ตามจุด</h5>
             <div class="small-muted">12 จุดรับเข้าสูงสุด</div>
           </div>
         </div>
         <div class="outreach-bars-list">
-          ${topSources.map(item => `
+          ${topSources.map(item => {
+            const unsuitable = Number(item.rejected||0) + Number(item.otherDiscarded||0);
+            const inStock = Number(item.unresolved||0);
+            const accounted = Number(item.used||0) + Number(item.expired||0) + unsuitable + inStock + Number(item.conflicts||0);
+            const balanced = accounted === Number(item.received||0);
+            return `
             <div class="outreach-source-card-row">
               <div class="outreach-source-card-head">
                 <div class="outreach-source-bar-name" title="${escapeOutreachHtml(item.donateSource)}">${escapeOutreachHtml(item.donateSource)}</div>
@@ -2144,16 +2205,20 @@ function renderOutreachCharts(groupData, sourceSummary) {
               </div>
               <div class="outreach-pill-row is-compact">
                 ${renderOutreachMetricPill("รับเข้า", item.received, "received")}
-                ${renderOutreachMetricPill("ใช้", item.used, "used")}
-                ${renderOutreachMetricPill("ทิ้ง", item.destroyed, "destroyed")}
+                ${renderOutreachMetricPill("ใช้/จ่าย", item.used, "used")}
+                ${renderOutreachMetricPill("หมดอายุ", item.expired, "expired")}
+                ${renderOutreachMetricPill("ไม่เหมาะสม", unsuitable, "rejected")}
+                ${renderOutreachMetricPill("ยังอยู่ในคลัง", inStock, "unresolved")}
+                ${item.conflicts ? renderOutreachMetricPill("ต้องตรวจสอบ", item.conflicts, "conflict") : ""}
               </div>
               <div class="outreach-metric-bars">
                 ${renderOutreachMetricBar("รับเข้า", item.received, maxSource, "received")}
                 ${renderOutreachMetricBar("ใช้", item.used, maxSource, "used")}
-                ${renderOutreachMetricBar("ทิ้ง", item.destroyed, maxSource, "destroyed")}
+                ${renderOutreachMetricBar("หมดอายุ", item.expired, maxSource, "expired")}
               </div>
-            </div>
-          `).join("") || `<div class="small-muted">ไม่มีข้อมูลตามตัวกรอง</div>`}
+              <div class="outreach-card-balance ${balanced ? "is-ok" : "has-warning"}">${balanced ? "✓ ครบ" : "⚠ ตรวจสอบ"} ${accounted.toLocaleString()}/${Number(item.received||0).toLocaleString()} ถุง</div>
+            </div>`;
+          }).join("") || `<div class="small-muted">ไม่มีข้อมูลตามตัวกรอง</div>`}
         </div>
       </div>
     </div>
@@ -2161,19 +2226,19 @@ function renderOutreachCharts(groupData, sourceSummary) {
     <div class="hero-card outreach-chart-card mb-3">
       <div class="outreach-section-head mb-3">
         <div>
-          <h5 class="fw-bold mb-1">ร้อยละทิ้ง/ทำลายของแต่ละจุด</h5>
+          <h5 class="fw-bold mb-1">ร้อยละหมดอายุของแต่ละจุด</h5>
           <div class="small-muted">เทียบจากจำนวนรับเข้า</div>
         </div>
       </div>
       <div class="outreach-percent-bars">
-        ${topDiscard.map(item => `
+        ${topExpired.map(item => `
           <div class="outreach-percent-row">
             <div>
               <div class="outreach-percent-name" title="${escapeOutreachHtml(item.donateSource)}">${escapeOutreachHtml(item.donateSource)}</div>
-              <div class="small-muted">ทิ้ง ${Number(item.destroyed || 0).toLocaleString()} / รับเข้า ${Number(item.received || 0).toLocaleString()}</div>
+              <div class="small-muted">หมดอายุ ${Number(item.expired || 0).toLocaleString()} / รับเข้า ${Number(item.received || 0).toLocaleString()}</div>
             </div>
-            <div class="outreach-percent-track"><span style="width:${Math.min(100, item.destroyPercent)}%"></span></div>
-            <div class="outreach-percent-value">${item.destroyPercent.toFixed(1)}%</div>
+            <div class="outreach-percent-track"><span style="width:${Math.min(100, item.expiredPercent)}%"></span></div>
+            <div class="outreach-percent-value">${item.expiredPercent.toFixed(1)}%</div>
           </div>
         `).join("") || `<div class="small-muted">ไม่มีข้อมูลตามตัวกรอง</div>`}
       </div>
@@ -2192,16 +2257,22 @@ function renderOutreachSourceTable(sourceSummary) {
       </div>
       <div class="table-responsive outreach-summary-table-wrap">
         <table class="table outreach-summary-table align-middle simple-table">
-          <thead><tr><th>จุด / แหล่งรับเข้า</th><th class="text-end">รับเข้า</th><th class="text-end">ใช้/จ่าย/ส่งต่อ</th><th class="text-end">ทิ้ง</th><th class="text-end">% ใช้</th><th class="text-end">% ทิ้ง</th></tr></thead>
-          <tbody>${(sourceSummary || []).map((item,index)=>`
+          <thead><tr><th>จุด / แหล่งรับเข้า</th><th class="text-end">รับเข้า</th><th class="text-end">ใช้/จ่าย/ส่งต่อ</th><th class="text-end">หมดอายุ</th><th class="text-end">ไม่เหมาะสม</th><th class="text-end">ยังอยู่ในคลัง</th><th class="text-end">% ใช้</th><th class="text-end">% หมดอายุ</th></tr></thead>
+          <tbody>${(sourceSummary || []).map((item,index)=>{
+            const unsuitable = Number(item.rejected||0) + Number(item.otherDiscarded||0);
+            const inStock = Number(item.unresolved||0);
+            return `
             <tr class="outreach-click-row" onclick="openOutreachSourceDetail(${index},1)">
               <td><div class="fw-bold">${escapeOutreachHtml(item.donateSource)}</div><div class="small-muted">${escapeOutreachHtml(item.sourceGroup)}</div></td>
               <td class="text-end fw-bold">${item.received.toLocaleString()}</td>
               <td class="text-end">${item.used.toLocaleString()}${item.dedicated ? `<div class="tiny-note">Dedicated ${item.dedicated.toLocaleString()}</div>` : ""}</td>
-              <td class="text-end">${item.destroyed.toLocaleString()}</td>
+              <td class="text-end">${item.expired.toLocaleString()}</td>
+              <td class="text-end">${unsuitable.toLocaleString()}</td>
+              <td class="text-end">${inStock.toLocaleString()}</td>
               <td class="text-end fw-bold">${item.usePercent.toFixed(1)}%</td>
-              <td class="text-end">${item.destroyPercent.toFixed(1)}%</td>
-            </tr>`).join("") || `<tr><td colspan="6" class="text-center small-muted py-4">ไม่มีข้อมูลตามตัวกรอง</td></tr>`}</tbody>
+              <td class="text-end">${item.expiredPercent.toFixed(1)}%</td>
+            </tr>`;
+          }).join("") || `<tr><td colspan="8" class="text-center small-muted py-4">ไม่มีข้อมูลตามตัวกรอง</td></tr>`}</tbody>
         </table>
       </div>
     </div>`;
@@ -2242,7 +2313,7 @@ async function openOutreachSourceDetail(index, page = 1) {
       <div class="table-responsive outreach-detail-table-wrap">
         <table class="table outreach-detail-table align-middle">
           <thead><tr>
-            <th>BagNumber</th><th>ProductType</th><th>BloodGroup</th><th>Rh</th><th>DonateSource</th><th>DateStockIn</th><th>DateStockOut</th><th>Status</th><th>DestroyReason</th><th>ผลลัพธ์สุดท้าย</th>
+            <th>BagNumber</th><th>ProductType</th><th>BloodGroup</th><th>Rh</th><th>DonateSource</th><th>DateStockIn</th><th>DateStockOut</th><th>Status</th><th>DestroyReason</th><th>ผลตาม Status</th>
           </tr></thead>
           <tbody>
             ${rows.map(row => `
@@ -2256,7 +2327,7 @@ async function openOutreachSourceDetail(index, page = 1) {
                 <td>${escapeOutreachHtml(row.dateStockOut)}</td>
                 <td>${escapeOutreachHtml(row.status)}</td>
                 <td>${escapeOutreachHtml(row.destroyReason)}</td>
-                <td><span class="outreach-outcome-badge ${outreachOutcomeClass(row.outcomeCode)}">${escapeOutreachHtml(outcomeLabelForRow(row))}</span></td>
+                <td><span class="outreach-outcome-badge ${outreachOutcomeClass(row)}">${escapeOutreachHtml(outcomeLabelForRow(row))}</span></td>
               </tr>
             `).join("") || `<tr><td colspan="10" class="text-center small-muted py-4">ไม่มีรายละเอียดตามตัวกรอง</td></tr>`}
           </tbody>
@@ -2273,9 +2344,12 @@ async function openOutreachSourceDetail(index, page = 1) {
   }
 }
 
-function outreachOutcomeClass(code) {
+function outreachOutcomeClass(codeOrRow) {
+  const code = typeof codeOrRow === "object" ? effectiveOutreachOutcomeCode(codeOrRow) : String(codeOrRow || "");
   if (code === "used") return "is-used";
-  if (code === "destroyed") return "is-destroyed";
+  if (code === "expired") return "is-expired";
+  if (code === "rejected") return "is-rejected";
+  if (code === "other_discard" || code === "destroyed") return "is-other-discard";
   if (code === "transformed") return "is-transformed";
   if (code === "conflict") return "is-conflict";
   return "is-unresolved";
@@ -2286,8 +2360,123 @@ function closeOutreachDetail() {
   if (overlay) overlay.style.display = "none";
 }
 
+function outreachFamilyKeyClient(value) {
+  return String(value || "").trim().toUpperCase().replace(/\.S\d+$/i, "");
+}
+
+function aggregateOutreachRowsForExport(rows) {
+  const families = new Map();
+  const priority = row => {
+    const code = effectiveOutreachOutcomeCode(row);
+    if (code === "used") return 0;
+    if (code === "rejected") return 1;
+    if (code === "expired") return 2;
+    if (code === "other_discard") return 3;
+    if (code === "conflict") return 4;
+    if (code === "transformed") return 5; // intermediate only; final family outcome falls to unresolved
+    return 6;
+  };
+
+  (rows || []).forEach(row => {
+    const familyKey = outreachFamilyKeyClient(row?.bagNumber);
+    if (!familyKey) return;
+    let family = families.get(familyKey);
+    if (!family) {
+      family = { key: familyKey, rows: [], preferredRow: row };
+      families.set(familyKey, family);
+    }
+    family.rows.push(row);
+    if (priority(row) < priority(family.preferredRow)) family.preferredRow = row;
+  });
+
+  const familyRows = Array.from(families.values()).map(family => {
+    const codes = family.rows.map(effectiveOutreachOutcomeCode);
+    const hasUsed = codes.includes("used");
+    const hasRejected = codes.includes("rejected");
+    const hasExpired = codes.includes("expired");
+    const hasOtherDiscard = codes.includes("other_discard") || codes.includes("destroyed");
+    const hasConflict = codes.includes("conflict");
+    const finalCode = hasUsed ? "used"
+      : hasRejected ? "rejected"
+      : hasExpired ? "expired"
+      : hasOtherDiscard ? "other_discard"
+      : hasConflict ? "conflict"
+      : "unresolved"; // transformed-only family = intermediate, still awaiting final outcome
+    const preferred = family.preferredRow || family.rows[0] || {};
+    const dedicated = family.rows.some(row => String(row?.status || "") === "Dedicated");
+    return {
+      familyKey: family.key,
+      sourceGroup: preferred.sourceGroup || "",
+      donateSource: preferred.donateSource || "",
+      outcomeCode: finalCode,
+      dedicated,
+      memberCount: family.rows.length,
+      statuses: Array.from(new Set(family.rows.map(row => String(row?.status || "").trim()).filter(Boolean))).join(" | ")
+    };
+  });
+
+  const summary = {
+    received: familyRows.length,
+    uniqueBags: familyRows.length,
+    used: familyRows.filter(row => row.outcomeCode === "used").length,
+    dedicated: familyRows.filter(row => row.dedicated).length,
+    expired: familyRows.filter(row => row.outcomeCode === "expired").length,
+    rejected: familyRows.filter(row => row.outcomeCode === "rejected").length,
+    otherDiscarded: familyRows.filter(row => row.outcomeCode === "other_discard").length,
+    transformed: 0,
+    unresolved: familyRows.filter(row => row.outcomeCode === "unresolved").length,
+    conflicts: familyRows.filter(row => row.outcomeCode === "conflict").length,
+    selfInhouse: familyRows.filter(row => row.sourceGroup === OUTREACH_GROUP_SELF_INHOUSE).length,
+    selfOutreach: familyRows.filter(row => row.sourceGroup === OUTREACH_GROUP_SELF_OUTREACH).length,
+    trc: familyRows.filter(row => row.sourceGroup === OUTREACH_GROUP_TRC).length,
+    otherHospital: familyRows.filter(row => row.sourceGroup === OUTREACH_GROUP_OTHER_HOSPITAL).length
+  };
+  summary.usePercent = outreachPercent(summary.used, summary.received);
+  summary.expiredPercent = outreachPercent(summary.expired, summary.received);
+
+  const sourceMap = new Map();
+  familyRows.forEach(row => {
+    const key = `${row.sourceGroup}\u0000${row.donateSource}`;
+    let item = sourceMap.get(key);
+    if (!item) {
+      item = {
+        sourceGroup: row.sourceGroup,
+        donateSource: row.donateSource,
+        received: 0,
+        uniqueBags: 0,
+        used: 0,
+        dedicated: 0,
+        expired: 0,
+        rejected: 0,
+        otherDiscarded: 0,
+        transformed: 0,
+        unresolved: 0,
+        conflicts: 0
+      };
+      sourceMap.set(key, item);
+    }
+    item.received += 1;
+    item.uniqueBags += 1;
+    if (row.outcomeCode === "used") item.used += 1;
+    if (row.dedicated) item.dedicated += 1;
+    if (row.outcomeCode === "expired") item.expired += 1;
+    if (row.outcomeCode === "rejected") item.rejected += 1;
+    if (row.outcomeCode === "other_discard") item.otherDiscarded += 1;
+    if (row.outcomeCode === "unresolved") item.unresolved += 1;
+    if (row.outcomeCode === "conflict") item.conflicts += 1;
+  });
+  const sources = Array.from(sourceMap.values()).map(item => ({
+    ...item,
+    usePercent: outreachPercent(item.used, item.received),
+    expiredPercent: outreachPercent(item.expired, item.received)
+  })).sort((a, b) => b.received - a.received || String(a.donateSource).localeCompare(String(b.donateSource), "th"));
+
+  return { summary, sources, familyRows };
+}
+
 function mapOutreachExportRows(rows) {
   return (rows || []).map(row => ({
+    FamilyKey: outreachFamilyKeyClient(row.bagNumber),
     BagNumber: row.bagNumber,
     ProductType: row.productType,
     BloodGroup: row.bloodGroup,
@@ -2327,6 +2516,16 @@ async function loadOutreachRowsForExport() {
   }
 }
 
+async function loadOutreachFamilyRowsForExport() {
+  showStatus("กำลังตรวจผลปลายทางของถุงต้นทางทั้ง family...", true);
+  const result = await MinimumStockBackend.getOutreachFamilyRows(getOutreachFilterValues(), {
+    onProgress: progress => {
+      if (progress?.message) showStatus(progress.message, true);
+    }
+  });
+  return result.rows || [];
+}
+
 async function exportOutreachCsv() {
   try {
     const rawRows = await loadOutreachRowsForExport();
@@ -2360,40 +2559,63 @@ async function exportOutreachExcel() {
     const detailRows = mapOutreachExportRows(rawRows);
     if (!detailRows.length) throw new Error("ไม่มีข้อมูลตามตัวกรองสำหรับส่งออก");
 
-    const s = normalizeOutreachSummary(currentOutreachAnalysisData?.report?.summary || {});
+    // v2.9.29: ใช้สมาชิก family ทั้งหมดเพื่อหาผลปลายทาง
+    // Product filter เลือก family แต่ Released/Dedicated/Expired ของสมาชิกอื่นใน family ยังต้องมีผลต่อ final outcome
+    const familyMemberRawRows = await loadOutreachFamilyRowsForExport();
+    const familyMemberRows = mapOutreachExportRows(familyMemberRawRows);
+    const audit = aggregateOutreachRowsForExport(familyMemberRawRows);
+    const s = audit.summary;
     const summaryRows = [
-      { รายการ: "ผลิตภัณฑ์รับเข้าทั้งหมด", จำนวน: s.received },
-      { รายการ: "BagNumber ไม่ซ้ำ", จำนวน: s.uniqueBags },
+      { รายการ: "ผลิตภัณฑ์รับเข้าทั้งหมด (ถุงต้นทาง)", จำนวน: s.received },
+      { รายการ: "Bag family ไม่ซ้ำ", จำนวน: s.uniqueBags },
       { รายการ: "หาเอง – รับบริจาคในโรงพยาบาล", จำนวน: s.selfInhouse },
       { รายการ: "หาเอง – ออกหน่วย", จำนวน: s.selfOutreach },
       { รายการ: "กาชาดไทย", จำนวน: s.trc },
       { รายการ: "รับจากโรงพยาบาลอื่น", จำนวน: s.otherHospital },
-      { รายการ: "นำไปใช้/จ่ายออก", จำนวน: s.used },
-      { รายการ: "ทิ้ง/ทำลาย", จำนวน: s.destroyed },
-      { รายการ: "แปรรูปต่อ", จำนวน: s.transformed },
-      { รายการ: "ยังไม่ทราบผล/คงเหลือ", จำนวน: s.unresolved },
-      { รายการ: "ข้อมูลขัดแย้ง", จำนวน: s.conflicts },
-      { รายการ: "ร้อยละนำไปใช้", จำนวน: s.usePercent },
-      { รายการ: "ร้อยละทิ้ง", จำนวน: s.destroyPercent }
+      { รายการ: "ใช้ / จ่าย / ส่งต่อ", จำนวน: s.used },
+      { รายการ: "Dedicated (รวมอยู่ในใช้/จ่าย/ส่งต่อ)", จำนวน: s.dedicated },
+      { รายการ: "หมดอายุ (Expired เท่านั้น)", จำนวน: s.expired },
+      { รายการ: "ไม่เหมาะสมต่อการใช้ (Rejected)", จำนวน: s.rejected },
+      { รายการ: "ไม่เหมาะสม/ไม่ใช้ต่อ เหตุอื่น", จำนวน: s.otherDiscarded },
+      { รายการ: "ยังอยู่ในคลัง/ยังไม่มีผลปลายทาง", จำนวน: s.unresolved },
+      { รายการ: "ข้อมูลต้องตรวจสอบ", จำนวน: s.conflicts },
+      { รายการ: "ผลลัพธ์รวม", จำนวน: s.used + s.expired + s.rejected + s.otherDiscarded + s.unresolved + s.conflicts },
+      { รายการ: "ร้อยละใช้/จ่าย/ส่งต่อ", จำนวน: s.usePercent },
+      { รายการ: "ร้อยละหมดอายุ", จำนวน: s.expiredPercent }
     ];
-    const sourceRows = (currentOutreachSourceSummary || []).map(item => ({
+    const sourceRows = (audit.sources || []).map(item => ({
       จุดออกหน่วยหรือแหล่งรับเข้า: item.donateSource,
       กลุ่มแหล่งรับเข้า: item.sourceGroup,
       รับเข้า: item.received,
-      BagNumberไม่ซ้ำ: item.uniqueBags,
-      นำไปใช้จ่ายออก: item.used,
-      ทิ้งทำลาย: item.destroyed,
-      แปรรูปต่อ: item.transformed,
-      ยังไม่ทราบผลคงเหลือ: item.unresolved,
-      ข้อมูลขัดแย้ง: item.conflicts,
+      BagFamilyไม่ซ้ำ: item.uniqueBags,
+      ใช้จ่ายส่งต่อ: item.used,
+      Dedicated: item.dedicated,
+      หมดอายุ: item.expired,
+      ไม่เหมาะสมต่อการใช้: item.rejected + item.otherDiscarded,
+      Rejected: item.rejected,
+      เหตุอื่นไม่ใช้ต่อ: item.otherDiscarded,
+      ยังอยู่ในคลัง: item.unresolved,
+      ต้องตรวจสอบ: item.conflicts,
+      ผลลัพธ์รวม: item.used + item.expired + item.rejected + item.otherDiscarded + item.unresolved + item.conflicts,
       ร้อยละใช้: item.usePercent,
-      ร้อยละทิ้ง: item.destroyPercent
+      ร้อยละหมดอายุ: item.expiredPercent
+    }));
+    const familyRows = (audit.familyRows || []).map(item => ({
+      FamilyKey: item.familyKey,
+      จุดออกหน่วยหรือแหล่งรับเข้า: item.donateSource,
+      กลุ่มแหล่งรับเข้า: item.sourceGroup,
+      FinalOutcome: outcomeLabel(item.outcomeCode),
+      Dedicated: item.dedicated ? "Yes" : "No",
+      StatusในFamily: item.statuses,
+      จำนวนรายการในFamily: item.memberCount
     }));
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "Summary");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sourceRows), "By Source");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailRows), "Product Detail");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(familyRows), "Family Summary");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailRows), "Filtered Detail");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(familyMemberRows), "Family Members");
     XLSX.writeFile(wb, `outreach-blood-outcome-${new Date().toISOString().slice(0, 10)}.xlsx`);
     showStatus(`✅ ส่งออก Excel ${detailRows.length.toLocaleString()} รายการแล้ว`, true);
   } catch (err) {

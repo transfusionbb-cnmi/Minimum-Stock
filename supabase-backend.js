@@ -2317,17 +2317,17 @@
     }
     const client = getClient();
 
-    // v2.9.28: เพิ่ม CHECK constraint ให้รองรับ expired / rejected / other_discard ก่อน reclassify
-    const { data, error } = await client.rpc("minimum_stock_schema_status_v2928");
+    // v2.9.29: family final outcome — Transformed เป็นขั้นตอนกลาง ไม่ใช่ผลปลายทาง
+    const { data, error } = await client.rpc("minimum_stock_schema_status_v2929");
     const missingRpc = error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""));
     if (missingRpc) {
-      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.9.28 | กรุณารัน SQL-v2.9.28-OUTCOME-CONSTRAINT-HOTFIX.sql 1 ครั้ง");
+      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.9.29 | กรุณารัน SQL-v2.9.29-FAMILY-FINAL-OUTCOME-BALANCE.sql 1 ครั้ง");
     }
     if (error) {
-      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.28-OUTCOME-CONSTRAINT-HOTFIX.sql");
+      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.29-FAMILY-FINAL-OUTCOME-BALANCE.sql");
     }
     if (data && data.ok === false) {
-      throw new Error(data.message || "โครงสร้าง Supabase v2.9.28 ยังไม่พร้อม | กรุณารัน SQL-v2.9.28-OUTCOME-CONSTRAINT-HOTFIX.sql");
+      throw new Error(data.message || "โครงสร้าง Supabase v2.9.29 ยังไม่พร้อม | กรุณารัน SQL-v2.9.29-FAMILY-FINAL-OUTCOME-BALANCE.sql");
     }
     return data || { ok: true };
   }
@@ -2468,7 +2468,12 @@
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2927", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2929", params);
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_master_report_v2927", params);
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_master_report_v2919", params);
       data = previous.data;
@@ -2507,8 +2512,13 @@
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2927", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2929", params);
 
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2927", params);
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2921", params);
       data = previous.data;
@@ -2532,14 +2542,14 @@
     // v2.9.22: ถ้า RPC กราฟพลาด (เช่นเลือกเฉพาะผลิตภัณฑ์แล้วฐานตอบช้า/ไม่รับ function บางแบบ)
     // fallback ไปดึงแถวที่กรองแล้วจาก master มา aggregate ใน browser แทน เพื่อให้กราฟยังแสดงได้
     try {
-      console.warn("outreach monthly trend rpc failed, fallback to client aggregation", error);
+      console.warn("outreach monthly trend rpc failed, fallback to family-complete client aggregation", error);
       const cacheKey = JSON.stringify(f);
       const now = Date.now();
       let fallbackRows = outreachTrendFallbackRowsCache.key === cacheKey && (now - outreachTrendFallbackRowsCache.at) < 30000
         ? outreachTrendFallbackRowsCache.rows
         : null;
       if (!fallbackRows) {
-        const loaded = await getOutreachRows({ all: true, filters: f, includeIneligible: false });
+        const loaded = await getOutreachFamilyRows(f);
         fallbackRows = loaded?.rows || [];
         outreachTrendFallbackRowsCache = { key: cacheKey, rows: fallbackRows, at: now };
       }
@@ -2673,6 +2683,36 @@
     if (f.bloodGroup) query = query.eq("blood_group", f.bloodGroup);
     if (f.rh) query = query.eq("rh", f.rh);
     return query;
+  }
+
+  async function getOutreachFamilyRows(filters = {}, options = {}) {
+    if (!isConfigured()) throw new Error("รายงานวิเคราะห์ออกหน่วยต้องใช้ Supabase");
+    const client = getClient();
+    const f = normalizeOutreachFilters(filters);
+    const params = {
+      p_date_from: f.dateFrom || null,
+      p_date_to: f.dateTo || null,
+      p_source_group: f.sourceGroup || null,
+      p_donate_source: f.source || null,
+      p_product_types: f.productTypes.length ? f.productTypes : null,
+      p_blood_group: f.bloodGroup || null,
+      p_rh: f.rh || null
+    };
+    const rows = [];
+    const chunk = 1000;
+    let from = 0;
+    while (true) {
+      const { data, error } = await client
+        .rpc("minimum_stock_outreach_family_rows_v2929", params)
+        .range(from, from + chunk - 1);
+      if (error) throw new Error("โหลดสมาชิกถุงต้นทางสำหรับสรุป/ส่งออกไม่สำเร็จ: " + error.message);
+      const part = (data || []).map(fromOutreachDbRow);
+      rows.push(...part);
+      emitOutreachProgress(options, "outreach-family-export", rows.length, 0, `กำลังเตรียมสมาชิกถุงต้นทาง ${rows.length.toLocaleString()} รายการ`);
+      if (part.length < chunk) break;
+      from += chunk;
+    }
+    return { rows, count: rows.length };
   }
 
   async function getOutreachRows(options = {}) {
@@ -3136,6 +3176,7 @@
     getMobilePlanning,
     getOutreachAnalysis,
     getOutreachMonthlyTrend,
+    getOutreachFamilyRows,
     getOutreachRows,
     clearAllOutreachBatches,
     ensureOutreachSchema,
