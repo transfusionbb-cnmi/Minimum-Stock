@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-23-month-range-synced-trend";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-25-split-month-year-filter";
 const APP_SHELL = [
   "./",
   "./index.html",

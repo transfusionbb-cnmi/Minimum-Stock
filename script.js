@@ -1416,27 +1416,67 @@ function outreachLastDayOfMonth(monthValue) {
   return `${match[1]}-${match[2]}-${String(lastDay).padStart(2, "0")}`;
 }
 
-function renderOutreachMonthOptions(minDate, maxDate, selectedValue, placeholderLabel) {
+function renderOutreachMonthSelectOptions(selectedMonth) {
   const monthNames = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
-  const minMonth = outreachMonthValueFromDate(minDate);
-  const maxMonth = outreachMonthValueFromDate(maxDate);
-  const selected = String(selectedValue || "");
-  const options = [`<option value="">${escapeOutreachHtml(placeholderLabel || "ทั้งหมด")}</option>`];
-  if (!minMonth || !maxMonth) return options.join("");
-  const [sy, sm] = minMonth.split("-").map(Number);
-  const [ey, em] = maxMonth.split("-").map(Number);
-  const cursor = new Date(sy, sm - 1, 1);
-  const end = new Date(ey, em - 1, 1);
-  let guard = 0;
-  while (cursor <= end && guard < 240) {
-    const y = cursor.getFullYear();
-    const m = cursor.getMonth() + 1;
-    const value = `${y}-${String(m).padStart(2,"0")}`;
-    options.push(`<option value="${value}" ${value === selected ? "selected" : ""}>${monthNames[m-1]} ${y + 543}</option>`);
-    cursor.setMonth(cursor.getMonth() + 1);
-    guard += 1;
+  const selected = Number(selectedMonth || 0);
+  return monthNames.map((name, index) => {
+    const value = index + 1;
+    return `<option value="${value}" ${value === selected ? "selected" : ""}>${name}</option>`;
+  }).join("");
+}
+
+function renderOutreachYearSelectOptions(minDate, maxDate, selectedYear) {
+  const minYear = Number(String(minDate || "").slice(0,4));
+  const maxYear = Number(String(maxDate || "").slice(0,4));
+  const selected = Number(selectedYear || 0);
+  if (!Number.isFinite(minYear) || !Number.isFinite(maxYear) || minYear < 1900 || maxYear < 1900) {
+    const current = new Date().getFullYear();
+    return `<option value="${current}" selected>${current + 543}</option>`;
+  }
+  const start = Math.min(minYear, maxYear);
+  const end = Math.max(minYear, maxYear);
+  const options = [];
+  for (let year = end; year >= start; year -= 1) {
+    options.push(`<option value="${year}" ${year === selected ? "selected" : ""}>${year + 543}</option>`);
   }
   return options.join("");
+}
+
+function outreachMonthParts(value, fallbackValue = "") {
+  const match = String(value || fallbackValue || "").match(/^(\d{4})-(\d{2})/);
+  if (!match) return { year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
+  return { year: Number(match[1]), month: Number(match[2]) };
+}
+
+function outreachMonthKey(year, month) {
+  const y = Number(year);
+  const m = Number(month);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return "";
+  return `${y}-${String(m).padStart(2,"0")}`;
+}
+
+function clampOutreachMonthKey(value, minDate, maxDate) {
+  let monthKey = String(value || "");
+  const minMonth = outreachMonthValueFromDate(minDate);
+  const maxMonth = outreachMonthValueFromDate(maxDate);
+  if (minMonth && monthKey && monthKey < minMonth) monthKey = minMonth;
+  if (maxMonth && monthKey && monthKey > maxMonth) monthKey = maxMonth;
+  return monthKey;
+}
+
+function setOutreachMonthRangeControls(monthFrom, monthTo) {
+  const from = outreachMonthParts(monthFrom);
+  const to = outreachMonthParts(monthTo);
+  const controls = {
+    outreachMonthFromMonth: from.month,
+    outreachMonthFromYear: from.year,
+    outreachMonthToMonth: to.month,
+    outreachMonthToYear: to.year
+  };
+  Object.entries(controls).forEach(([id, value]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = String(value);
+  });
 }
 
 function isOutreachFullMonthRange(filters) {
@@ -1614,9 +1654,37 @@ function renderOutreachAnalysis() {
         <summary>กรองข้อมูล</summary>
         <div class="outreach-filter-grid pt-3">
           <div class="outreach-range-pair">
-            <label class="outreach-filter-item">เดือน / ปี ตั้งแต่<select id="outreachMonthFrom" class="form-select" onchange="applyOutreachMonthRangeFilter()">${renderOutreachMonthOptions(availableMinDate, availableMaxDate, outreachMonthValueFromDate(f.dateFrom || availableMinDate), "ตั้งแต่ต้น")}</select></label>
-            <span class="outreach-range-arrow" aria-hidden="true">→</span>
-            <label class="outreach-filter-item">ถึง<select id="outreachMonthTo" class="form-select" onchange="applyOutreachMonthRangeFilter()">${renderOutreachMonthOptions(availableMinDate, availableMaxDate, outreachMonthValueFromDate(f.dateTo || availableMaxDate), "ถึงล่าสุด")}</select></label>
+            <div class="outreach-range-head">
+              <div>
+                <strong>ช่วงข้อมูลรายเดือน</strong>
+                <span>แยกเดือนกับปี เพื่อไม่ต้องเลื่อนรายการยาวเมื่อข้อมูลเพิ่มขึ้นในอนาคต</span>
+              </div>
+              <div class="outreach-range-quick-actions" aria-label="ช่วงข้อมูลด่วน">
+                <button type="button" onclick="setOutreachQuickMonthRange('thisYear')">ปีนี้</button>
+                <button type="button" onclick="setOutreachQuickMonthRange('last12')">12 เดือนล่าสุด</button>
+                <button type="button" onclick="setOutreachQuickMonthRange('all')">ทั้งหมด</button>
+              </div>
+            </div>
+            ${(() => {
+              const fromParts = outreachMonthParts(f.dateFrom || availableMinDate, availableMinDate);
+              const toParts = outreachMonthParts(f.dateTo || availableMaxDate, availableMaxDate);
+              return `
+                <div class="outreach-month-year-side">
+                  <span class="range-mini-label">ตั้งแต่</span>
+                  <div class="outreach-month-year-controls">
+                    <select id="outreachMonthFromMonth" class="form-select" aria-label="เดือนเริ่มต้น" onchange="applyOutreachMonthRangeFilter()">${renderOutreachMonthSelectOptions(fromParts.month)}</select>
+                    <select id="outreachMonthFromYear" class="form-select" aria-label="ปีเริ่มต้น" onchange="applyOutreachMonthRangeFilter()">${renderOutreachYearSelectOptions(availableMinDate, availableMaxDate, fromParts.year)}</select>
+                  </div>
+                </div>
+                <span class="outreach-range-arrow" aria-hidden="true">→</span>
+                <div class="outreach-month-year-side">
+                  <span class="range-mini-label">ถึง</span>
+                  <div class="outreach-month-year-controls">
+                    <select id="outreachMonthToMonth" class="form-select" aria-label="เดือนสิ้นสุด" onchange="applyOutreachMonthRangeFilter()">${renderOutreachMonthSelectOptions(toParts.month)}</select>
+                    <select id="outreachMonthToYear" class="form-select" aria-label="ปีสิ้นสุด" onchange="applyOutreachMonthRangeFilter()">${renderOutreachYearSelectOptions(availableMinDate, availableMaxDate, toParts.year)}</select>
+                  </div>
+                </div>`;
+            })()}
           </div>
           <label class="outreach-filter-item">กลุ่มแหล่งรับเข้า<select id="outreachSourceGroup" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(options.sourceGroups || [], f.sourceGroup || "", "ทั้งหมด")}</select></label>
           <label class="outreach-filter-item">จุดออกหน่วย / แหล่งรับเข้า<select id="outreachSource" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(options.sources || [], f.source || "", "ทุกจุด")}</select></label>
@@ -1717,44 +1785,96 @@ function getOutreachFilterValues() {
   };
 }
 
+function getOutreachMonthRangeControlValues() {
+  const read = id => Number(document.getElementById(id)?.value || 0);
+  return {
+    from: outreachMonthKey(read("outreachMonthFromYear"), read("outreachMonthFromMonth")),
+    to: outreachMonthKey(read("outreachMonthToYear"), read("outreachMonthToMonth"))
+  };
+}
+
 function applyOutreachMonthRangeFilter() {
-  const fromMonthEl = document.getElementById("outreachMonthFrom");
-  const toMonthEl = document.getElementById("outreachMonthTo");
   const fromDateEl = document.getElementById("outreachDateFrom");
   const toDateEl = document.getElementById("outreachDateTo");
-  let monthFrom = fromMonthEl?.value || "";
-  let monthTo = toMonthEl?.value || "";
+  const minDate = currentOutreachAnalysisData?.filterOptions?.minDate || currentOutreachAnalysisData?.sourceStartDate || "";
+  const maxDate = currentOutreachAnalysisData?.filterOptions?.maxDate || currentOutreachAnalysisData?.sourceEndDate || "";
+  let { from: monthFrom, to: monthTo } = getOutreachMonthRangeControlValues();
+
+  monthFrom = clampOutreachMonthKey(monthFrom, minDate, maxDate);
+  monthTo = clampOutreachMonthKey(monthTo, minDate, maxDate);
 
   if (monthFrom && monthTo && monthFrom > monthTo) {
-    if (document.activeElement === fromMonthEl) monthTo = monthFrom;
+    const activeId = document.activeElement?.id || "";
+    if (activeId === "outreachMonthFromMonth" || activeId === "outreachMonthFromYear") monthTo = monthFrom;
     else monthFrom = monthTo;
-    if (fromMonthEl) fromMonthEl.value = monthFrom;
-    if (toMonthEl) toMonthEl.value = monthTo;
   }
 
+  setOutreachMonthRangeControls(monthFrom, monthTo);
   if (fromDateEl) fromDateEl.value = monthFrom ? `${monthFrom}-01` : "";
   if (toDateEl) toDateEl.value = monthTo ? outreachLastDayOfMonth(monthTo) : "";
+  applyOutreachFilters();
+}
+
+function setOutreachQuickMonthRange(mode) {
+  const minDate = currentOutreachAnalysisData?.filterOptions?.minDate || currentOutreachAnalysisData?.sourceStartDate || "";
+  const maxDate = currentOutreachAnalysisData?.filterOptions?.maxDate || currentOutreachAnalysisData?.sourceEndDate || "";
+  const minMonth = outreachMonthValueFromDate(minDate);
+  const maxMonth = outreachMonthValueFromDate(maxDate);
+  if (!minMonth || !maxMonth) return;
+
+  let monthFrom = minMonth;
+  let monthTo = maxMonth;
+  const maxParts = outreachMonthParts(maxMonth);
+
+  if (mode === "thisYear") {
+    const currentYear = new Date().getFullYear();
+    const year = Math.min(Math.max(currentYear, Number(minMonth.slice(0,4))), Number(maxMonth.slice(0,4)));
+    monthFrom = clampOutreachMonthKey(outreachMonthKey(year, 1), minDate, maxDate);
+    monthTo = clampOutreachMonthKey(outreachMonthKey(year, 12), minDate, maxDate);
+  } else if (mode === "last12") {
+    const end = new Date(maxParts.year, maxParts.month - 1, 1);
+    const start = new Date(end.getFullYear(), end.getMonth() - 11, 1);
+    monthFrom = clampOutreachMonthKey(outreachMonthKey(start.getFullYear(), start.getMonth() + 1), minDate, maxDate);
+    monthTo = maxMonth;
+  }
+
+  setOutreachMonthRangeControls(monthFrom, monthTo);
+  const fromDateEl = document.getElementById("outreachDateFrom");
+  const toDateEl = document.getElementById("outreachDateTo");
+  if (fromDateEl) fromDateEl.value = `${monthFrom}-01`;
+  if (toDateEl) toDateEl.value = outreachLastDayOfMonth(monthTo);
   applyOutreachFilters();
 }
 
 function applyOutreachExactDateFilter() {
   const fromDate = document.getElementById("outreachDateFrom")?.value || "";
   const toDate = document.getElementById("outreachDateTo")?.value || "";
-  const fromMonth = document.getElementById("outreachMonthFrom");
-  const toMonth = document.getElementById("outreachMonthTo");
-  if (fromMonth) fromMonth.value = outreachMonthValueFromDate(fromDate);
-  if (toMonth) toMonth.value = outreachMonthValueFromDate(toDate);
+  const fromMonth = outreachMonthValueFromDate(fromDate);
+  const toMonth = outreachMonthValueFromDate(toDate);
+  if (fromMonth && toMonth) setOutreachMonthRangeControls(fromMonth, toMonth);
   applyOutreachFilters();
 }
 
 function resetOutreachFilters() {
-  ["outreachDateFrom", "outreachDateTo", "outreachMonthFrom", "outreachMonthTo", "outreachSourceGroup", "outreachSource", "outreachBloodGroup", "outreachRh"].forEach(id => {
+  ["outreachDateFrom", "outreachDateTo", "outreachSourceGroup", "outreachSource", "outreachBloodGroup", "outreachRh"].forEach(id => {
     const element = document.getElementById(id);
     if (element) element.value = "";
   });
   document.querySelectorAll(".outreach-product-check").forEach(el => { el.checked = false; });
   updateOutreachProductLabel();
   updateOutreachProductDraftCount();
+
+  const minDate = currentOutreachAnalysisData?.filterOptions?.minDate || currentOutreachAnalysisData?.sourceStartDate || "";
+  const maxDate = currentOutreachAnalysisData?.filterOptions?.maxDate || currentOutreachAnalysisData?.sourceEndDate || "";
+  const minMonth = outreachMonthValueFromDate(minDate);
+  const maxMonth = outreachMonthValueFromDate(maxDate);
+  if (minMonth && maxMonth) {
+    setOutreachMonthRangeControls(minMonth, maxMonth);
+    const fromDateEl = document.getElementById("outreachDateFrom");
+    const toDateEl = document.getElementById("outreachDateTo");
+    if (fromDateEl) fromDateEl.value = `${minMonth}-01`;
+    if (toDateEl) toDateEl.value = outreachLastDayOfMonth(maxMonth);
+  }
   applyOutreachFilters();
 }
 
@@ -1945,6 +2065,21 @@ function renderOutreachSummaryCards(s) {
   `;
 }
 
+function renderOutreachMetricPill(label, value, tone = "neutral") {
+  return `<span class="outreach-metric-pill is-${tone}"><small>${escapeOutreachHtml(label)}</small><b>${Number(value || 0).toLocaleString()}</b></span>`;
+}
+
+function renderOutreachMetricBar(label, value, maxValue, tone = "neutral") {
+  const safeValue = Number(value || 0);
+  const width = Math.max(safeValue > 0 ? 10 : 0, Math.min(100, maxValue > 0 ? (safeValue / maxValue) * 100 : 0));
+  return `
+    <div class="outreach-metric-bar is-${tone}">
+      <div class="outreach-metric-bar-label">${escapeOutreachHtml(label)}</div>
+      <div class="outreach-metric-bar-track"><span style="width:${width}%"></span></div>
+      <div class="outreach-metric-bar-value">${safeValue.toLocaleString()}</div>
+    </div>`;
+}
+
 function renderOutreachCharts(groupData, sourceSummary) {
   const box = document.getElementById("outreachCharts");
   if (!box) return;
@@ -1952,44 +2087,72 @@ function renderOutreachCharts(groupData, sourceSummary) {
   const groupOrder = [OUTREACH_GROUP_SELF_INHOUSE, OUTREACH_GROUP_SELF_OUTREACH, OUTREACH_GROUP_TRC, OUTREACH_GROUP_OTHER_HOSPITAL];
   const map = new Map((groupData || []).map(item => [item.sourceGroup, item]));
   const groups = groupOrder.map(name => map.get(name) || { sourceGroup: name, received: 0, used: 0, destroyed: 0, transformed: 0, unresolved: 0, conflicts: 0 });
-  const maxGroup = Math.max(1, ...groups.map(item => item.received));
+  const maxGroup = Math.max(1, ...groups.map(item => Math.max(item.received || 0, item.used || 0, item.destroyed || 0, item.unresolved || 0, item.transformed || 0)));
   const topSources = (sourceSummary || []).slice(0, 12);
-  const maxSource = Math.max(1, ...topSources.map(item => item.received));
+  const maxSource = Math.max(1, ...topSources.map(item => Math.max(item.received || 0, item.used || 0, item.destroyed || 0)));
   const topDiscard = [...(sourceSummary || [])].sort((a, b) => b.destroyPercent - a.destroyPercent || b.received - a.received).slice(0, 12);
 
   box.innerHTML = `
     <div class="outreach-chart-grid mb-3">
       <div class="hero-card outreach-chart-card">
-        <h5 class="fw-bold mb-1">เปรียบเทียบแหล่งรับเข้า</h5>
-        <div class="small-muted mb-3">รวม 4 กลุ่มตามการใช้งานจริงของหน่วย</div>
+        <div class="outreach-section-head mb-3">
+          <div>
+            <h5 class="fw-bold mb-1">เปรียบเทียบแหล่งรับเข้า</h5>
+            <div class="small-muted">รวม 4 กลุ่มตามการใช้งานจริงของหน่วย พร้อมตัวเลขของแต่ละผลลัพธ์</div>
+          </div>
+        </div>
+        <div class="outreach-group-card-list">
         ${groups.map(item => `
-          <div class="outreach-chart-row">
-            <div class="outreach-chart-label">${escapeOutreachHtml(item.sourceGroup)} <strong>${item.received.toLocaleString()}</strong></div>
-            <div class="outreach-stacked-bar">
-              <span class="bar-used" style="width:${(item.used / maxGroup) * 100}%" title="ใช้ ${item.used}"></span>
-              <span class="bar-destroyed" style="width:${(item.destroyed / maxGroup) * 100}%" title="ทิ้ง ${item.destroyed}"></span>
-              <span class="bar-transformed" style="width:${(item.transformed / maxGroup) * 100}%" title="แปรรูปต่อ ${item.transformed}"></span>
-              <span class="bar-unresolved" style="width:${(item.unresolved / maxGroup) * 100}%" title="คงเหลือ/อื่น ${item.unresolved}"></span>
-              <span class="bar-conflict" style="width:${(item.conflicts / maxGroup) * 100}%" title="ขัดแย้ง ${item.conflicts}"></span>
+          <div class="outreach-group-card-row">
+            <div class="outreach-chart-topline">
+              <div class="outreach-chart-title">${escapeOutreachHtml(item.sourceGroup)}</div>
+              <div class="outreach-total-badge">รับเข้า ${item.received.toLocaleString()}</div>
+            </div>
+            <div class="outreach-pill-row">
+              ${renderOutreachMetricPill("รับเข้า", item.received, "received")}
+              ${renderOutreachMetricPill("ใช้/จ่ายออก", item.used, "used")}
+              ${renderOutreachMetricPill("ทิ้ง/ทำลาย", item.destroyed, "destroyed")}
+              ${renderOutreachMetricPill("คงเหลือ/อื่น", item.unresolved, "unresolved")}
+              ${item.transformed ? renderOutreachMetricPill("แปรรูปต่อ", item.transformed, "transformed") : ""}
+              ${item.conflicts ? renderOutreachMetricPill("ข้อมูลขัดแย้ง", item.conflicts, "conflict") : ""}
+            </div>
+            <div class="outreach-stacked-bar" aria-label="${escapeOutreachHtml(item.sourceGroup)}">
+              <span class="bar-used" style="width:${(Number(item.used || 0) / maxGroup) * 100}%" title="ใช้ ${item.used}"></span>
+              <span class="bar-destroyed" style="width:${(Number(item.destroyed || 0) / maxGroup) * 100}%" title="ทิ้ง ${item.destroyed}"></span>
+              <span class="bar-transformed" style="width:${(Number(item.transformed || 0) / maxGroup) * 100}%" title="แปรรูปต่อ ${item.transformed}"></span>
+              <span class="bar-unresolved" style="width:${(Number(item.unresolved || 0) / maxGroup) * 100}%" title="คงเหลือ/อื่น ${item.unresolved}"></span>
+              <span class="bar-conflict" style="width:${(Number(item.conflicts || 0) / maxGroup) * 100}%" title="ขัดแย้ง ${item.conflicts}"></span>
             </div>
           </div>
         `).join("")}
+        </div>
         <div class="outreach-legend"><span><i class="legend-used"></i> ใช้/จ่ายออก</span><span><i class="legend-destroyed"></i> ทิ้ง/ทำลาย</span><span><i class="legend-transformed"></i> แปรรูปต่อ</span><span><i class="legend-unresolved"></i> ยังไม่ทราบผล</span><span><i class="legend-conflict"></i> ข้อมูลขัดแย้ง</span></div>
       </div>
 
       <div class="hero-card outreach-chart-card">
-        <h5 class="fw-bold mb-1">รับเข้า / ใช้ / ทิ้ง ตามจุด</h5>
-        <div class="small-muted mb-3">แสดง 12 จุดที่มีจำนวนรับเข้าสูงสุดตามตัวกรอง</div>
+        <div class="outreach-section-head mb-3">
+          <div>
+            <h5 class="fw-bold mb-1">รับเข้า / ใช้ / ทิ้ง ตามจุด</h5>
+            <div class="small-muted">แสดง 12 จุดที่มีจำนวนรับเข้าสูงสุดตามตัวกรอง พร้อมตัวเลขทุกชุดเพื่ออ่านง่ายขึ้น</div>
+          </div>
+        </div>
         <div class="outreach-bars-list">
           ${topSources.map(item => `
-            <div class="outreach-source-bar-row">
-              <div class="outreach-source-bar-name" title="${escapeOutreachHtml(item.donateSource)}">${escapeOutreachHtml(item.donateSource)}</div>
-              <div class="outreach-mini-bars">
-                <span class="mini-received" style="width:${(item.received / maxSource) * 100}%" title="รับเข้า ${item.received}"></span>
-                <span class="mini-used" style="width:${(item.used / maxSource) * 100}%" title="ใช้ ${item.used}"></span>
-                <span class="mini-destroyed" style="width:${(item.destroyed / maxSource) * 100}%" title="ทิ้ง ${item.destroyed}"></span>
+            <div class="outreach-source-card-row">
+              <div class="outreach-source-card-head">
+                <div class="outreach-source-bar-name" title="${escapeOutreachHtml(item.donateSource)}">${escapeOutreachHtml(item.donateSource)}</div>
+                <div class="small-muted">${escapeOutreachHtml(item.sourceGroup || "")}</div>
               </div>
-              <div class="small-muted text-end">${item.received.toLocaleString()}</div>
+              <div class="outreach-pill-row is-compact">
+                ${renderOutreachMetricPill("รับเข้า", item.received, "received")}
+                ${renderOutreachMetricPill("ใช้", item.used, "used")}
+                ${renderOutreachMetricPill("ทิ้ง", item.destroyed, "destroyed")}
+              </div>
+              <div class="outreach-metric-bars">
+                ${renderOutreachMetricBar("รับเข้า", item.received, maxSource, "received")}
+                ${renderOutreachMetricBar("ใช้", item.used, maxSource, "used")}
+                ${renderOutreachMetricBar("ทิ้ง", item.destroyed, maxSource, "destroyed")}
+              </div>
             </div>
           `).join("") || `<div class="small-muted">ไม่มีข้อมูลตามตัวกรอง</div>`}
         </div>
@@ -1997,12 +2160,19 @@ function renderOutreachCharts(groupData, sourceSummary) {
     </div>
 
     <div class="hero-card outreach-chart-card mb-3">
-      <h5 class="fw-bold mb-1">ร้อยละทิ้ง/ทำลายของแต่ละจุด</h5>
-      <div class="small-muted mb-3">ร้อยละทิ้ง = ทิ้ง/ทำลาย ÷ ผลิตภัณฑ์รับเข้าตามตัวกรอง × 100</div>
+      <div class="outreach-section-head mb-3">
+        <div>
+          <h5 class="fw-bold mb-1">ร้อยละทิ้ง/ทำลายของแต่ละจุด</h5>
+          <div class="small-muted">ร้อยละทิ้ง = ทิ้ง/ทำลาย ÷ ผลิตภัณฑ์รับเข้าตามตัวกรอง × 100</div>
+        </div>
+      </div>
       <div class="outreach-percent-bars">
         ${topDiscard.map(item => `
           <div class="outreach-percent-row">
-            <div class="outreach-percent-name" title="${escapeOutreachHtml(item.donateSource)}">${escapeOutreachHtml(item.donateSource)}</div>
+            <div>
+              <div class="outreach-percent-name" title="${escapeOutreachHtml(item.donateSource)}">${escapeOutreachHtml(item.donateSource)}</div>
+              <div class="small-muted">ทิ้ง ${Number(item.destroyed || 0).toLocaleString()} / รับเข้า ${Number(item.received || 0).toLocaleString()}</div>
+            </div>
             <div class="outreach-percent-track"><span style="width:${Math.min(100, item.destroyPercent)}%"></span></div>
             <div class="outreach-percent-value">${item.destroyPercent.toFixed(1)}%</div>
           </div>
