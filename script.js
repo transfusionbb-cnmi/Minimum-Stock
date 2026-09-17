@@ -1730,7 +1730,7 @@ function renderOutreachAnalysis() {
           <details class="outreach-advanced-date">
             <summary>วันที่แบบละเอียด</summary>
             <div class="outreach-exact-date-grid">
-              <label class="outreach-filter-item">วันที่รับเข้า ตั้งแต่<input id="outreachDateFrom" type="date" class="form-control" min="${escapeOutreachHtml(availableMinDate)}" max="${escapeOutreachHtml(availableMaxDate)}" value="${escapeOutreachHtml(f.dateFrom || "")}" onchange="applyOutreachExactDateFilter()" /></label>
+              <label class="outreach-filter-item">วันที่อ้างอิง ตั้งแต่<input id="outreachDateFrom" type="date" class="form-control" min="${escapeOutreachHtml(availableMinDate)}" max="${escapeOutreachHtml(availableMaxDate)}" value="${escapeOutreachHtml(f.dateFrom || "")}" onchange="applyOutreachExactDateFilter()" /></label>
               <label class="outreach-filter-item">ถึง<input id="outreachDateTo" type="date" class="form-control" min="${escapeOutreachHtml(availableMinDate)}" max="${escapeOutreachHtml(availableMaxDate)}" value="${escapeOutreachHtml(f.dateTo || "")}" onchange="applyOutreachExactDateFilter()" /></label>
             </div>
           </details>
@@ -1769,7 +1769,7 @@ function renderOutreachAnalysis() {
 
       <details class="simple-details mb-4">
         <summary>หลักการนับ</summary>
-        <div class="pt-3 small-muted">นับระดับถุงต้นทาง (ถุงหลัก + .S1/.S2/.S3/... = 1 ถุง) · ถ้ามีสมาชิกใน family ถูก Released/Dedicated แม้เพียง 1 รายการ ให้นับทั้ง family เป็นใช้/จ่าย/ส่งต่อ 1 ถุง และไม่ซ้ำ Expired ของสมาชิกอื่น · Be Transformed เป็นขั้นตอนกลาง ไม่ใช่ผลปลายทาง · Expired = หมดอายุเท่านั้น · Rejected = ไม่เหมาะสมต่อการใช้</div>
+        <div class="pt-3 small-muted">วันที่อ้างอิง: เลือดที่เก็บเองใช้ CollectDate; กาชาด/รับจาก รพ.อื่นใช้ DateStockIn · นับระดับถุงต้นทาง (ถุงหลัก + .S1/.S2/.S3/... = 1 ถุง) · ถ้ามีสมาชิกใน family ถูก Released/Dedicated แม้เพียง 1 รายการ ให้นับทั้ง family เป็นใช้/จ่าย/ส่งต่อ 1 ถุง และไม่ซ้ำ Expired ของสมาชิกอื่น · Be Transformed เป็นขั้นตอนกลาง · Expired = หมดอายุเท่านั้น · Rejected = ไม่เหมาะสมต่อการใช้</div>
       </details>
     </div>`;
 
@@ -2313,7 +2313,7 @@ async function openOutreachSourceDetail(index, page = 1) {
       <div class="table-responsive outreach-detail-table-wrap">
         <table class="table outreach-detail-table align-middle">
           <thead><tr>
-            <th>BagNumber</th><th>ProductType</th><th>BloodGroup</th><th>Rh</th><th>DonateSource</th><th>DateStockIn</th><th>DateStockOut</th><th>Status</th><th>DestroyReason</th><th>ผลตาม Status</th>
+            <th>BagNumber</th><th>ProductType</th><th>BloodGroup</th><th>Rh</th><th>DonateSource</th><th>วันที่อ้างอิง</th><th>CollectDate</th><th>DateStockIn</th><th>DateStockOut</th><th>Status</th><th>DestroyReason</th><th>ผลตาม Status</th>
           </tr></thead>
           <tbody>
             ${rows.map(row => `
@@ -2323,13 +2323,15 @@ async function openOutreachSourceDetail(index, page = 1) {
                 <td>${escapeOutreachHtml(row.bloodGroup)}</td>
                 <td>${escapeOutreachHtml(row.rh)}</td>
                 <td>${escapeOutreachHtml(row.donateSource)}</td>
+                <td>${escapeOutreachHtml(row.cohortDate)}</td>
+                <td>${escapeOutreachHtml(row.collectDate)}</td>
                 <td>${escapeOutreachHtml(row.dateStockIn)}</td>
                 <td>${escapeOutreachHtml(row.dateStockOut)}</td>
                 <td>${escapeOutreachHtml(row.status)}</td>
                 <td>${escapeOutreachHtml(row.destroyReason)}</td>
                 <td><span class="outreach-outcome-badge ${outreachOutcomeClass(row)}">${escapeOutreachHtml(outcomeLabelForRow(row))}</span></td>
               </tr>
-            `).join("") || `<tr><td colspan="10" class="text-center small-muted py-4">ไม่มีรายละเอียดตามตัวกรอง</td></tr>`}
+            `).join("") || `<tr><td colspan="12" class="text-center small-muted py-4">ไม่มีรายละเอียดตามตัวกรอง</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -2483,6 +2485,8 @@ function mapOutreachExportRows(rows) {
     Rh: row.rh,
     DonateSource: row.donateSource,
     SourceGroup: row.sourceGroup,
+    CollectDate: row.collectDate,
+    CohortDate: row.cohortDate,
     DateStockIn: row.dateStockIn,
     DateStockOut: row.dateStockOut,
     Status: row.status,

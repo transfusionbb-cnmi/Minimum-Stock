@@ -825,7 +825,7 @@
     "DestroyReason"
   ];
 
-  const OUTREACH_OPTIONAL_HEADERS = ["BloodGroup", "Rh", "Location"];
+  const OUTREACH_OPTIONAL_HEADERS = ["BloodGroup", "Rh", "Location", "CollectDate"];
 
   function normalizeHeaderName(value) {
     return String(value || "")
@@ -905,6 +905,19 @@
     REVIEW: "ไม่ระบุ/ต้องตรวจสอบ",
     EXCLUDED: "ตัดออกจากการวิเคราะห์"
   };
+
+  // v2.9.30: วันที่อ้างอิงสำหรับ cohort รายเดือน
+  // - เลือดที่ CNMI เก็บเอง (ใน รพ./ออกหน่วย) ใช้ CollectDate
+  // - กาชาด/รับจาก รพ.อื่น ใช้ DateStockIn
+  // fallback DateStockIn ใช้เฉพาะกรณีข้อมูล CollectDate เดิมยังไม่ถูกอัปโหลดใหม่
+  function getOutreachCohortDate(sourceGroup, collectDate, dateStockIn) {
+    const collect = normalizeAnyDateStrict(collectDate) || normalizeAnyDate(collectDate) || "";
+    const stockIn = normalizeAnyDateStrict(dateStockIn) || normalizeAnyDate(dateStockIn) || "";
+    if (sourceGroup === OUTREACH_SOURCE_GROUPS.SELF_INHOUSE || sourceGroup === OUTREACH_SOURCE_GROUPS.SELF_OUTREACH) {
+      return collect || stockIn;
+    }
+    return stockIn;
+  }
 
   const OUTREACH_OUTCOME = {
     USED: "used",
@@ -1360,6 +1373,7 @@
       const status = normalizeOutreachStatus(getHeaderValue(row, headerMap, "Status"));
       const donateSource = String(getHeaderValue(row, headerMap, "DonateSource") || "").trim();
       const location = String(getHeaderValue(row, headerMap, "Location") || "").trim();
+      const collectDateRaw = getHeaderValue(row, headerMap, "CollectDate");
       const dateStockInRaw = getHeaderValue(row, headerMap, "DateStockIn");
       const dateStockOutRaw = getHeaderValue(row, headerMap, "DateStockOut");
       const destroyReason = String(getHeaderValue(row, headerMap, "DestroyReason") || "").trim();
@@ -1372,6 +1386,7 @@
         issues.push({ type: "missing_bag", bagNumber: "", message: `แถวข้อมูล ${excelRow}: ไม่มี BagNumber` });
       }
 
+      const collectDate = normalizeAnyDateStrict(collectDateRaw);
       const dateStockIn = normalizeAnyDateStrict(dateStockInRaw);
       // ข้อมูลที่ตั้งใจตัดออกไม่ควรกลับมาสร้าง Warning/Review เพราะวันที่หรือ Status ของข้อมูลทดสอบ
       if (!sourceInfo.excluded) {
@@ -1408,6 +1423,7 @@
         donateSource,
         location,
         sourceInfo,
+        collectDate,
         dateStockIn,
         dateStockOut: normalizeDateTimeDisplay(dateStockOutRaw),
         status,
@@ -1450,8 +1466,12 @@
         const source = chooseUniqueText(items.map(item => item.donateSource));
         const statuses = chooseUniqueText(items.map(item => item.status));
         const reasons = chooseUniqueText(items.map(item => item.destroyReason));
+        const collectDates = Array.from(new Set(items.map(item => item.collectDate).filter(Boolean))).sort();
         const dateStockIns = Array.from(new Set(items.map(item => item.dateStockIn).filter(Boolean))).sort();
         const dateStockOuts = items.map(item => item.dateStockOut).filter(Boolean);
+        const sourceGroup = OUTREACH_SOURCE_GROUPS.EXCLUDED;
+        const collectDate = collectDates[0] || normalizeAnyDateStrict(first?.row?.[EXCEL_COL.collectDate]) || "";
+        const dateStockIn = dateStockIns[0] || normalizeAnyDateStrict(first?.row?.[EXCEL_COL.dateStockIn]) || "";
         rows.push({
           componentKey,
           bagNumber: bagNumber.value,
@@ -1459,8 +1479,10 @@
           bloodGroup: bloodGroup.value,
           rh: rh.value,
           donateSource: source.value,
-          sourceGroup: OUTREACH_SOURCE_GROUPS.EXCLUDED,
-          dateStockIn: dateStockIns[0] || normalizeAnyDateStrict(first?.row?.[EXCEL_COL.dateStockIn]) || "",
+          sourceGroup,
+          collectDate,
+          cohortDate: getOutreachCohortDate(sourceGroup, collectDate, dateStockIn),
+          dateStockIn,
           dateStockOut: dateStockOuts[dateStockOuts.length - 1] || "",
           status: statuses.conflict ? statuses.values.join(" | ") : statuses.value,
           destroyReason: reasons.conflict ? reasons.values.join(" | ") : reasons.value,
@@ -1481,6 +1503,7 @@
       const statuses = chooseUniqueText(usableItems.map(item => item.status));
       const reasons = chooseUniqueText(usableItems.map(item => item.destroyReason));
       const outcomes = Array.from(new Set(usableItems.map(item => item.outcomeCode)));
+      const collectDates = Array.from(new Set(usableItems.map(item => item.collectDate).filter(Boolean))).sort();
       const dateStockIns = Array.from(new Set(usableItems.map(item => item.dateStockIn).filter(Boolean))).sort();
       const dateStockOuts = usableItems.map(item => item.dateStockOut).filter(Boolean);
 
@@ -1504,20 +1527,23 @@
         });
       }
 
+      const collectDateConflict = collectDates.length > 1;
       const dateConflict = dateStockIns.length > 1;
-      const fieldConflict = bagNumber.conflict || productType.conflict || bloodGroup.conflict || rh.conflict || dateConflict;
+      const fieldConflict = bagNumber.conflict || productType.conflict || bloodGroup.conflict || rh.conflict || collectDateConflict || dateConflict;
       if (fieldConflict) {
         issues.push({
           type: "field_conflict",
           bagNumber: bagNumber.value,
-          message: "พบข้อมูล BloodGroup / Rh / ProductType / DateStockIn ขัดแย้งในผลิตภัณฑ์เดียวกัน"
+          message: "พบข้อมูล BloodGroup / Rh / ProductType / CollectDate / DateStockIn ขัดแย้งในผลิตภัณฑ์เดียวกัน"
         });
       }
 
+      const collectDate = collectDates[0] || "";
       const dateStockIn = dateStockIns[0] || "";
       const sourceGroup = sourceConflict ? OUTREACH_SOURCE_GROUPS.REVIEW : (sourceGroups[0] || OUTREACH_SOURCE_GROUPS.REVIEW);
+      const cohortDate = getOutreachCohortDate(sourceGroup, collectDate, dateStockIn);
       const aggregateEligible = Boolean(
-        dateStockIn &&
+        cohortDate &&
         !sourceConflict &&
         sourceGroup !== OUTREACH_SOURCE_GROUPS.REVIEW &&
         sourceGroup !== OUTREACH_SOURCE_GROUPS.EXCLUDED
@@ -1531,6 +1557,8 @@
         rh: rh.value,
         donateSource: sourceConflict ? source.values.join(" | ") : source.value,
         sourceGroup,
+        collectDate,
+        cohortDate,
         dateStockIn,
         dateStockOut: dateStockOuts[dateStockOuts.length - 1] || "",
         status: statuses.conflict ? statuses.values.join(" | ") : statuses.value,
@@ -1549,14 +1577,14 @@
     });
 
     rows.sort((a, b) =>
-      String(b.dateStockIn || "").localeCompare(String(a.dateStockIn || "")) ||
+      String(b.cohortDate || b.dateStockIn || "").localeCompare(String(a.cohortDate || a.dateStockIn || "")) ||
       String(a.donateSource || "").localeCompare(String(b.donateSource || ""), "th") ||
       String(a.bagNumber || "").localeCompare(String(b.bagNumber || ""))
     );
 
     const multiProductBagCount = Array.from(productsByBag.values()).filter(set => set.size > 1).length;
     const eligibleRows = rows.filter(row => row.aggregateEligible);
-    const validDates = eligibleRows.map(row => row.dateStockIn).filter(Boolean).sort();
+    const validDates = eligibleRows.map(row => row.cohortDate || row.dateStockIn).filter(Boolean).sort();
     const unique = values => Array.from(new Set(values.map(v => String(v || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "th"));
     const filterOptions = {
       minDate: validDates[0] || "",
@@ -2120,6 +2148,8 @@
       rh: row.rh || "",
       donate_source: row.donateSource || "",
       source_group: row.sourceGroup || OUTREACH_SOURCE_GROUPS.REVIEW,
+      collect_date: row.collectDate || null,
+      cohort_date: row.cohortDate || getOutreachCohortDate(row.sourceGroup, row.collectDate, row.dateStockIn) || null,
       date_stock_in: row.dateStockIn || null,
       date_stock_out: row.dateStockOut || "",
       status: row.status || "",
@@ -2141,6 +2171,8 @@
       rh: row.rh || "",
       donateSource: row.donate_source || "",
       sourceGroup: row.source_group || OUTREACH_SOURCE_GROUPS.REVIEW,
+      collectDate: row.collect_date || "",
+      cohortDate: row.cohort_date || getOutreachCohortDate(row.source_group, row.collect_date, row.date_stock_in) || "",
       dateStockIn: row.date_stock_in || "",
       dateStockOut: row.date_stock_out || "",
       status: row.status || "",
@@ -2317,17 +2349,17 @@
     }
     const client = getClient();
 
-    // v2.9.29: family final outcome — Transformed เป็นขั้นตอนกลาง ไม่ใช่ผลปลายทาง
-    const { data, error } = await client.rpc("minimum_stock_schema_status_v2929");
+    // v2.9.30: cohort date — CollectDate สำหรับเลือดที่เก็บเอง, DateStockIn สำหรับกาชาด/รพ.อื่น
+    const { data, error } = await client.rpc("minimum_stock_schema_status_v2930");
     const missingRpc = error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""));
     if (missingRpc) {
-      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.9.29 | กรุณารัน SQL-v2.9.29-FAMILY-FINAL-OUTCOME-BALANCE.sql 1 ครั้ง");
+      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.9.30 | กรุณารัน SQL-v2.9.30-COHORT-DATE-COLLECTDATE.sql 1 ครั้ง");
     }
     if (error) {
-      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.29-FAMILY-FINAL-OUTCOME-BALANCE.sql");
+      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.30-COHORT-DATE-COLLECTDATE.sql");
     }
     if (data && data.ok === false) {
-      throw new Error(data.message || "โครงสร้าง Supabase v2.9.29 ยังไม่พร้อม | กรุณารัน SQL-v2.9.29-FAMILY-FINAL-OUTCOME-BALANCE.sql");
+      throw new Error(data.message || "โครงสร้าง Supabase v2.9.30 ยังไม่พร้อม | กรุณารัน SQL-v2.9.30-COHORT-DATE-COLLECTDATE.sql");
     }
     return data || { ok: true };
   }
@@ -2387,32 +2419,23 @@
       if (!row || row.aggregateEligible === false) return;
       const familyKey = getOutreachFamilyKeyFromBagNumber(row.bagNumber);
       if (!familyKey) return;
-      const stockInDate = parseYmdDate(row.dateStockIn);
-      const outDate = parseYmdDate(row.dateStockOut);
+      const cohortDate = parseYmdDate(row.cohortDate || getOutreachCohortDate(row.sourceGroup, row.collectDate, row.dateStockIn));
       const current = families.get(familyKey) || {
-        stockInDate: null,
+        cohortDate: null,
         hasUsed: false,
-        usedDate: null,
         hasRejected: false,
-        rejectedDate: null,
         hasExpired: false,
-        expiredDate: null
+        hasOtherDiscard: false,
+        hasConflict: false
       };
+      if (cohortDate && (!current.cohortDate || cohortDate < current.cohortDate)) current.cohortDate = cohortDate;
       const status = String(row.status || "");
       const outcomeCode = String(row.outcomeCode || "");
-      if (stockInDate && (!current.stockInDate || stockInDate < current.stockInDate)) current.stockInDate = stockInDate;
-      if (status === "Released" || status === "Dedicated" || outcomeCode === "used") {
-        current.hasUsed = true;
-        if (outDate && (!current.usedDate || outDate < current.usedDate)) current.usedDate = outDate;
-      }
-      if (status === "Rejected" || outcomeCode === "rejected") {
-        current.hasRejected = true;
-        if (outDate && (!current.rejectedDate || outDate < current.rejectedDate)) current.rejectedDate = outDate;
-      }
-      if (status === "Expired" || outcomeCode === "expired") {
-        current.hasExpired = true;
-        if (outDate && (!current.expiredDate || outDate < current.expiredDate)) current.expiredDate = outDate;
-      }
+      if (status === "Released" || status === "Dedicated" || outcomeCode === "used") current.hasUsed = true;
+      if (status === "Rejected" || outcomeCode === "rejected") current.hasRejected = true;
+      if (status === "Expired" || outcomeCode === "expired") current.hasExpired = true;
+      if (["Destroyed","Discarded","Disposed"].includes(status) || ["other_discard","destroyed"].includes(outcomeCode)) current.hasOtherDiscard = true;
+      if (outcomeCode === "conflict") current.hasConflict = true;
       families.set(familyKey, current);
     });
 
@@ -2422,31 +2445,22 @@
       stockIn: 0,
       released: 0,
       expired: 0,
-      rejected: 0
+      rejected: 0,
+      unresolved: 0
     }));
 
     families.forEach((family) => {
-      const stockInDate = family.stockInDate;
-      const usedDate = family.usedDate;
-      const rejectedDate = family.hasUsed ? null : family.rejectedDate;
-      const expiredDate = (family.hasUsed || family.hasRejected) ? null : family.expiredDate;
-
-      if (stockInDate instanceof Date && !isNaN(stockInDate)) {
-        years.add(stockInDate.getFullYear());
-        if (stockInDate.getFullYear() === safeYear) months[stockInDate.getMonth()].stockIn += 1;
-      }
-      if (family.hasUsed && usedDate instanceof Date && !isNaN(usedDate)) {
-        years.add(usedDate.getFullYear());
-        if (usedDate.getFullYear() === safeYear) months[usedDate.getMonth()].released += 1;
-      }
-      if (!family.hasUsed && family.hasRejected && rejectedDate instanceof Date && !isNaN(rejectedDate)) {
-        years.add(rejectedDate.getFullYear());
-        if (rejectedDate.getFullYear() === safeYear) months[rejectedDate.getMonth()].rejected += 1;
-      }
-      if (!family.hasUsed && !family.hasRejected && family.hasExpired && expiredDate instanceof Date && !isNaN(expiredDate)) {
-        years.add(expiredDate.getFullYear());
-        if (expiredDate.getFullYear() === safeYear) months[expiredDate.getMonth()].expired += 1;
-      }
+      const d = family.cohortDate;
+      if (!(d instanceof Date) || isNaN(d)) return;
+      const y = d.getFullYear();
+      years.add(y);
+      if (y !== safeYear) return;
+      const bucket = months[d.getMonth()];
+      bucket.stockIn += 1;
+      if (family.hasUsed) bucket.released += 1;
+      else if (family.hasRejected || family.hasOtherDiscard) bucket.rejected += 1;
+      else if (family.hasExpired) bucket.expired += 1;
+      else bucket.unresolved += 1;
     });
 
     return {
@@ -2468,7 +2482,12 @@
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2929", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2930", params);
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_master_report_v2929", params);
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_master_report_v2927", params);
       data = previous.data;
@@ -2512,8 +2531,13 @@
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2929", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2930", params);
 
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2929", params);
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2927", params);
       data = previous.data;
@@ -2561,7 +2585,12 @@
 
   async function getOutreachFilterOptions() {
     const client = getClient();
-    let { data, error } = await client.rpc("minimum_stock_outreach_filter_options_v2916");
+    let { data, error } = await client.rpc("minimum_stock_outreach_filter_options_v2930");
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_filter_options_v2916");
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_filter_options_v2915");
       data = previous.data;
@@ -2580,7 +2609,7 @@
     const client = getClient();
     const { data, error } = await client
       .from("minimum_stock_outreach_master")
-      .select("component_key,bag_number,product_type,blood_group,rh,donate_source,source_group,date_stock_in,date_stock_out,status,destroy_reason,outcome_code,aggregate_eligible,needs_review,duplicate_count")
+      .select("component_key,bag_number,product_type,blood_group,rh,donate_source,source_group,collect_date,cohort_date,date_stock_in,date_stock_out,status,destroy_reason,outcome_code,aggregate_eligible,needs_review,duplicate_count")
       .eq("needs_review", true)
       .order("date_stock_in", { ascending: false, nullsFirst: false })
       .limit(Math.max(1, Math.min(500, Number(limit || 100))));
@@ -2652,8 +2681,8 @@
       batchId: "master",
       fileName: latestUpload?.file_name || "",
       calculatedAt: latestUpload?.created_at || "",
-      sourceStartDate: state.masterMinDate || filterOptions.minDate || "",
-      sourceEndDate: state.masterMaxDate || filterOptions.maxDate || "",
+      sourceStartDate: filterOptions.minDate || state.masterMinDate || "",
+      sourceEndDate: filterOptions.maxDate || state.masterMaxDate || "",
       rawRowCount: Number(latestUpload?.raw_row_count || 0),
       componentRowCount: Number(state.masterCount || 0),
       totalUniqueBags: Number(state.uniqueBags || 0),
@@ -2674,8 +2703,8 @@
 
   function applyOutreachRowQueryFilters(query, filters = {}) {
     const f = normalizeOutreachFilters(filters);
-    if (f.dateFrom) query = query.gte("date_stock_in", f.dateFrom);
-    if (f.dateTo) query = query.lte("date_stock_in", f.dateTo);
+    if (f.dateFrom) query = query.gte("cohort_date", f.dateFrom);
+    if (f.dateTo) query = query.lte("cohort_date", f.dateTo);
     if (f.sourceGroup) query = query.eq("source_group", f.sourceGroup);
     if (f.source) query = query.eq("donate_source", f.source);
     if (f.productTypes.length === 1) query = query.eq("product_type", f.productTypes[0]);
@@ -2702,9 +2731,15 @@
     const chunk = 1000;
     let from = 0;
     while (true) {
-      const { data, error } = await client
-        .rpc("minimum_stock_outreach_family_rows_v2929", params)
+      let response = await client
+        .rpc("minimum_stock_outreach_family_rows_v2930", params)
         .range(from, from + chunk - 1);
+      if (response.error && /Could not find the function|PGRST202|does not exist/i.test(String(response.error.message || response.error.code || ""))) {
+        response = await client
+          .rpc("minimum_stock_outreach_family_rows_v2929", params)
+          .range(from, from + chunk - 1);
+      }
+      const { data, error } = response;
       if (error) throw new Error("โหลดสมาชิกถุงต้นทางสำหรับสรุป/ส่งออกไม่สำเร็จ: " + error.message);
       const part = (data || []).map(fromOutreachDbRow);
       rows.push(...part);
@@ -2718,7 +2753,7 @@
   async function getOutreachRows(options = {}) {
     if (!isConfigured()) throw new Error("รายงานวิเคราะห์ออกหน่วยต้องใช้ Supabase");
     const client = getClient();
-    const selectFields = "component_key,bag_number,product_type,blood_group,rh,donate_source,source_group,date_stock_in,date_stock_out,status,destroy_reason,outcome_code,aggregate_eligible,needs_review,duplicate_count";
+    const selectFields = "component_key,bag_number,product_type,blood_group,rh,donate_source,source_group,collect_date,cohort_date,date_stock_in,date_stock_out,status,destroy_reason,outcome_code,aggregate_eligible,needs_review,duplicate_count";
     const perPage = Math.max(1, Math.min(1000, Number(options.perPage || 100)));
     const page = Math.max(1, Number(options.page || 1));
     const extraFilters = { ...(options.filters || {}) };
@@ -2731,7 +2766,7 @@
         .select(selectFields, withCount ? { count: "exact" } : undefined);
       if (!options.includeIneligible) query = query.eq("aggregate_eligible", true);
       query = applyOutreachRowQueryFilters(query, extraFilters);
-      return query.order("date_stock_in", { ascending: false, nullsFirst: false })
+      return query.order("cohort_date", { ascending: false, nullsFirst: false })
         .order("donate_source", { ascending: true })
         .order("bag_number", { ascending: true });
     };
@@ -2774,7 +2809,12 @@
       p_excluded_component_count: Number(analysis.excludedComponentCount || 0),
       p_validation: analysis.validation || {}
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_merge_batch_to_master_v2919", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_merge_batch_to_master_v2930", params);
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_merge_batch_to_master_v2919", params);
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_merge_batch_to_master_v2916", params);
       data = previous.data;
@@ -3199,6 +3239,7 @@
       isSplitSubunitBagNumber,
       classifyOutreachSource,
       classifyOutreachRowSource,
+      getOutreachCohortDate,
       isExcludedOutreachLocation,
       isExcludedExternalTransferSource,
       isExcludedTrainingBag,
