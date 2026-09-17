@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-26-compact-copy-cleanup";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-28-outcome-constraint-hotfix";
 const APP_SHELL = [
   "./",
   "./index.html",

@@ -908,7 +908,10 @@
 
   const OUTREACH_OUTCOME = {
     USED: "used",
-    DESTROYED: "destroyed",
+    EXPIRED: "expired",
+    REJECTED: "rejected",
+    OTHER_DISCARD: "other_discard",
+    DESTROYED: "destroyed", // legacy outcome_code from older imports
     TRANSFORMED: "transformed",
     UNRESOLVED: "unresolved",
     CONFLICT: "conflict"
@@ -1081,14 +1084,16 @@
     const status = normalizeOutreachStatus(statusValue);
     const destroyReason = String(destroyReasonValue || "").trim();
 
-    // v2.7.1: Status ใน LIS เป็นตัวหลัก เพราะ DestroyReason บางครั้งติดมากับ
-    // component อื่นของ BagNumber เดียวกัน แม้รายการนี้จะ Released/Be Transformed แล้ว
+    // v2.9.27: แยกความหมายทางงานให้ชัดเจน
+    // Dedicated = จ่าย/ส่งต่อให้ รพ.อื่น, Expired = หมดอายุจริง, Rejected = ไม่เหมาะสมต่อการใช้
     if (status === "Released" || status === "Dedicated") return OUTREACH_OUTCOME.USED;
+    if (status === "Rejected") return OUTREACH_OUTCOME.REJECTED;
+    if (status === "Expired") return OUTREACH_OUTCOME.EXPIRED;
     if (status === "Be Transformed") return OUTREACH_OUTCOME.TRANSFORMED;
-    if (textContainsDestroySignal(status)) return OUTREACH_OUTCOME.DESTROYED;
+    if (["Destroyed", "Discarded", "Disposed"].includes(status)) return OUTREACH_OUTCOME.OTHER_DISCARD;
 
-    // ใช้ DestroyReason ช่วยตัดสินเฉพาะกรณี Status ไม่ได้บอกผลปลายทางชัดเจน
-    if (destroyReason && textContainsDestroySignal(destroyReason)) return OUTREACH_OUTCOME.DESTROYED;
+    // DestroyReason เป็นข้อมูลประกอบเท่านั้น ไม่ให้เปลี่ยน Rejected/Expired ปะปนกัน
+    if (destroyReason && textContainsDestroySignal(destroyReason)) return OUTREACH_OUTCOME.OTHER_DISCARD;
     return OUTREACH_OUTCOME.UNRESOLVED;
   }
 
@@ -2312,18 +2317,17 @@
     }
     const client = getClient();
 
-    // v2.9.21: กราฟรายเดือนต้องรับตัวกรองเดียวกับการ์ด/กราฟด้านล่างทั้งหมด
-    // และยังคง hard exclusion จาก v2.9.20 ครบถ้วน
-    const { data, error } = await client.rpc("minimum_stock_schema_status_v2921");
+    // v2.9.28: เพิ่ม CHECK constraint ให้รองรับ expired / rejected / other_discard ก่อน reclassify
+    const { data, error } = await client.rpc("minimum_stock_schema_status_v2928");
     const missingRpc = error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""));
     if (missingRpc) {
-      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.9.21 | กรุณารัน SQL-v2.9.21-FILTER-SYNCED-CHARTS.sql 1 ครั้ง");
+      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.9.28 | กรุณารัน SQL-v2.9.28-OUTCOME-CONSTRAINT-HOTFIX.sql 1 ครั้ง");
     }
     if (error) {
-      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.21-FILTER-SYNCED-CHARTS.sql");
+      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.28-OUTCOME-CONSTRAINT-HOTFIX.sql");
     }
     if (data && data.ok === false) {
-      throw new Error(data.message || "โครงสร้าง Supabase v2.9.21 ยังไม่พร้อม | กรุณารัน SQL-v2.9.21-FILTER-SYNCED-CHARTS.sql");
+      throw new Error(data.message || "โครงสร้าง Supabase v2.9.28 ยังไม่พร้อม | กรุณารัน SQL-v2.9.28-OUTCOME-CONSTRAINT-HOTFIX.sql");
     }
     return data || { ok: true };
   }
@@ -2388,18 +2392,24 @@
       const current = families.get(familyKey) || {
         stockInDate: null,
         hasUsed: false,
-        hasReleased: false,
-        releasedDate: null,
+        usedDate: null,
+        hasRejected: false,
+        rejectedDate: null,
         hasExpired: false,
         expiredDate: null
       };
+      const status = String(row.status || "");
+      const outcomeCode = String(row.outcomeCode || "");
       if (stockInDate && (!current.stockInDate || stockInDate < current.stockInDate)) current.stockInDate = stockInDate;
-      if (String(row.outcomeCode || "") === "used") current.hasUsed = true;
-      if (String(row.status || "") === "Released") {
-        current.hasReleased = true;
-        if (outDate && (!current.releasedDate || outDate < current.releasedDate)) current.releasedDate = outDate;
+      if (status === "Released" || status === "Dedicated" || outcomeCode === "used") {
+        current.hasUsed = true;
+        if (outDate && (!current.usedDate || outDate < current.usedDate)) current.usedDate = outDate;
       }
-      if (String(row.status || "") === "Expired") {
+      if (status === "Rejected" || outcomeCode === "rejected") {
+        current.hasRejected = true;
+        if (outDate && (!current.rejectedDate || outDate < current.rejectedDate)) current.rejectedDate = outDate;
+      }
+      if (status === "Expired" || outcomeCode === "expired") {
         current.hasExpired = true;
         if (outDate && (!current.expiredDate || outDate < current.expiredDate)) current.expiredDate = outDate;
       }
@@ -2411,23 +2421,29 @@
       month: index + 1,
       stockIn: 0,
       released: 0,
-      expired: 0
+      expired: 0,
+      rejected: 0
     }));
 
     families.forEach((family) => {
       const stockInDate = family.stockInDate;
-      const releasedDate = family.releasedDate;
-      const expiredDate = family.hasUsed ? null : family.expiredDate;
+      const usedDate = family.usedDate;
+      const rejectedDate = family.hasUsed ? null : family.rejectedDate;
+      const expiredDate = (family.hasUsed || family.hasRejected) ? null : family.expiredDate;
 
       if (stockInDate instanceof Date && !isNaN(stockInDate)) {
         years.add(stockInDate.getFullYear());
         if (stockInDate.getFullYear() === safeYear) months[stockInDate.getMonth()].stockIn += 1;
       }
-      if (family.hasReleased && releasedDate instanceof Date && !isNaN(releasedDate)) {
-        years.add(releasedDate.getFullYear());
-        if (releasedDate.getFullYear() === safeYear) months[releasedDate.getMonth()].released += 1;
+      if (family.hasUsed && usedDate instanceof Date && !isNaN(usedDate)) {
+        years.add(usedDate.getFullYear());
+        if (usedDate.getFullYear() === safeYear) months[usedDate.getMonth()].released += 1;
       }
-      if (family.hasExpired && expiredDate instanceof Date && !isNaN(expiredDate)) {
+      if (!family.hasUsed && family.hasRejected && rejectedDate instanceof Date && !isNaN(rejectedDate)) {
+        years.add(rejectedDate.getFullYear());
+        if (rejectedDate.getFullYear() === safeYear) months[rejectedDate.getMonth()].rejected += 1;
+      }
+      if (!family.hasUsed && !family.hasRejected && family.hasExpired && expiredDate instanceof Date && !isNaN(expiredDate)) {
         years.add(expiredDate.getFullYear());
         if (expiredDate.getFullYear() === safeYear) months[expiredDate.getMonth()].expired += 1;
       }
@@ -2452,7 +2468,12 @@
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2919", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2927", params);
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_master_report_v2919", params);
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_master_report_v2916", params);
       data = previous.data;
@@ -2486,10 +2507,13 @@
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2921", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2927", params);
 
-    // fallback นี้มีไว้สำหรับหน้าเว็บเก่าที่อาจค้าง cache ชั่วคราวเท่านั้น
-    // v2.9.21 ปกติจะผ่าน ensureOutreachSchema ก่อน จึงควรเรียก v2921 ได้เสมอ
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2921", params);
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const legacyParams = {
         p_year: safeYear,
