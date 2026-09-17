@@ -1770,6 +1770,8 @@ main { min-width:0; }
 .trend-focus-strip span { color:#688096; font-size:13px; line-height:1.45; }
 .filter-summary-strip.is-default { background:#fff; }
 .trend-focus-strip.is-synced { background:#eef9f2; border-color:#cfe8d8; }
+.trend-focus-strip.is-compact { padding:10px 12px; }
+.trend-focus-strip.is-compact strong { margin-bottom:0; }
 .filter-summary-chips { display:flex; flex-wrap:wrap; gap:8px; }
 .filter-summary-chips span { display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; background:#ffffff; border:1px solid #dce8f1; color:#35556e; }
 .trend-summary-row { display:flex; flex-wrap:wrap; gap:14px 22px; margin:6px 0 14px; font-size:13px; color:#60788d; }

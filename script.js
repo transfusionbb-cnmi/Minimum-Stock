@@ -1551,9 +1551,8 @@ function renderOutreachTrendInsight(data) {
     ? `${formatThaiMonthYear(`${first.year}-${String(first.month).padStart(2,"0")}`)} → ${formatThaiMonthYear(`${last.year}-${String(last.month).padStart(2,"0")}`)}`
     : (filters.dateFrom || filters.dateTo ? `${formatThaiMonthYear(filters.dateFrom) || "เริ่มต้น"} → ${formatThaiMonthYear(filters.dateTo) || "ล่าสุด"}` : "ข้อมูลทั้งหมด");
   box.innerHTML = `
-    <div class="trend-focus-strip is-synced">
-      <strong>กราฟใช้ตัวกรองด้านบนชุดเดียวกันทั้งหมด · ${escapeOutreachHtml(rangeText)}</strong>
-      <span>ไม่มีตัวกรองปีแยกใต้กราฟแล้ว การ์ด กราฟ ตาราง และสรุปแหล่งรับเข้าใช้ช่วงข้อมูลเดียวกัน</span>
+    <div class="trend-focus-strip is-synced is-compact">
+      <strong>ช่วงกราฟ: ${escapeOutreachHtml(rangeText)}</strong>
     </div>`;
 }
 
@@ -1657,7 +1656,7 @@ function renderOutreachAnalysis() {
             <div class="outreach-range-head">
               <div>
                 <strong>ช่วงข้อมูลรายเดือน</strong>
-                <span>แยกเดือนกับปี เพื่อไม่ต้องเลื่อนรายการยาวเมื่อข้อมูลเพิ่มขึ้นในอนาคต</span>
+                <span>เลือกช่วงที่ต้องการ</span>
               </div>
               <div class="outreach-range-quick-actions" aria-label="ช่วงข้อมูลด่วน">
                 <button type="button" onclick="setOutreachQuickMonthRange('thisYear')">ปีนี้</button>
@@ -1714,7 +1713,7 @@ function renderOutreachAnalysis() {
         <div class="panel-heading-row trend-head-row">
           <div>
             <h3>แนวโน้มรายเดือน</h3>
-            <div class="small-muted">แสดงต่อเนื่องตามช่วงเดือน/ปีที่เลือกด้านบน · ไม่มีตัวกรองปีซ้ำด้านล่าง</div>
+            <div class="small-muted">ตามช่วงที่เลือก</div>
           </div>
         </div>
         <div id="outreachTrendInsight" class="mb-2"></div>
@@ -1722,18 +1721,18 @@ function renderOutreachAnalysis() {
       </div>
 
       <details class="simple-details mb-3" open>
-        <summary>เปรียบเทียบแหล่งรับเข้าและจุดออกหน่วย · ตามตัวกรองด้านบน</summary>
+        <summary>เปรียบเทียบแหล่งรับเข้าและจุด</summary>
         <div class="pt-3" id="outreachCharts"></div>
       </details>
 
       <details class="simple-details mb-4">
-        <summary>ดูตารางรายจุด</summary>
+        <summary>ตารางรายจุด</summary>
         <div class="pt-3" id="outreachSourceTable"></div>
       </details>
 
       <details class="simple-details mb-4">
-        <summary>วิธีนับ</summary>
-        <div class="pt-3 small-muted">นับผลปลายทางระดับ “ถุงต้นทาง” โดย BagNumber หลักและ .S1/.S2/... ถือเป็นถุงเดียวกัน · ถ้ามี Released/Dedicated อย่างน้อย 1 รายการ ให้นับว่าใช้/จ่ายเพียง 1 ถุง และไม่นับ Expired ของถุงหลักซ้ำ · ตัด 1B6 / EQA / Test / เลขถุง 10062Q79877 / 10067R02375 ออกจากการคำนวณทุกกรณี รวมทั้งข้อมูลสอน/ทดสอบและถุงรับต่อจากรามาธิบดี/พญาไท</div>
+        <summary>หลักการนับ</summary>
+        <div class="pt-3 small-muted">นับระดับถุงต้นทาง (ถุงหลัก + .S1/.S2 = 1 ถุง) · ถ้ามี Released/Dedicated ให้นับใช้/จ่าย 1 ถุง · ตัด 1B6 / EQA / Test / 10062Q79877 / 10067R02375 รวมทั้งข้อมูลสอน/ทดสอบ และถุงรับต่อจากรามาธิบดี/พญาไท ออกทั้งหมด</div>
       </details>
     </div>`;
 
@@ -2006,7 +2005,7 @@ function renderOutreachTrendChart(data) {
       }).join("")}
     </div>
     <div class="trend-note-row">
-      <div class="small-muted">เลขเหนือแต่ละเดือนคือค่าที่มากที่สุดของเดือนนั้น ส่วนตัวเลขละเอียดดูในตารางด้านล่าง</div>
+      <div class="small-muted">เลขบนสุด = ค่าสูงสุดของเดือน</div>
     </div>
     <div class="trend-table-wrap mt-3">
       <table class="table table-sm trend-data-table align-middle mb-0">
@@ -2032,7 +2031,7 @@ function renderOutreachTrendChart(data) {
         </tbody>
       </table>
     </div>
-    <div class="small-muted mt-2">กราฟยึดตัวกรองด้านบนทั้งหมด · ช่วงเดือน/ปีใช้ DateStockIn เพื่อเลือกชุดถุง · นับ 1 ครั้งต่อถุงต้นทาง (.S1/.S2 รวมกับถุงหลัก) · Stock in ใช้ DateStockIn · Released/Expired วางตามเดือนของ DateStockOut</div>`;
+    `;
 }
 
 function renderOutreachReportSections(report) {
@@ -2098,7 +2097,7 @@ function renderOutreachCharts(groupData, sourceSummary) {
         <div class="outreach-section-head mb-3">
           <div>
             <h5 class="fw-bold mb-1">เปรียบเทียบแหล่งรับเข้า</h5>
-            <div class="small-muted">รวม 4 กลุ่มตามการใช้งานจริงของหน่วย พร้อมตัวเลขของแต่ละผลลัพธ์</div>
+            <div class="small-muted">4 กลุ่มหลัก</div>
           </div>
         </div>
         <div class="outreach-group-card-list">
@@ -2133,7 +2132,7 @@ function renderOutreachCharts(groupData, sourceSummary) {
         <div class="outreach-section-head mb-3">
           <div>
             <h5 class="fw-bold mb-1">รับเข้า / ใช้ / ทิ้ง ตามจุด</h5>
-            <div class="small-muted">แสดง 12 จุดที่มีจำนวนรับเข้าสูงสุดตามตัวกรอง พร้อมตัวเลขทุกชุดเพื่ออ่านง่ายขึ้น</div>
+            <div class="small-muted">12 จุดรับเข้าสูงสุด</div>
           </div>
         </div>
         <div class="outreach-bars-list">
@@ -2163,7 +2162,7 @@ function renderOutreachCharts(groupData, sourceSummary) {
       <div class="outreach-section-head mb-3">
         <div>
           <h5 class="fw-bold mb-1">ร้อยละทิ้ง/ทำลายของแต่ละจุด</h5>
-          <div class="small-muted">ร้อยละทิ้ง = ทิ้ง/ทำลาย ÷ ผลิตภัณฑ์รับเข้าตามตัวกรอง × 100</div>
+          <div class="small-muted">เทียบจากจำนวนรับเข้า</div>
         </div>
       </div>
       <div class="outreach-percent-bars">
@@ -2188,7 +2187,7 @@ function renderOutreachSourceTable(sourceSummary) {
   box.innerHTML = `
     <div class="simple-table-card mb-4">
       <div class="table-card-head">
-        <div><h3>แต่ละจุดได้ผลเป็นอย่างไร</h3><p>เรียงจากรับเข้ามากสุด · กดแถวเพื่อดูรายถุง</p></div>
+        <div><h3>ตารางสรุปรายจุด</h3><p>เรียงจากรับเข้ามากสุด</p></div>
         <span>${(sourceSummary || []).length.toLocaleString()} จุด</span>
       </div>
       <div class="table-responsive outreach-summary-table-wrap">
