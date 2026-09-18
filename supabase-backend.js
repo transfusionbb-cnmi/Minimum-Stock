@@ -2349,17 +2349,17 @@
     }
     const client = getClient();
 
-    // v2.9.30: cohort date — CollectDate สำหรับเลือดที่เก็บเอง, DateStockIn สำหรับกาชาด/รพ.อื่น
-    const { data, error } = await client.rpc("minimum_stock_schema_status_v2930");
+    // v2.9.31: family = BagNumber + product family เพื่อไม่ให้ RBC/Plasma/Platelet ของ donor เดียวกันกลบผลกัน
+    const { data, error } = await client.rpc("minimum_stock_schema_status_v2931");
     const missingRpc = error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""));
     if (missingRpc) {
-      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.9.30 | กรุณารัน SQL-v2.9.30-COHORT-DATE-COLLECTDATE.sql 1 ครั้ง");
+      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.9.31 | กรุณารัน SQL-v2.9.31-PRODUCT-FAMILY-OUTCOME-FIX.sql 1 ครั้ง");
     }
     if (error) {
-      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.30-COHORT-DATE-COLLECTDATE.sql");
+      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.31-PRODUCT-FAMILY-OUTCOME-FIX.sql");
     }
     if (data && data.ok === false) {
-      throw new Error(data.message || "โครงสร้าง Supabase v2.9.30 ยังไม่พร้อม | กรุณารัน SQL-v2.9.30-COHORT-DATE-COLLECTDATE.sql");
+      throw new Error(data.message || "โครงสร้าง Supabase v2.9.31 ยังไม่พร้อม | กรุณารัน SQL-v2.9.31-PRODUCT-FAMILY-OUTCOME-FIX.sql");
     }
     return data || { ok: true };
   }
@@ -2405,10 +2405,27 @@
     };
   }
 
-  function getOutreachFamilyKeyFromBagNumber(bagNumber) {
+  function getOutreachProductFamily(productType) {
+    const p = String(productType || "").trim().toLowerCase();
+    if (!p) return "UNKNOWN";
+
+    if (p.includes("cryo-removed plasma") || p.includes("cryo removed plasma")) return "PLASMA";
+    if (p.includes("cryoprecipitate") || /(^|[^a-z])cryo([^a-z]|$)/i.test(p)) return "CRYO";
+    if (p.includes("platelet") || /(^|[^a-z0-9])(sdp|ldppc|ppc)([^a-z0-9]|$)/i.test(p)) return "PLATELET";
+    if (p.includes("fresh frozen plasma") || p.includes("frozen plasma") || p.includes("plasma") || /(^|[^a-z0-9])ffp([^a-z0-9]|$)/i.test(p)) return "PLASMA";
+    if (p.includes("red cell") || p.includes("packed cell") || /(^|[^a-z0-9])(prc|lprc|ldprc|rbc)([^a-z0-9]|$)/i.test(p)) return "RBC";
+    if (p.includes("whole blood")) return "WHOLE_BLOOD";
+    if (p.includes("buffy coat")) return "BUFFY_COAT";
+    if (p.includes("autologous")) return "AUTOLOGOUS";
+
+    return `OTHER:${p.replace(/\s+/g, " ").toUpperCase()}`;
+  }
+
+  function getOutreachFamilyKeyFromBagNumber(bagNumber, productType) {
     const clean = String(bagNumber || "").trim().toUpperCase();
     if (!clean) return "";
-    return clean.replace(/\.S\d+$/i, "");
+    const bag = clean.replace(/\.S\d+$/i, "");
+    return `${bag}||${getOutreachProductFamily(productType)}`;
   }
 
   function buildOutreachMonthlyTrendFromRows(year, rows = [], filters = {}) {
@@ -2417,7 +2434,7 @@
 
     (Array.isArray(rows) ? rows : []).forEach((row) => {
       if (!row || row.aggregateEligible === false) return;
-      const familyKey = getOutreachFamilyKeyFromBagNumber(row.bagNumber);
+      const familyKey = getOutreachFamilyKeyFromBagNumber(row.bagNumber, row.productType);
       if (!familyKey) return;
       const cohortDate = parseYmdDate(row.cohortDate || getOutreachCohortDate(row.sourceGroup, row.collectDate, row.dateStockIn));
       const current = families.get(familyKey) || {
@@ -2482,7 +2499,12 @@
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2930", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2931", params);
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_master_report_v2930", params);
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_master_report_v2929", params);
       data = previous.data;
@@ -2531,8 +2553,13 @@
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2930", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2931", params);
 
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2930", params);
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2929", params);
       data = previous.data;
@@ -2732,8 +2759,13 @@
     let from = 0;
     while (true) {
       let response = await client
-        .rpc("minimum_stock_outreach_family_rows_v2930", params)
+        .rpc("minimum_stock_outreach_family_rows_v2931", params)
         .range(from, from + chunk - 1);
+      if (response.error && /Could not find the function|PGRST202|does not exist/i.test(String(response.error.message || response.error.code || ""))) {
+        response = await client
+          .rpc("minimum_stock_outreach_family_rows_v2930", params)
+          .range(from, from + chunk - 1);
+      }
       if (response.error && /Could not find the function|PGRST202|does not exist/i.test(String(response.error.message || response.error.code || ""))) {
         response = await client
           .rpc("minimum_stock_outreach_family_rows_v2929", params)

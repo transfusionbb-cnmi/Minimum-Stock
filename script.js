@@ -2362,8 +2362,26 @@ function closeOutreachDetail() {
   if (overlay) overlay.style.display = "none";
 }
 
-function outreachFamilyKeyClient(value) {
-  return String(value || "").trim().toUpperCase().replace(/\.S\d+$/i, "");
+function outreachProductFamilyClient(productType) {
+  const p = String(productType || "").trim().toLowerCase();
+  if (!p) return "UNKNOWN";
+
+  if (p.includes("cryo-removed plasma") || p.includes("cryo removed plasma")) return "PLASMA";
+  if (p.includes("cryoprecipitate") || /(^|[^a-z])cryo([^a-z]|$)/i.test(p)) return "CRYO";
+  if (p.includes("platelet") || /(^|[^a-z0-9])(sdp|ldppc|ppc)([^a-z0-9]|$)/i.test(p)) return "PLATELET";
+  if (p.includes("fresh frozen plasma") || p.includes("frozen plasma") || p.includes("plasma") || /(^|[^a-z0-9])ffp([^a-z0-9]|$)/i.test(p)) return "PLASMA";
+  if (p.includes("red cell") || p.includes("packed cell") || /(^|[^a-z0-9])(prc|lprc|ldprc|rbc)([^a-z0-9]|$)/i.test(p)) return "RBC";
+  if (p.includes("whole blood")) return "WHOLE_BLOOD";
+  if (p.includes("buffy coat")) return "BUFFY_COAT";
+  if (p.includes("autologous")) return "AUTOLOGOUS";
+
+  return `OTHER:${p.replace(/\s+/g, " ").toUpperCase()}`;
+}
+
+function outreachFamilyKeyClient(value, productType) {
+  const bag = String(value || "").trim().toUpperCase().replace(/\.S\d+$/i, "");
+  if (!bag) return "";
+  return `${bag}||${outreachProductFamilyClient(productType)}`;
 }
 
 function aggregateOutreachRowsForExport(rows) {
@@ -2380,7 +2398,7 @@ function aggregateOutreachRowsForExport(rows) {
   };
 
   (rows || []).forEach(row => {
-    const familyKey = outreachFamilyKeyClient(row?.bagNumber);
+    const familyKey = outreachFamilyKeyClient(row?.bagNumber, row?.productType);
     if (!familyKey) return;
     let family = families.get(familyKey);
     if (!family) {
@@ -2408,6 +2426,7 @@ function aggregateOutreachRowsForExport(rows) {
     const dedicated = family.rows.some(row => String(row?.status || "") === "Dedicated");
     return {
       familyKey: family.key,
+      productFamily: outreachProductFamilyClient(preferred.productType),
       sourceGroup: preferred.sourceGroup || "",
       donateSource: preferred.donateSource || "",
       outcomeCode: finalCode,
@@ -2478,7 +2497,8 @@ function aggregateOutreachRowsForExport(rows) {
 
 function mapOutreachExportRows(rows) {
   return (rows || []).map(row => ({
-    FamilyKey: outreachFamilyKeyClient(row.bagNumber),
+    FamilyKey: outreachFamilyKeyClient(row.bagNumber, row.productType),
+    ProductFamily: outreachProductFamilyClient(row.productType),
     BagNumber: row.bagNumber,
     ProductType: row.productType,
     BloodGroup: row.bloodGroup,
@@ -2606,6 +2626,7 @@ async function exportOutreachExcel() {
     }));
     const familyRows = (audit.familyRows || []).map(item => ({
       FamilyKey: item.familyKey,
+      ProductFamily: item.productFamily || "",
       จุดออกหน่วยหรือแหล่งรับเข้า: item.donateSource,
       กลุ่มแหล่งรับเข้า: item.sourceGroup,
       FinalOutcome: outcomeLabel(item.outcomeCode),
