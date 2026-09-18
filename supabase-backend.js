@@ -135,6 +135,29 @@
     return data || { ok: true, message: "ล้างข้อมูลเดิมแล้ว", deleted: null };
   }
 
+
+  async function adminClearAllData() {
+    if (!isConfigured()) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+    const client = getClient();
+    if (!client) throw new Error("ไม่พบ Supabase client");
+
+    // v2.9.32: ใช้ RPC เดียวเพื่อให้การลบ snapshot + ฐาน LIS เป็น transaction เดียว
+    // และฐานข้อมูลตรวจ role=admin อีกครั้ง ไม่พึ่งแค่การซ่อนปุ่มใน UI
+    const { data, error } = await client.rpc("minimum_stock_admin_clear_all_v2932");
+    if (error) {
+      const message = String(error.message || error || "");
+      if (/admin|permission|access denied|ไม่มีสิทธิ์/i.test(message)) {
+        throw new Error("ไม่มีสิทธิ์ล้างฐานข้อมูล การดำเนินการนี้อนุญาตเฉพาะ Admin");
+      }
+      if (/Could not find the function|PGRST202|does not exist/i.test(message)) {
+        throw new Error("ยังไม่ได้ติดตั้งระบบ Admin-only v2.9.32 กรุณารัน SQL-v2.9.32-ADMIN-ONLY-DATABASE-CLEAR.sql ก่อน");
+      }
+      throw new Error("ล้างฐานข้อมูลไม่สำเร็จ: " + message);
+    }
+    clearCachedSnapshotState();
+    return data || { ok: true };
+  }
+
   async function fallbackGetDashboard(gasWebAppUrl) {
     if (!gasWebAppUrl) throw new Error("ยังไม่ได้ตั้งค่า Supabase และไม่มี GAS_WEB_APP_URL สำรอง");
     const res = await fetch(gasWebAppUrl + "?action=getDashboard");
@@ -3250,6 +3273,7 @@
     getOutreachMonthlyTrend,
     getOutreachFamilyRows,
     getOutreachRows,
+    adminClearAllData,
     clearAllOutreachBatches,
     ensureOutreachSchema,
     getLisDataState,

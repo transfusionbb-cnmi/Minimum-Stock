@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-31-product-family-outcome-fix";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-32-admin-only-database-clear";
 const APP_SHELL = [
   "./",
   "./index.html",

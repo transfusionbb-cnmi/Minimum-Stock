@@ -183,20 +183,48 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
       }
     });
 
+    function currentUserCanClearDatabase() {
+      const access = window.MinimumStockAccess || {};
+      return Boolean(access.authenticated && access.active && String(access.role || "").toLowerCase() === "admin");
+    }
+
     if (clearDataBtn) {
       clearDataBtn.addEventListener("click", async () => {
-        const ok = await showConfirmModal("ยืนยันการล้างฐานทั้งหมด", "ปุ่มนี้จะลบทั้ง Dashboard และฐานประวัติ LIS ที่เก็บไว้ตั้งแต่เปิดระบบ\n\nหลังล้าง ต้องนำไฟล์ย้อนหลังทั้งหมดมาเป็นฐานใหม่อีกครั้ง ใช้เฉพาะกรณีจำเป็นจริง ๆ");
-        if (!ok) return;
+        // v2.9.32: UI guard เป็นเพียงชั้นแรก ฐานข้อมูลตรวจสิทธิ์ Admin ซ้ำอีกครั้ง
+        if (!currentUserCanClearDatabase()) {
+          showModal("error", "ไม่มีสิทธิ์ล้างฐานข้อมูล", "การล้างฐานข้อมูลอนุญาตเฉพาะผู้ดูแลระบบ (Admin) เท่านั้น");
+          return;
+        }
+
+        const firstConfirm = await showConfirmModal(
+          "⚠️ ล้างฐานข้อมูลทั้งหมด?",
+          "การดำเนินการนี้จะลบ Dashboard และฐานประวัติ LIS ทั้งหมดที่ใช้วิเคราะห์ในแอป\n\nหลังลบแล้วต้องนำไฟล์ LIS ย้อนหลังทั้งหมดมาอัปโหลดสร้างฐานใหม่อีกครั้ง",
+          { confirmText: "ตรวจสอบต่อ", danger: true }
+        );
+        if (!firstConfirm) return;
+
+        const finalConfirm = await showConfirmModal(
+          "ยืนยันครั้งสุดท้าย",
+          "ข้อมูลที่ลบไม่สามารถกู้คืนจากหน้าแอปได้\n\nยืนยันว่าต้องการล้างฐานข้อมูลทั้งหมดจริงหรือไม่?",
+          { confirmText: "ลบฐานข้อมูลทั้งหมด", danger: true }
+        );
+        if (!finalConfirm) return;
+
+        // เช็ก role ซ้ำทันที ก่อนยิงคำสั่ง destructive เผื่อ session/สิทธิ์เปลี่ยนระหว่างเปิด modal
+        if (!currentUserCanClearDatabase()) {
+          showModal("error", "สิทธิ์ผู้ใช้เปลี่ยนแปลง", "ไม่สามารถล้างฐานข้อมูลได้ กรุณาเข้าสู่ระบบด้วยบัญชี Admin");
+          return;
+        }
 
         clearDataBtn.disabled = true;
         clearDataBtn.textContent = "กำลังล้างข้อมูล...";
         showStatus("กำลังล้างข้อมูลเดิมในระบบ", true);
 
         try {
-          await MinimumStockBackend.clearAllSnapshots({ gasWebAppUrl: WEB_APP_URL });
-          if (MinimumStockBackend.clearAllOutreachBatches) {
-            await MinimumStockBackend.clearAllOutreachBatches();
+          if (!MinimumStockBackend.adminClearAllData) {
+            throw new Error("ยังไม่ได้อัปเดตระบบล้างฐานแบบ Admin-only v2.9.32");
           }
+          await MinimumStockBackend.adminClearAllData();
           clearMinimumStockLocalCaches({ keepVersion: true });
           currentDashboardData = null;
           currentMobilePlanningData = null;
@@ -208,7 +236,7 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
             renderOutreachAnalysis();
           }
           showStatus("✅ ล้างข้อมูลเดิมแล้ว พร้อมอัปโหลดไฟล์ใหม่", true);
-          showModal("success", "ล้างฐานข้อมูลแล้ว", "ระบบล้าง Dashboard และฐานประวัติ LIS แล้ว ครั้งถัดไปต้องอัปโหลดข้อมูลย้อนหลังทั้งหมดเป็นฐานใหม่");
+          showModal("success", "ล้างฐานข้อมูลแล้ว", "ล้าง Dashboard และฐานประวัติ LIS แล้ว ครั้งถัดไปต้องอัปโหลดข้อมูลย้อนหลังทั้งหมดเป็นฐานใหม่");
           await loadLisUploadGuide();
         } catch (err) {
           showStatus("❌ " + err.message, false);
@@ -458,7 +486,7 @@ function closeModal() {
   modalOverlay.style.display = "none";
 }
 
-function showConfirmModal(title, message) {
+function showConfirmModal(title, message, options = {}) {
   return new Promise((resolve) => {
     // Resolve confirmation elements only when the modal is used.
     // This prevents stale/null references if script.js is evaluated before
@@ -479,6 +507,9 @@ function showConfirmModal(title, message) {
     titleEl.textContent = title || "ยืนยัน";
     messageEl.textContent = String(message || "");
     messageEl.style.whiteSpace = "pre-line";
+    okBtn.textContent = options.confirmText || "ตกลง";
+    okBtn.className = options.danger ? "btn btn-danger" : "btn btn-main";
+    okBtn.style.minWidth = "120px";
     overlay.style.display = "flex";
 
     const cleanup = (result) => {
@@ -486,6 +517,9 @@ function showConfirmModal(title, message) {
       okBtn.onclick = null;
       cancelBtn.onclick = null;
       overlay.onclick = null;
+      okBtn.textContent = "ตกลง";
+      okBtn.className = "btn btn-main";
+      okBtn.style.minWidth = "120px";
       resolve(result);
     };
 
