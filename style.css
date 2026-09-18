@@ -3545,3 +3545,10 @@ body {
   .kpi-filter-gate-footer{align-items:stretch;flex-direction:column;}
   .kpi-filter-gate-footer .btn{width:100%;}
 }
+
+
+/* v2.9.44 multi-select filters */
+.kpi-fixed-filter{display:flex;flex-direction:column;gap:4px;padding:14px 16px;border:1px solid #dce8f2;border-radius:16px;background:#f8fbfe;min-height:92px;}
+.kpi-fixed-filter strong{color:#214c70;line-height:1.35;}
+.kpi-fixed-filter small{color:#7a91a4;}
+.kpi-multi-select{min-height:92px;}

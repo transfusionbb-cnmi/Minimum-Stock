@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260918-v2-9-43-manual-filter-gate";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260918-v2-9-44-multi-select-filters";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -3233,10 +3233,120 @@ function getKpiYearsFromBootstrap(bootstrap) {
   return years;
 }
 
-function kpiFilterOptionList(values = [], selected = '', allLabel = 'ไม่จำกัด') {
-  const safeSelected = String(selected || '');
-  return `<option value="">กรุณาเลือก</option><option value="__ALL__" ${safeSelected === '__ALL__' ? 'selected' : ''}>${escapeOutreachHtml(allLabel)}</option>` +
-    (values || []).map(value => `<option value="${escapeOutreachHtml(value)}" ${safeSelected === String(value) ? 'selected' : ''}>${escapeOutreachHtml(value)}</option>`).join('');
+const kpiMultiFilterConfig = {
+  sourceGroup: { label: 'กลุ่มแหล่งรับเข้า', allLabel: 'ทุกกลุ่ม' },
+  source: { label: 'จุดออกหน่วย / แหล่งรับเข้า', allLabel: 'ทุกจุด' },
+  product: { label: 'ผลิตภัณฑ์', allLabel: 'ทุกชนิด' },
+  bloodGroup: { label: 'หมู่เลือด', allLabel: 'ทุกหมู่' },
+  rh: { label: 'Rh', allLabel: 'ทุก Rh' }
+};
+const kpiMultiFilterSnapshots = {};
+
+function normalizeKpiSelectedValues(values) {
+  return Array.from(new Set((Array.isArray(values) ? values : values ? [values] : [])
+    .map(value => String(value || '').trim())
+    .filter(Boolean)));
+}
+
+function renderKpiMultiSelect(key, label, options, selectedValues, allLabel) {
+  const selected = normalizeKpiSelectedValues(selectedValues);
+  const selectedSet = new Set(selected);
+  const safeKey = String(key || '').replace(/[^a-zA-Z0-9_-]/g, '');
+  const summary = selected.length === 0 ? 'กรุณาเลือก' : selected.length === 1 ? selected[0] : `เลือกแล้ว ${selected.length} รายการ`;
+  const helper = selected.length === 0 ? `ไม่เลือก = ${allLabel}` : selected.length === 1 ? 'เลือกได้หลายรายการ' : selected.slice(0,2).join(' · ') + (selected.length > 2 ? ` · +${selected.length-2}` : '');
+  return `
+    <details class="filter-multi-select kpi-multi-select" id="kpiMultiPicker-${safeKey}" ontoggle="handleKpiMultiPickerToggle(this,'${safeKey}')">
+      <summary>
+        <span class="product-picker-label">${escapeOutreachHtml(label)}</span>
+        <strong id="kpiMultiLabel-${safeKey}">${escapeOutreachHtml(summary)}</strong>
+        <small id="kpiMultiHelper-${safeKey}">${escapeOutreachHtml(helper)}</small>
+        <span class="product-picker-chevron" aria-hidden="true">⌄</span>
+      </summary>
+      <button class="product-multi-backdrop" type="button" aria-label="ปิดตัวเลือก" onclick="cancelKpiMultiSelection('${safeKey}')"></button>
+      <div class="product-multi-menu" role="dialog" aria-modal="true" aria-label="${escapeOutreachHtml(label)}">
+        <div class="product-multi-head">
+          <div><strong>${escapeOutreachHtml(label)}</strong><span id="kpiMultiCount-${safeKey}">${selected.length ? `เลือกแล้ว ${selected.length} รายการ` : `ยังไม่จำกัด`}</span></div>
+          <button type="button" class="product-picker-close" aria-label="ยกเลิกและปิด" onclick="cancelKpiMultiSelection('${safeKey}')">×</button>
+        </div>
+        <div class="product-multi-search-wrap"><span aria-hidden="true">⌕</span><input id="kpiMultiSearch-${safeKey}" class="product-multi-search" type="search" placeholder="ค้นหา" autocomplete="off" oninput="filterKpiMultiOptions('${safeKey}',this.value)" /></div>
+        <div class="product-multi-actions"><button type="button" onclick="setAllKpiMulti('${safeKey}',true)">เลือกทั้งหมด</button><button type="button" onclick="setAllKpiMulti('${safeKey}',false)">ล้างทั้งหมด</button></div>
+        <div class="product-multi-list" id="kpiMultiList-${safeKey}">
+          ${(options || []).map(option => `<label class="product-check-row kpi-multi-row-${safeKey}" data-filter-search="${escapeOutreachHtml(String(option).toLowerCase())}"><input class="kpi-multi-check" data-filter-key="${safeKey}" type="checkbox" value="${escapeOutreachHtml(option)}" ${selectedSet.has(option) ? 'checked' : ''} onchange="updateKpiMultiDraft('${safeKey}')" /><span>${escapeOutreachHtml(option)}</span></label>`).join('')}
+          <div class="product-search-empty" id="kpiMultiEmpty-${safeKey}" hidden>ไม่พบรายการที่ค้นหา</div>
+        </div>
+        <div class="product-multi-footer"><button type="button" class="btn-product-cancel" onclick="cancelKpiMultiSelection('${safeKey}')">ยกเลิก</button><button type="button" class="btn-product-apply" id="kpiMultiApply-${safeKey}" onclick="commitKpiMultiSelection('${safeKey}')">${selected.length ? `ใช้ตัวกรอง (${selected.length})` : 'ใช้แบบไม่จำกัด'}</button></div>
+      </div>
+    </details>`;
+}
+
+function getSelectedKpiMulti(key) {
+  return Array.from(document.querySelectorAll(`.kpi-multi-check[data-filter-key="${key}"]:checked`)).map(el => el.value).filter(Boolean);
+}
+
+function updateKpiMultiDraft(key) {
+  const selected = getSelectedKpiMulti(key);
+  const count = document.getElementById(`kpiMultiCount-${key}`);
+  const apply = document.getElementById(`kpiMultiApply-${key}`);
+  if (count) count.textContent = selected.length ? `เลือกแล้ว ${selected.length} รายการ` : 'ยังไม่จำกัด';
+  if (apply) apply.textContent = selected.length ? `ใช้ตัวกรอง (${selected.length})` : 'ใช้แบบไม่จำกัด';
+}
+
+function updateKpiMultiLabel(key) {
+  const selected = getSelectedKpiMulti(key);
+  const config = kpiMultiFilterConfig[key] || { allLabel: 'ทั้งหมด' };
+  const label = document.getElementById(`kpiMultiLabel-${key}`);
+  const helper = document.getElementById(`kpiMultiHelper-${key}`);
+  if (label) label.textContent = selected.length === 0 ? 'กรุณาเลือก' : selected.length === 1 ? selected[0] : `เลือกแล้ว ${selected.length} รายการ`;
+  if (helper) helper.textContent = selected.length === 0 ? `ไม่เลือก = ${config.allLabel}` : selected.length === 1 ? 'เลือกได้หลายรายการ' : selected.slice(0,2).join(' · ') + (selected.length > 2 ? ` · +${selected.length-2}` : '');
+}
+
+function handleKpiMultiPickerToggle(details, key) {
+  if (!details) return;
+  const isMobile = window.matchMedia && window.matchMedia('(max-width: 560px)').matches;
+  if (details.open) {
+    kpiMultiFilterSnapshots[key] = getSelectedKpiMulti(key);
+    const search = document.getElementById(`kpiMultiSearch-${key}`);
+    if (search) search.value = '';
+    filterKpiMultiOptions(key, '');
+    updateKpiMultiDraft(key);
+    if (isMobile) document.body.classList.add('product-picker-open');
+  } else {
+    document.body.classList.remove('product-picker-open');
+  }
+}
+
+function filterKpiMultiOptions(key, query) {
+  const normalized = String(query || '').trim().toLowerCase();
+  let visible = 0;
+  document.querySelectorAll(`.kpi-multi-row-${key}`).forEach(row => {
+    const text = String(row.dataset.filterSearch || row.textContent || '').toLowerCase();
+    const show = !normalized || text.includes(normalized);
+    row.hidden = !show;
+    if (show) visible += 1;
+  });
+  const empty = document.getElementById(`kpiMultiEmpty-${key}`);
+  if (empty) empty.hidden = visible > 0;
+}
+
+function setAllKpiMulti(key, selectAll) {
+  document.querySelectorAll(`.kpi-multi-check[data-filter-key="${key}"]`).forEach(el => { el.checked = Boolean(selectAll); });
+  updateKpiMultiDraft(key);
+}
+
+function cancelKpiMultiSelection(key) {
+  const previous = new Set(kpiMultiFilterSnapshots[key] || []);
+  document.querySelectorAll(`.kpi-multi-check[data-filter-key="${key}"]`).forEach(el => { el.checked = previous.has(el.value); });
+  updateKpiMultiDraft(key);
+  updateKpiMultiLabel(key);
+  const picker = document.getElementById(`kpiMultiPicker-${key}`);
+  if (picker) picker.open = false;
+}
+
+function commitKpiMultiSelection(key) {
+  kpiMultiFilterSnapshots[key] = getSelectedKpiMulti(key);
+  updateKpiMultiLabel(key);
+  const picker = document.getElementById(`kpiMultiPicker-${key}`);
+  if (picker) picker.open = false;
 }
 
 function renderKpiFilterGate(route, bootstrap, preset = {}) {
@@ -3256,22 +3366,30 @@ function renderKpiFilterGate(route, bootstrap, preset = {}) {
   const showDetailFilters = !['trc','minimum'].includes(route);
   const selectedYear = String(preset.year || '');
   const yearOptions = `<option value="">กรุณาเลือกปี</option>` + years.map(y => `<option value="${y}" ${String(y)===selectedYear?'selected':''}>${y+543}</option>`).join('');
+  const normalizePreset = (many, one) => normalizeKpiSelectedValues(Array.isArray(many) ? many : (one ? [one] : []));
+  const selectedSourceGroups = route === 'outreach' ? [OUTREACH_GROUP_SELF_OUTREACH] : normalizePreset(preset.sourceGroups, preset.sourceGroup);
+  const selectedSources = normalizePreset(preset.sources, preset.source);
+  const selectedProducts = normalizePreset(preset.products, preset.product);
+  const selectedBloodGroups = normalizePreset(preset.bloodGroups, preset.bloodGroup);
+  const selectedRhs = normalizePreset(preset.rhs, preset.rh);
   const showSite = route === 'outreach' || route === 'overview' || route === 'utilization' || route === 'expiry' || route === 'turnaround' || route === 'aging';
+
   return `<div class="kpi-filter-gate-shell">
     <div class="simple-page-head mt-2"><div><div class="page-kicker">BLOOD KPI</div><h1>${escapeOutreachHtml(config[0])}</h1><div class="page-subline">${escapeOutreachHtml(config[1])}</div></div></div>
     <div class="simple-panel kpi-filter-gate">
-      <div class="panel-heading-row"><div><h3>เลือกข้อมูลก่อนแสดงผล</h3><div class="small-muted">ค่าเริ่มต้นจะไม่ Query รายงาน เพื่อให้หน้าเปิดเร็วและลดการโหลดข้อมูลที่ยังไม่ต้องใช้</div></div></div>
+      <div class="panel-heading-row"><div><h3>เลือกข้อมูลก่อนแสดงผล</h3><div class="small-muted">ตัวกรองแบบหมวดหมู่เลือกได้หลายรายการ · ไม่เลือก = ไม่จำกัดหมวดนั้น · ระบบยังไม่ Query จนกด “แสดงผล”</div></div></div>
       <div class="kpi-filter-grid">
         ${requireYear ? `<label class="outreach-filter-item">ปีที่ดู<select id="kpiFilterYear" class="form-select">${yearOptions}</select></label>` : ''}
         ${route === 'minimum' ? `<label class="outreach-filter-item">มุมมอง<select id="kpiFilterMode" class="form-select"><option value="">กรุณาเลือก</option><option value="today" ${preset.mode==='today'?'selected':''}>สต็อกวันนี้</option></select></label>` : ''}
-        ${showDetailFilters ? `<label class="outreach-filter-item">กลุ่มแหล่งรับเข้า<select id="kpiFilterSourceGroup" class="form-select">${route==='outreach' ? `<option value="${escapeOutreachHtml(OUTREACH_GROUP_SELF_OUTREACH)}" selected>หาเอง – ออกหน่วย</option>` : kpiFilterOptionList(options.sourceGroups || [], preset.sourceGroup || '', 'ทุกกลุ่ม')}</select></label>` : ''}
-        ${showDetailFilters && showSite ? `<label class="outreach-filter-item">จุดออกหน่วย / แหล่งรับเข้า<select id="kpiFilterSource" class="form-select">${kpiFilterOptionList(options.sources || [], preset.source || '', 'ทุกจุด')}</select></label>` : ''}
-        ${showDetailFilters ? `<label class="outreach-filter-item">ผลิตภัณฑ์<select id="kpiFilterProduct" class="form-select">${kpiFilterOptionList(options.products || [], preset.product || '', 'ทุกชนิด')}</select></label>` : ''}
-        ${showDetailFilters ? `<label class="outreach-filter-item">หมู่เลือด<select id="kpiFilterBloodGroup" class="form-select">${kpiFilterOptionList(options.bloodGroups || [], preset.bloodGroup || '', 'ทุกหมู่')}</select></label>` : ''}
-        ${showDetailFilters ? `<label class="outreach-filter-item">Rh<select id="kpiFilterRh" class="form-select">${kpiFilterOptionList(options.rhs || [], preset.rh || '', 'ทุก Rh')}</select></label>` : ''}
+        ${showDetailFilters && route === 'outreach' ? `<div class="outreach-filter-item kpi-fixed-filter"><span class="product-picker-label">กลุ่มแหล่งรับเข้า</span><strong>${escapeOutreachHtml(OUTREACH_GROUP_SELF_OUTREACH)}</strong><small>กำหนดตามนิยาม KPI นี้</small></div>` : ''}
+        ${showDetailFilters && route !== 'outreach' ? renderKpiMultiSelect('sourceGroup','กลุ่มแหล่งรับเข้า',options.sourceGroups||[],selectedSourceGroups,'ทุกกลุ่ม') : ''}
+        ${showDetailFilters && showSite ? renderKpiMultiSelect('source','จุดออกหน่วย / แหล่งรับเข้า',options.sources||[],selectedSources,'ทุกจุด') : ''}
+        ${showDetailFilters ? renderKpiMultiSelect('product','ผลิตภัณฑ์',options.products||[],selectedProducts,'ทุกชนิด') : ''}
+        ${showDetailFilters ? renderKpiMultiSelect('bloodGroup','หมู่เลือด',options.bloodGroups||[],selectedBloodGroups,'ทุกหมู่') : ''}
+        ${showDetailFilters ? renderKpiMultiSelect('rh','Rh',options.rhs||[],selectedRhs,'ทุก Rh') : ''}
       </div>
       <div class="kpi-filter-gate-footer">
-        <div class="small-muted">เลือกเฉพาะที่ต้องการดู แล้วกด “แสดงผล”</div>
+        <div class="small-muted">เลือกได้หลายรายการในแต่ละหมวด แล้วกด “แสดงผล”</div>
         <button class="btn btn-main" type="button" onclick="applyBloodKpiFilters('${route}')">แสดงผล</button>
       </div>
     </div>
@@ -3280,19 +3398,17 @@ function renderKpiFilterGate(route, bootstrap, preset = {}) {
 
 function readBloodKpiFilterGate(route) {
   const read = id => String(document.getElementById(id)?.value || '');
-  const normalize = value => value === '__ALL__' ? '' : value;
   const year = Number(read('kpiFilterYear') || 0);
-  const selection = {
+  return {
     route,
     year: Number.isFinite(year) && year > 1900 ? year : null,
     mode: read('kpiFilterMode'),
-    sourceGroup: normalize(read('kpiFilterSourceGroup')),
-    source: normalize(read('kpiFilterSource')),
-    product: normalize(read('kpiFilterProduct')),
-    bloodGroup: normalize(read('kpiFilterBloodGroup')),
-    rh: normalize(read('kpiFilterRh'))
+    sourceGroups: route === 'outreach' ? [OUTREACH_GROUP_SELF_OUTREACH] : getSelectedKpiMulti('sourceGroup'),
+    sources: getSelectedKpiMulti('source'),
+    products: getSelectedKpiMulti('product'),
+    bloodGroups: getSelectedKpiMulti('bloodGroup'),
+    rhs: getSelectedKpiMulti('rh')
   };
-  return selection;
 }
 
 function buildBloodKpiBackendFilters(selection = {}) {
@@ -3301,11 +3417,11 @@ function buildBloodKpiBackendFilters(selection = {}) {
     filters.dateFrom = `${selection.year}-01-01`;
     filters.dateTo = `${selection.year}-12-31`;
   }
-  if (selection.sourceGroup) filters.sourceGroups = [selection.sourceGroup];
-  if (selection.source) filters.sources = [selection.source];
-  if (selection.product) filters.productTypes = [selection.product];
-  if (selection.bloodGroup) filters.bloodGroups = [selection.bloodGroup];
-  if (selection.rh) filters.rhs = [selection.rh];
+  if (Array.isArray(selection.sourceGroups) && selection.sourceGroups.length) filters.sourceGroups = selection.sourceGroups;
+  if (Array.isArray(selection.sources) && selection.sources.length) filters.sources = selection.sources;
+  if (Array.isArray(selection.products) && selection.products.length) filters.productTypes = selection.products;
+  if (Array.isArray(selection.bloodGroups) && selection.bloodGroups.length) filters.bloodGroups = selection.bloodGroups;
+  if (Array.isArray(selection.rhs) && selection.rhs.length) filters.rhs = selection.rhs;
   return filters;
 }
 
