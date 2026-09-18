@@ -278,7 +278,8 @@ let currentOutreachFilteredRows = [];
 let currentOutreachSourceSummary = [];
 let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260916-v2-9-21-filter-synced-charts";
+let currentBloodKpiData = null;
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260918-v2-9-34-multi-filter-kpi-charts";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -1405,6 +1406,142 @@ function renderProductMultiSelect(products, selectedProducts) {
     </details>`;
 }
 
+
+const outreachMultiFilterConfig = {
+  sourceGroup: { label: "กลุ่มแหล่งรับเข้า", allLabel: "ทั้งหมด" },
+  source: { label: "จุดออกหน่วย / แหล่งรับเข้า", allLabel: "ทุกจุด" },
+  bloodGroup: { label: "หมู่เลือด", allLabel: "ทุกหมู่" },
+  rh: { label: "Rh", allLabel: "ทุก Rh" }
+};
+const outreachMultiFilterSnapshots = {};
+
+function normalizeOutreachSelectedValues(values) {
+  return Array.from(new Set((Array.isArray(values) ? values : values ? [values] : [])
+    .map(value => String(value || "").trim())
+    .filter(Boolean)));
+}
+
+function renderOutreachMultiSelect(key, label, options, selectedValues, allLabel) {
+  const selected = normalizeOutreachSelectedValues(selectedValues);
+  const selectedSet = new Set(selected);
+  const safeKey = String(key || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  const summary = selected.length === 0 ? allLabel : selected.length === 1 ? selected[0] : `เลือกแล้ว ${selected.length} รายการ`;
+  const helper = selected.length <= 1 ? "เลือกได้หลายรายการ" : selected.slice(0, 2).join(" · ") + (selected.length > 2 ? ` · +${selected.length - 2}` : "");
+  return `
+    <details class="filter-multi-select" id="outreachMultiPicker-${safeKey}" ontoggle="handleOutreachMultiPickerToggle(this,'${safeKey}')">
+      <summary>
+        <span class="product-picker-label">${escapeOutreachHtml(label)}</span>
+        <strong id="outreachMultiLabel-${safeKey}">${escapeOutreachHtml(summary)}</strong>
+        <small id="outreachMultiHelper-${safeKey}">${escapeOutreachHtml(helper)}</small>
+        <span class="product-picker-chevron" aria-hidden="true">⌄</span>
+      </summary>
+      <button class="product-multi-backdrop" type="button" aria-label="ปิดตัวเลือก" onclick="cancelOutreachMultiSelection('${safeKey}')"></button>
+      <div class="product-multi-menu" role="dialog" aria-modal="true" aria-label="${escapeOutreachHtml(label)}">
+        <div class="product-multi-head">
+          <div>
+            <strong>${escapeOutreachHtml(label)}</strong>
+            <span id="outreachMultiCount-${safeKey}">${selected.length ? `เลือกแล้ว ${selected.length} รายการ` : allLabel}</span>
+          </div>
+          <button type="button" class="product-picker-close" aria-label="ยกเลิกและปิด" onclick="cancelOutreachMultiSelection('${safeKey}')">×</button>
+        </div>
+        <div class="product-multi-search-wrap">
+          <span aria-hidden="true">⌕</span>
+          <input id="outreachMultiSearch-${safeKey}" class="product-multi-search" type="search" placeholder="ค้นหา" autocomplete="off" oninput="filterOutreachMultiOptions('${safeKey}',this.value)" />
+        </div>
+        <div class="product-multi-actions">
+          <button type="button" onclick="setAllOutreachMulti('${safeKey}',true)">เลือกทั้งหมด</button>
+          <button type="button" onclick="setAllOutreachMulti('${safeKey}',false)">ล้างทั้งหมด</button>
+        </div>
+        <div class="product-multi-list" id="outreachMultiList-${safeKey}">
+          ${(options || []).map(option => `
+            <label class="product-check-row outreach-multi-row-${safeKey}" data-filter-search="${escapeOutreachHtml(String(option).toLowerCase())}">
+              <input class="outreach-multi-check" data-filter-key="${safeKey}" type="checkbox" value="${escapeOutreachHtml(option)}" ${selectedSet.has(option) ? "checked" : ""} onchange="updateOutreachMultiDraft('${safeKey}')" />
+              <span>${escapeOutreachHtml(option)}</span>
+            </label>`).join("")}
+          <div class="product-search-empty" id="outreachMultiEmpty-${safeKey}" hidden>ไม่พบรายการที่ค้นหา</div>
+        </div>
+        <div class="product-multi-footer">
+          <button type="button" class="btn-product-cancel" onclick="cancelOutreachMultiSelection('${safeKey}')">ยกเลิก</button>
+          <button type="button" class="btn-product-apply" id="outreachMultiApply-${safeKey}" onclick="commitOutreachMultiSelection('${safeKey}')">${selected.length ? `ใช้ตัวกรอง (${selected.length})` : `ใช้${escapeOutreachHtml(allLabel)}`}</button>
+        </div>
+      </div>
+    </details>`;
+}
+
+function getSelectedOutreachMulti(key) {
+  return Array.from(document.querySelectorAll(`.outreach-multi-check[data-filter-key="${key}"]:checked`))
+    .map(el => el.value)
+    .filter(Boolean);
+}
+
+function updateOutreachMultiDraft(key) {
+  const selected = getSelectedOutreachMulti(key);
+  const config = outreachMultiFilterConfig[key] || { allLabel: "ทั้งหมด" };
+  const count = document.getElementById(`outreachMultiCount-${key}`);
+  const apply = document.getElementById(`outreachMultiApply-${key}`);
+  if (count) count.textContent = selected.length ? `เลือกแล้ว ${selected.length} รายการ` : config.allLabel;
+  if (apply) apply.textContent = selected.length ? `ใช้ตัวกรอง (${selected.length})` : `ใช้${config.allLabel}`;
+}
+
+function updateOutreachMultiLabel(key) {
+  const selected = getSelectedOutreachMulti(key);
+  const config = outreachMultiFilterConfig[key] || { allLabel: "ทั้งหมด" };
+  const label = document.getElementById(`outreachMultiLabel-${key}`);
+  const helper = document.getElementById(`outreachMultiHelper-${key}`);
+  if (label) label.textContent = selected.length === 0 ? config.allLabel : selected.length === 1 ? selected[0] : `เลือกแล้ว ${selected.length} รายการ`;
+  if (helper) helper.textContent = selected.length <= 1 ? "เลือกได้หลายรายการ" : selected.slice(0, 2).join(" · ") + (selected.length > 2 ? ` · +${selected.length - 2}` : "");
+}
+
+function handleOutreachMultiPickerToggle(details, key) {
+  if (!details) return;
+  const isMobile = window.matchMedia && window.matchMedia("(max-width: 560px)").matches;
+  if (details.open) {
+    outreachMultiFilterSnapshots[key] = getSelectedOutreachMulti(key);
+    const search = document.getElementById(`outreachMultiSearch-${key}`);
+    if (search) search.value = "";
+    filterOutreachMultiOptions(key, "");
+    updateOutreachMultiDraft(key);
+    if (isMobile) document.body.classList.add("product-picker-open");
+  } else {
+    document.body.classList.remove("product-picker-open");
+  }
+}
+
+function filterOutreachMultiOptions(key, query) {
+  const normalized = String(query || "").trim().toLowerCase();
+  let visible = 0;
+  document.querySelectorAll(`.outreach-multi-row-${key}`).forEach(row => {
+    const text = String(row.dataset.filterSearch || row.textContent || "").toLowerCase();
+    const show = !normalized || text.includes(normalized);
+    row.hidden = !show;
+    if (show) visible += 1;
+  });
+  const empty = document.getElementById(`outreachMultiEmpty-${key}`);
+  if (empty) empty.hidden = visible > 0;
+}
+
+function setAllOutreachMulti(key, selectAll) {
+  document.querySelectorAll(`.outreach-multi-check[data-filter-key="${key}"]`).forEach(el => { el.checked = Boolean(selectAll); });
+  updateOutreachMultiDraft(key);
+}
+
+function cancelOutreachMultiSelection(key) {
+  const previous = new Set(outreachMultiFilterSnapshots[key] || []);
+  document.querySelectorAll(`.outreach-multi-check[data-filter-key="${key}"]`).forEach(el => { el.checked = previous.has(el.value); });
+  updateOutreachMultiDraft(key);
+  updateOutreachMultiLabel(key);
+  const picker = document.getElementById(`outreachMultiPicker-${key}`);
+  if (picker) picker.open = false;
+}
+
+function commitOutreachMultiSelection(key) {
+  outreachMultiFilterSnapshots[key] = getSelectedOutreachMulti(key);
+  updateOutreachMultiLabel(key);
+  const picker = document.getElementById(`outreachMultiPicker-${key}`);
+  if (picker) picker.open = false;
+  applyOutreachFilters();
+}
+
 let outreachProductSelectionSnapshot = [];
 
 function getSelectedOutreachProducts() {
@@ -1587,13 +1724,18 @@ function renderOutreachFilterSummary(filters) {
       chips.push(`ช่วงวันที่: ${formatThaiDateShort(filters?.dateFrom) || "เริ่มต้น"} → ${formatThaiDateShort(filters?.dateTo) || "ล่าสุด"}`);
     }
   }
-  if (filters?.sourceGroup) chips.push(`กลุ่ม: ${filters.sourceGroup}`);
-  if (filters?.source) chips.push(`จุด/แหล่ง: ${filters.source}`);
+  const summarizeMulti = (label, values, unit = "รายการ") => {
+    const selected = normalizeOutreachSelectedValues(values);
+    if (!selected.length) return;
+    chips.push(selected.length === 1 ? `${label}: ${selected[0]}` : `${label}: ${selected.join(" · ")}`);
+  };
+  summarizeMulti("กลุ่ม", filters?.sourceGroups || (filters?.sourceGroup ? [filters.sourceGroup] : []));
+  summarizeMulti("จุด/แหล่ง", filters?.sources || (filters?.source ? [filters.source] : []));
   if (Array.isArray(filters?.productTypes) && filters.productTypes.length) {
-    chips.push(filters.productTypes.length === 1 ? `ผลิตภัณฑ์: ${filters.productTypes[0]}` : `ผลิตภัณฑ์: ${filters.productTypes.length} ชนิด`);
+    chips.push(filters.productTypes.length === 1 ? `ผลิตภัณฑ์: ${filters.productTypes[0]}` : `ผลิตภัณฑ์: ${filters.productTypes.join(" · ")}`);
   }
-  if (filters?.bloodGroup) chips.push(`หมู่เลือด: ${filters.bloodGroup}`);
-  if (filters?.rh) chips.push(`Rh: ${filters.rh}`);
+  summarizeMulti("หมู่เลือด", filters?.bloodGroups || (filters?.bloodGroup ? [filters.bloodGroup] : []));
+  summarizeMulti("Rh", filters?.rhs || (filters?.rh ? [filters.rh] : []));
 
   if (!chips.length) {
     box.innerHTML = `
@@ -1756,11 +1898,11 @@ function renderOutreachAnalysis() {
                 </div>`;
             })()}
           </div>
-          <label class="outreach-filter-item">กลุ่มแหล่งรับเข้า<select id="outreachSourceGroup" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(options.sourceGroups || [], f.sourceGroup || "", "ทั้งหมด")}</select></label>
-          <label class="outreach-filter-item">จุดออกหน่วย / แหล่งรับเข้า<select id="outreachSource" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(options.sources || [], f.source || "", "ทุกจุด")}</select></label>
+          ${renderOutreachMultiSelect("sourceGroup", "กลุ่มแหล่งรับเข้า", options.sourceGroups || [], f.sourceGroups || (f.sourceGroup ? [f.sourceGroup] : []), "ทั้งหมด")}
+          ${renderOutreachMultiSelect("source", "จุดออกหน่วย / แหล่งรับเข้า", options.sources || [], f.sources || (f.source ? [f.source] : []), "ทุกจุด")}
           ${renderProductMultiSelect(options.products || [], f.productTypes || [])}
-          <label class="outreach-filter-item">หมู่เลือด<select id="outreachBloodGroup" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(options.bloodGroups || [], f.bloodGroup || "", "ทุกหมู่")}</select></label>
-          <label class="outreach-filter-item">Rh<select id="outreachRh" class="form-select" onchange="applyOutreachFilters()">${renderSelectOptions(options.rhs || [], f.rh || "", "ทุก Rh")}</select></label>
+          ${renderOutreachMultiSelect("bloodGroup", "หมู่เลือด", options.bloodGroups || [], f.bloodGroups || (f.bloodGroup ? [f.bloodGroup] : []), "ทุกหมู่")}
+          ${renderOutreachMultiSelect("rh", "Rh", options.rhs || [], f.rhs || (f.rh ? [f.rh] : []), "ทุก Rh")}
           <details class="outreach-advanced-date">
             <summary>วันที่แบบละเอียด</summary>
             <div class="outreach-exact-date-grid">
@@ -1847,11 +1989,11 @@ function getOutreachFilterValues() {
   return {
     dateFrom: read("outreachDateFrom"),
     dateTo: read("outreachDateTo"),
-    sourceGroup: read("outreachSourceGroup"),
-    source: read("outreachSource"),
+    sourceGroups: getSelectedOutreachMulti("sourceGroup"),
+    sources: getSelectedOutreachMulti("source"),
     productTypes: getSelectedOutreachProducts(),
-    bloodGroup: read("outreachBloodGroup"),
-    rh: read("outreachRh")
+    bloodGroups: getSelectedOutreachMulti("bloodGroup"),
+    rhs: getSelectedOutreachMulti("rh")
   };
 }
 
@@ -1926,13 +2068,18 @@ function applyOutreachExactDateFilter() {
 }
 
 function resetOutreachFilters() {
-  ["outreachDateFrom", "outreachDateTo", "outreachSourceGroup", "outreachSource", "outreachBloodGroup", "outreachRh"].forEach(id => {
+  ["outreachDateFrom", "outreachDateTo"].forEach(id => {
     const element = document.getElementById(id);
     if (element) element.value = "";
   });
-  document.querySelectorAll(".outreach-product-check").forEach(el => { el.checked = false; });
+  document.querySelectorAll(".outreach-product-check,.outreach-multi-check").forEach(el => { el.checked = false; });
   updateOutreachProductLabel();
   updateOutreachProductDraftCount();
+  Object.keys(outreachMultiFilterConfig).forEach(key => {
+    outreachMultiFilterSnapshots[key] = [];
+    updateOutreachMultiLabel(key);
+    updateOutreachMultiDraft(key);
+  });
 
   const minDate = currentOutreachAnalysisData?.filterOptions?.minDate || currentOutreachAnalysisData?.sourceStartDate || "";
   const maxDate = currentOutreachAnalysisData?.filterOptions?.maxDate || currentOutreachAnalysisData?.sourceEndDate || "";
@@ -2011,7 +2158,9 @@ async function loadOutreachTrend() {
           month: monthNumber,
           stockIn: Number(m.stockIn || 0),
           released: Number(m.released || 0),
-          expired: Number(m.expired || 0)
+          expired: Number(m.expired || 0),
+          rejected: Number(m.rejected || 0),
+          unresolved: Number(m.unresolved || 0)
         });
       });
     });
@@ -2036,50 +2185,57 @@ function renderOutreachTrendChart(data) {
 
   const monthNames = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
   const monthNamesLong = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
-  const maxValue = Math.max(1, ...months.flatMap(m => [Number(m.stockIn||0), Number(m.released||0), Number(m.expired||0)]));
+  const maxReceived = Math.max(1, ...months.map(m => Number(m.stockIn || 0)));
   const totalIn = months.reduce((s,m)=>s+Number(m.stockIn||0),0);
   const totalReleased = months.reduce((s,m)=>s+Number(m.released||0),0);
   const totalExpired = months.reduce((s,m)=>s+Number(m.expired||0),0);
   const totalRejected = months.reduce((s,m)=>s+Number(m.rejected||0),0);
+  const totalUnresolved = months.reduce((s,m)=>s+Number(m.unresolved||0),0);
   const multiYear = new Set(months.map(m => Number(m.year))).size > 1;
   const ariaStart = months[0] ? `${monthNames[Number(months[0].month)-1]} ${Number(months[0].year)+543}` : "";
   const ariaEnd = months[months.length-1] ? `${monthNames[Number(months[months.length-1].month)-1]} ${Number(months[months.length-1].year)+543}` : "";
 
   box.innerHTML = `
-    <div class="trend-summary-row">
-      <span><i class="trend-dot trend-in"></i>รับเข้า <b>${totalIn.toLocaleString()}</b></span>
-      <span><i class="trend-dot trend-released"></i>ใช้/จ่าย/ส่งต่อ <b>${totalReleased.toLocaleString()}</b></span>
-      <span><i class="trend-dot trend-expired"></i>หมดอายุ <b>${totalExpired.toLocaleString()}</b></span>
-      ${totalRejected ? `<span><i class="trend-dot trend-rejected"></i>ไม่เหมาะสม <b>${totalRejected.toLocaleString()}</b></span>` : ""}
+    <div class="trend-toolbar-row">
+      <div class="trend-summary-row">
+        <span><i class="trend-dot trend-released"></i>ใช้/จ่าย/ส่งต่อ <b>${totalReleased.toLocaleString()}</b></span>
+        <span><i class="trend-dot trend-expired"></i>หมดอายุ <b>${totalExpired.toLocaleString()}</b></span>
+        <span><i class="trend-dot trend-rejected"></i>ไม่เหมาะสม <b>${totalRejected.toLocaleString()}</b></span>
+        <span><i class="trend-dot trend-unresolved"></i>ยังอยู่ในคลัง <b>${totalUnresolved.toLocaleString()}</b></span>
+        <span class="trend-total-chip">รับเข้ารวม <b>${totalIn.toLocaleString()}</b></span>
+      </div>
+      <button class="btn btn-light btn-sm no-print" type="button" onclick="downloadOutreachTrendChartPng()">ดาวน์โหลดกราฟ PNG</button>
     </div>
-    <div class="monthly-trend-chart" style="--trend-columns:${Math.max(12,months.length)}" role="img" aria-label="กราฟรับเข้า ใช้/จ่าย/ส่งต่อ และหมดอายุ รายเดือน ${ariaStart} ถึง ${ariaEnd}">
+    <div class="monthly-outcome-chart" style="--trend-columns:${Math.max(12,months.length)}" role="img" aria-label="กราฟผลลัพธ์ของเลือดที่รับเข้ารายเดือน ${ariaStart} ถึง ${ariaEnd}">
       ${months.map((m) => {
         const monthIndex = Math.max(0, Number(m.month || 1) - 1);
         const year = Number(m.year || 0);
         const stockIn = Number(m.stockIn || 0);
         const released = Number(m.released || 0);
         const expired = Number(m.expired || 0);
-        const hIn = Math.max(stockIn ? 10 : 2, Math.round((stockIn / maxValue) * 100));
-        const hRel = Math.max(released ? 10 : 2, Math.round((released / maxValue) * 100));
-        const hExp = expired ? Math.max(10, Math.round((expired / maxValue) * 100)) : 0;
+        const rejected = Number(m.rejected || 0);
+        const unresolved = Number(m.unresolved || 0);
         const shortYear = String(year + 543).slice(-2);
         const label = multiYear ? `${monthNames[monthIndex]} ${shortYear}` : monthNames[monthIndex];
         const fullLabel = `${monthNamesLong[monthIndex]} ${year + 543}`;
+        const barHeight = Math.max(stockIn ? 10 : 2, Math.round((stockIn / maxReceived) * 100));
+        const pct = value => stockIn > 0 ? (Number(value || 0) / stockIn) * 100 : 0;
         return `
-          <div class="month-group">
-            <div class="month-top-value">${Math.max(stockIn, released, expired).toLocaleString()}</div>
-            <div class="month-bars">
-              <span class="month-bar trend-in" style="height:${hIn}%" title="${fullLabel} · Stock in ${stockIn.toLocaleString()}"></span>
-              <span class="month-bar trend-released" style="height:${hRel}%" title="${fullLabel} · ใช้/จ่าย/ส่งต่อ ${released.toLocaleString()}"></span>
-              <span class="month-bar trend-expired" style="height:${hExp}%" title="${fullLabel} · หมดอายุ ${expired.toLocaleString()}"></span>
+          <div class="outcome-month-group">
+            <div class="month-top-value">${stockIn.toLocaleString()}</div>
+            <div class="outcome-bar-area">
+              <div class="outcome-stack" style="height:${barHeight}%" title="${fullLabel} · รับเข้า ${stockIn.toLocaleString()}">
+                <span class="outcome-segment is-used" style="height:${pct(released)}%" title="ใช้/จ่าย/ส่งต่อ ${released.toLocaleString()}"></span>
+                <span class="outcome-segment is-expired" style="height:${pct(expired)}%" title="หมดอายุ ${expired.toLocaleString()}"></span>
+                <span class="outcome-segment is-rejected" style="height:${pct(rejected)}%" title="ไม่เหมาะสม ${rejected.toLocaleString()}"></span>
+                <span class="outcome-segment is-unresolved" style="height:${pct(unresolved)}%" title="ยังอยู่ในคลัง ${unresolved.toLocaleString()}"></span>
+              </div>
             </div>
             <div class="month-label">${label}</div>
           </div>`;
       }).join("")}
     </div>
-    <div class="trend-note-row">
-      <div class="small-muted">เลขบนสุด = ค่าสูงสุดของเดือน</div>
-    </div>
+    <div class="trend-note-row"><div class="small-muted">ความสูงของแท่ง = จำนวนรับเข้า · สีภายในแท่ง = ผลลัพธ์สุดท้ายของถุงในเดือนนั้น</div></div>
     <div class="trend-table-wrap mt-3">
       <table class="table table-sm trend-data-table align-middle mb-0">
         <thead>
@@ -2089,6 +2245,7 @@ function renderOutreachTrendChart(data) {
             <th class="text-end">ใช้/จ่าย/ส่งต่อ</th>
             <th class="text-end">หมดอายุ</th>
             <th class="text-end">ไม่เหมาะสม</th>
+            <th class="text-end">ยังอยู่ในคลัง</th>
           </tr>
         </thead>
         <tbody>
@@ -2101,12 +2258,97 @@ function renderOutreachTrendChart(data) {
               <td class="text-end">${Number(m.released || 0).toLocaleString()}</td>
               <td class="text-end">${Number(m.expired || 0).toLocaleString()}</td>
               <td class="text-end">${Number(m.rejected || 0).toLocaleString()}</td>
+              <td class="text-end">${Number(m.unresolved || 0).toLocaleString()}</td>
             </tr>`;
           }).join("")}
         </tbody>
       </table>
-    </div>
-    `;
+    </div>`;
+}
+
+function downloadOutreachTrendChartPng() {
+  const months = Array.isArray(currentOutreachTrendData?.months) ? currentOutreachTrendData.months : [];
+  if (!months.length) {
+    showModal("error", "ยังไม่มีกราฟ", "กรุณาเลือกช่วงข้อมูลที่มีรายการก่อน");
+    return;
+  }
+  const monthNames = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+  const canvas = document.createElement("canvas");
+  const width = Math.max(1200, months.length * 92 + 180);
+  const height = 720;
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "#173b5d";
+  ctx.font = "700 30px Sarabun, sans-serif";
+  ctx.fillText("แนวโน้มผลลัพธ์ถุงเลือดรายเดือน", 60, 56);
+  const first = months[0], last = months[months.length - 1];
+  ctx.font = "400 17px Sarabun, sans-serif";
+  ctx.fillStyle = "#6f8598";
+  ctx.fillText(`ช่วง ${monthNames[first.month-1]} ${Number(first.year)+543} – ${monthNames[last.month-1]} ${Number(last.year)+543}`, 60, 86);
+
+  const legend = [
+    ["ใช้/จ่าย/ส่งต่อ", "#2d9f73"],
+    ["หมดอายุ", "#dc6d68"],
+    ["ไม่เหมาะสม", "#d7a44b"],
+    ["ยังอยู่ในคลัง", "#a8b8c6"]
+  ];
+  let lx = 60;
+  ctx.font = "600 15px Sarabun, sans-serif";
+  legend.forEach(([label,color]) => {
+    ctx.fillStyle = color; ctx.fillRect(lx, 112, 14, 14);
+    ctx.fillStyle = "#36556f"; ctx.fillText(label, lx + 22, 125);
+    lx += ctx.measureText(label).width + 65;
+  });
+
+  const chartX = 72, chartY = 160, chartH = 430, chartW = width - 130;
+  const maxReceived = Math.max(1, ...months.map(m => Number(m.stockIn || 0)));
+  ctx.strokeStyle = "#e6eef4"; ctx.lineWidth = 1;
+  ctx.fillStyle = "#7890a4"; ctx.font = "400 13px Sarabun, sans-serif";
+  for (let i=0;i<=4;i+=1) {
+    const y = chartY + chartH - (chartH*i/4);
+    ctx.beginPath(); ctx.moveTo(chartX, y); ctx.lineTo(chartX+chartW, y); ctx.stroke();
+    const value = Math.round(maxReceived*i/4);
+    ctx.fillText(value.toLocaleString(), 20, y+4);
+  }
+  const slot = chartW / months.length;
+  months.forEach((m, idx) => {
+    const stockIn = Number(m.stockIn || 0);
+    const values = [Number(m.released||0), Number(m.expired||0), Number(m.rejected||0), Number(m.unresolved||0)];
+    const colors = ["#2d9f73", "#dc6d68", "#d7a44b", "#a8b8c6"];
+    const totalHeight = stockIn / maxReceived * chartH;
+    const barW = Math.min(48, slot * 0.56);
+    const x = chartX + slot*idx + (slot-barW)/2;
+    let yBottom = chartY + chartH;
+    values.forEach((v, j) => {
+      const h = stockIn > 0 ? totalHeight * (v / stockIn) : 0;
+      if (h <= 0) return;
+      ctx.fillStyle = colors[j];
+      ctx.fillRect(x, yBottom-h, barW, h);
+      yBottom -= h;
+    });
+    ctx.fillStyle = "#173b5d"; ctx.font = "700 13px Sarabun, sans-serif";
+    const totalText = stockIn.toLocaleString();
+    ctx.fillText(totalText, x + (barW-ctx.measureText(totalText).width)/2, chartY+chartH-totalHeight-8);
+    ctx.fillStyle = "#60788d"; ctx.font = "600 13px Sarabun, sans-serif";
+    const label = `${monthNames[Number(m.month)-1]} ${String(Number(m.year)+543).slice(-2)}`;
+    ctx.save();
+    ctx.translate(x+barW/2, chartY+chartH+28);
+    ctx.rotate(-0.45);
+    ctx.fillText(label, -ctx.measureText(label).width/2, 0);
+    ctx.restore();
+  });
+  ctx.fillStyle = "#7890a4";
+  ctx.font = "400 13px Sarabun, sans-serif";
+  ctx.fillText("ความสูงรวมของแต่ละแท่งเท่ากับจำนวนรับเข้าในเดือนนั้น", 60, height-42);
+
+  const link = document.createElement("a");
+  link.download = `blood-outcome-trend-${new Date().toISOString().slice(0,10)}.png`;
+  link.href = canvas.toDataURL("image/png");
+  link.click();
 }
 
 function renderOutreachReportSections(report) {
@@ -2177,6 +2419,7 @@ function renderOutreachCharts(groupData, sourceSummary) {
   const topExpired = [...(sourceSummary || [])].sort((a, b) => b.expiredPercent - a.expiredPercent || b.received - a.received).slice(0, 12);
 
   box.innerHTML = `
+    <div class="d-flex justify-content-end mb-2 no-print"><button class="btn btn-light btn-sm" type="button" onclick="downloadOutreachSourceChartPng()">ดาวน์โหลดกราฟแหล่งรับเข้า PNG</button></div>
     <div class="outreach-chart-grid mb-3">
       <div class="hero-card outreach-chart-card">
         <div class="outreach-section-head mb-3">
@@ -2278,6 +2521,38 @@ function renderOutreachCharts(groupData, sourceSummary) {
       </div>
     </div>
   `;
+}
+
+
+function downloadOutreachSourceChartPng() {
+  const rows = (currentOutreachSourceSummary || []).slice(0,12);
+  if (!rows.length) {
+    showModal("error", "ยังไม่มีกราฟ", "ไม่มีข้อมูลแหล่งรับเข้าตามตัวกรองปัจจุบัน");
+    return;
+  }
+  const canvas=document.createElement("canvas");
+  canvas.width=1600; canvas.height=Math.max(760,220+rows.length*58);
+  const ctx=canvas.getContext("2d");
+  ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="#173b5d";ctx.font="700 32px Sarabun, sans-serif";ctx.fillText("ผลลัพธ์ถุงเลือดตามแหล่งรับเข้า",60,58);
+  ctx.fillStyle="#6f8598";ctx.font="400 17px Sarabun, sans-serif";ctx.fillText("12 จุดที่มีจำนวนรับเข้าสูงสุดตามตัวกรอง",60,88);
+  const legend=[["ใช้/จ่าย/ส่งต่อ","#2d9f73"],["หมดอายุ","#dc6d68"],["ไม่เหมาะสม","#d7a44b"],["ยังอยู่ในคลัง","#a8b8c6"]];
+  let lx=60;ctx.font="600 14px Sarabun, sans-serif";
+  legend.forEach(([label,color])=>{ctx.fillStyle=color;ctx.fillRect(lx,112,14,14);ctx.fillStyle="#36556f";ctx.fillText(label,lx+22,125);lx+=ctx.measureText(label).width+70;});
+  const labelX=60, barX=480, barW=940, rowStart=175;
+  const maxReceived=Math.max(1,...rows.map(r=>Number(r.received||0)));
+  rows.forEach((r,i)=>{
+    const y=rowStart+i*58;
+    const name=String(r.donateSource||"");
+    ctx.fillStyle="#173b5d";ctx.font="700 15px Sarabun, sans-serif";ctx.fillText(name.length>44?name.slice(0,44)+"…":name,labelX,y+17);
+    ctx.fillStyle="#edf3f7";ctx.fillRect(barX,y,barW,24);
+    const received=Number(r.received||0), used=Number(r.used||0), expired=Number(r.expired||0), rejected=Number(r.rejected||0)+Number(r.otherDiscarded||0), unresolved=Number(r.unresolved||0);
+    const fullW=barW*(received/maxReceived); let x=barX;
+    [[used,"#2d9f73"],[expired,"#dc6d68"],[rejected,"#d7a44b"],[unresolved,"#a8b8c6"]].forEach(([v,c])=>{const w=received>0?fullW*(v/received):0;if(w>0){ctx.fillStyle=c;ctx.fillRect(x,y,w,24);x+=w;}});
+    ctx.fillStyle="#173b5d";ctx.font="700 14px Sarabun, sans-serif";ctx.fillText(received.toLocaleString(),barX+barW+22,y+17);
+  });
+  ctx.fillStyle="#7890a4";ctx.font="400 13px Sarabun, sans-serif";ctx.fillText("ความยาวแท่งเทียบตามจำนวนรับเข้า และแบ่งสีตามผลลัพธ์สุดท้าย",60,canvas.height-34);
+  const link=document.createElement('a');link.download=`blood-outcome-by-source-${new Date().toISOString().slice(0,10)}.png`;link.href=canvas.toDataURL('image/png');link.click();
 }
 
 function renderOutreachSourceTable(sourceSummary) {
@@ -2700,6 +2975,140 @@ function bindOutreachDetailModal() {
 document.addEventListener("DOMContentLoaded", bindOutreachDetailModal);
 
 
+
+async function loadBloodKpiPage(year = null) {
+  const box = document.getElementById("bloodKpiDashboard");
+  if (!box) return;
+  box.innerHTML = `<div class="hero-card mt-4"><div class="fw-bold">กำลังโหลด KPI เลือด...</div><div class="small-muted">กำลังคำนวณอัตราการพึ่งพาเลือดแดงจากสภากาชาดไทย</div></div>`;
+  try {
+    const data = await MinimumStockBackend.getBloodKpiRedCellDependency(year);
+    currentBloodKpiData = data;
+    renderBloodKpiPage(data);
+  } catch (err) {
+    box.innerHTML = `<div class="hero-card mt-4"><h4 class="fw-bold mb-2">เปิด KPI ไม่ได้</h4><div class="small-muted">${escapeOutreachHtml(err.message)}</div></div>`;
+  }
+}
+
+function renderBloodKpiPage(data) {
+  const box = document.getElementById("bloodKpiDashboard");
+  if (!box) return;
+  const year = Number(data?.year || 0);
+  const comparisonYear = Number(data?.comparisonYear || year - 1);
+  const years = Array.isArray(data?.years) ? data.years.map(Number).filter(Number.isFinite) : [];
+  const summary = data?.summary || {};
+  const months = Array.isArray(data?.months) ? data.months : [];
+  const rate = Number(summary.rate || 0);
+  const previousRate = Number(summary.previousRate || 0);
+  const previousTotal = Number(summary.previousTotalRbc || 0);
+  const delta = Number(summary.deltaPp || 0);
+  const reduction = Number(summary.reductionPp || 0);
+  const improved = previousTotal > 0 && reduction > 0;
+  const changedText = previousTotal <= 0 ? "ยังไม่มีข้อมูลปีก่อนสำหรับเทียบ" : Math.abs(delta) < 0.005 ? "เท่ากับปีก่อน" : improved ? `ลดลง ${Math.abs(reduction).toFixed(2)} จุดเปอร์เซ็นต์` : `เพิ่มขึ้น ${Math.abs(delta).toFixed(2)} จุดเปอร์เซ็นต์`;
+  const yearOptions = (years.length ? years : [year]).map(y => `<option value="${y}" ${y===year?"selected":""}>${y+543}</option>`).join("");
+
+  box.innerHTML = `
+    <div class="kpi-blood-shell">
+      <div class="simple-page-head mt-2">
+        <div>
+          <h1>KPI เลือด</h1>
+          <div class="page-subline">ติดตามตัวชี้วัดของหน่วยจากข้อมูล LIS</div>
+        </div>
+        <div class="d-flex gap-2 align-items-end flex-wrap no-print">
+          <label class="outreach-filter-item mb-0">ปีที่ดู
+            <select class="form-select kpi-year-select" onchange="loadBloodKpiPage(this.value)">${yearOptions}</select>
+          </label>
+          <button class="btn btn-light" type="button" onclick="downloadBloodKpiChartPng()">PNG</button>
+          <button class="btn btn-main" type="button" onclick="window.print()">PDF</button>
+        </div>
+      </div>
+
+      <div class="kpi-hero-grid mb-3">
+        <div class="kpi-primary-card">
+          <div class="small-muted">KPI 1</div>
+          <h3 class="mt-1 mb-0">อัตราการพึ่งพาเลือดแดงจากสภากาชาดไทย</h3>
+          <div class="kpi-value">${rate.toFixed(1)}%</div>
+          <div class="kpi-delta ${previousTotal <= 0 || improved || Math.abs(delta)<0.005 ? "" : "is-up"}">${escapeOutreachHtml(changedText)}${previousTotal > 0 ? ` จากปี ${comparisonYear+543}` : ""}</div>
+          <div class="kpi-mini-stats">
+            <div class="kpi-mini-stat"><span>เลือดแดงรับเข้าทั้งหมด</span><b>${Number(summary.totalRbc||0).toLocaleString()}</b></div>
+            <div class="kpi-mini-stat"><span>รับจากกาชาด</span><b>${Number(summary.trcRbc||0).toLocaleString()}</b></div>
+            <div class="kpi-mini-stat"><span>ปีก่อนช่วงเดียวกัน</span><b>${previousRate.toFixed(1)}%</b></div>
+          </div>
+          <div class="kpi-formula">อัตราพึ่งพา = เลือดแดงจากสภากาชาดไทย ÷ เลือดแดงรับเข้าทั้งหมด × 100</div>
+        </div>
+        <div class="kpi-line-card">
+          <div class="panel-heading-row mb-2">
+            <div><h3>แนวโน้มรายเดือน</h3><div class="small-muted">ปี ${year+543} เทียบกับ ${comparisonYear+543}</div></div>
+          </div>
+          ${renderBloodKpiLineSvg(months, year, comparisonYear)}
+        </div>
+      </div>
+
+      <div class="simple-panel mb-3">
+        <div class="panel-heading-row"><div><h3>รายละเอียดรายเดือน</h3><div class="small-muted">ใช้จำนวน RBC family ตาม CohortDate</div></div></div>
+        <div class="table-responsive">
+          <table class="table simple-table align-middle mb-0">
+            <thead><tr><th>เดือน</th><th class="text-end">RBC รับเข้า</th><th class="text-end">จากกาชาด</th><th class="text-end">อัตราพึ่งพา</th><th class="text-end">ปีก่อน</th></tr></thead>
+            <tbody>${months.map(m => `<tr><td>${["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."][Number(m.month||1)-1]}</td><td class="text-end">${Number(m.totalRbc||0).toLocaleString()}</td><td class="text-end">${Number(m.trcRbc||0).toLocaleString()}</td><td class="text-end fw-bold">${Number(m.rate||0).toFixed(1)}%</td><td class="text-end">${Number(m.previousRate||0).toFixed(1)}%</td></tr>`).join("")}</tbody>
+          </table>
+        </div>
+      </div>
+      <div class="small-muted mb-4">KPI อื่นสามารถเพิ่มต่อในหน้านี้ได้ภายหลัง โดยไม่กระทบสูตร KPI ปัจจุบัน</div>
+    </div>`;
+}
+
+function renderBloodKpiLineSvg(months, year, comparisonYear) {
+  const rows = Array.isArray(months) ? months : [];
+  const w = 860, h = 360, left = 58, right = 24, top = 26, bottom = 48;
+  const chartW = w-left-right, chartH = h-top-bottom;
+  const monthNames = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+  const validRates = rows.flatMap(m => [Number(m.rate||0), Number(m.previousRate||0)]).filter(Number.isFinite);
+  const maxRate = Math.max(10, Math.ceil(Math.max(...validRates, 0) / 10) * 10);
+  const yMax = Math.min(100, maxRate + 10);
+  const x = i => left + (chartW * i / 11);
+  const y = v => top + chartH - (Math.max(0,Math.min(yMax,Number(v||0))) / yMax) * chartH;
+  const pathFor = key => rows.map((m,i)=>`${i===0?"M":"L"}${x(i).toFixed(1)},${y(m[key]).toFixed(1)}`).join(" ");
+  const grid = [0, .25, .5, .75, 1].map(frac => {
+    const value = Math.round(yMax*frac);
+    const yy = y(value);
+    return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e7eef4"/><text x="${left-10}" y="${yy+4}" text-anchor="end" font-size="11" fill="#7890a4">${value}%</text>`;
+  }).join("");
+  const xLabels = rows.map((m,i)=>`<text x="${x(i)}" y="${h-18}" text-anchor="middle" font-size="11" fill="#6f8598">${monthNames[i]}</text>`).join("");
+  const currentDots = rows.map((m,i)=>`<circle cx="${x(i)}" cy="${y(m.rate)}" r="4" fill="#2d9f73"><title>${monthNames[i]} ${year+543}: ${Number(m.rate||0).toFixed(1)}%</title></circle>`).join("");
+  const prevDots = rows.map((m,i)=>`<circle cx="${x(i)}" cy="${y(m.previousRate)}" r="3" fill="#7890a4"><title>${monthNames[i]} ${comparisonYear+543}: ${Number(m.previousRate||0).toFixed(1)}%</title></circle>`).join("");
+  return `<svg class="kpi-line-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="แนวโน้มอัตราพึ่งพาเลือดแดงจากสภากาชาดไทย">
+    ${grid}
+    <path d="${pathFor("previousRate")}" fill="none" stroke="#8fa5b7" stroke-width="2.5" stroke-dasharray="7 6"/>
+    <path d="${pathFor("rate")}" fill="none" stroke="#2d9f73" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    ${prevDots}${currentDots}${xLabels}
+    <g transform="translate(${left+8},${top+8})"><line x1="0" y1="0" x2="28" y2="0" stroke="#2d9f73" stroke-width="4"/><text x="36" y="4" font-size="12" fill="#36556f">${year+543}</text><line x1="92" y1="0" x2="120" y2="0" stroke="#8fa5b7" stroke-width="2.5" stroke-dasharray="7 6"/><text x="128" y="4" font-size="12" fill="#36556f">${comparisonYear+543}</text></g>
+  </svg>`;
+}
+
+function downloadBloodKpiChartPng() {
+  const data = currentBloodKpiData;
+  const months = Array.isArray(data?.months) ? data.months : [];
+  if (!months.length) return;
+  const year = Number(data.year||0), prev = Number(data.comparisonYear||year-1);
+  const canvas = document.createElement("canvas");
+  canvas.width = 1400; canvas.height = 760;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle="#fff"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="#173b5d"; ctx.font="700 32px Sarabun, sans-serif"; ctx.fillText("อัตราการพึ่งพาเลือดแดงจากสภากาชาดไทย",60,58);
+  ctx.fillStyle="#6f8598"; ctx.font="400 18px Sarabun, sans-serif"; ctx.fillText(`ปี ${year+543} เทียบกับ ${prev+543}`,60,90);
+  const left=90, top=155, right=50, bottom=90, chartW=canvas.width-left-right, chartH=canvas.height-top-bottom;
+  const maxRate=Math.min(100,Math.max(20,Math.ceil(Math.max(...months.flatMap(m=>[Number(m.rate||0),Number(m.previousRate||0)]),0)/10)*10+10));
+  const x=i=>left+chartW*i/11, y=v=>top+chartH-(Number(v||0)/maxRate)*chartH;
+  ctx.strokeStyle="#e6eef4"; ctx.fillStyle="#7890a4"; ctx.font="400 13px Sarabun, sans-serif";
+  for(let i=0;i<=4;i++){const val=Math.round(maxRate*i/4),yy=y(val);ctx.beginPath();ctx.moveTo(left,yy);ctx.lineTo(left+chartW,yy);ctx.stroke();ctx.fillText(`${val}%`,35,yy+4);}
+  const drawLine=(key,color,dash=[])=>{ctx.save();ctx.strokeStyle=color;ctx.lineWidth=key==='rate'?4:2.5;ctx.setLineDash(dash);ctx.beginPath();months.forEach((m,i)=>{const xx=x(i),yy=y(m[key]);if(i===0)ctx.moveTo(xx,yy);else ctx.lineTo(xx,yy);});ctx.stroke();ctx.restore();};
+  drawLine('previousRate','#8fa5b7',[8,6]); drawLine('rate','#2d9f73');
+  const names=["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+  months.forEach((m,i)=>{ctx.fillStyle="#2d9f73";ctx.beginPath();ctx.arc(x(i),y(m.rate),5,0,Math.PI*2);ctx.fill();ctx.fillStyle="#60788d";ctx.font="600 13px Sarabun, sans-serif";ctx.fillText(names[i],x(i)-14,top+chartH+32);});
+  ctx.fillStyle="#36556f";ctx.font="600 15px Sarabun, sans-serif";ctx.fillText(`${year+543}`,80,125);ctx.strokeStyle="#2d9f73";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(35,120);ctx.lineTo(70,120);ctx.stroke();
+  ctx.fillText(`${prev+543}`,220,125);ctx.save();ctx.strokeStyle="#8fa5b7";ctx.lineWidth=2.5;ctx.setLineDash([8,6]);ctx.beginPath();ctx.moveTo(175,120);ctx.lineTo(210,120);ctx.stroke();ctx.restore();
+  const link=document.createElement('a');link.download=`blood-kpi-rbc-trc-${year+543}.png`;link.href=canvas.toDataURL('image/png');link.click();
+}
+
 function scrollToUpload() {
   const uploadBtn = document.querySelector("[onclick=\"showDashboardPage('upload', this)\"]");
   showDashboardPage("upload", uploadBtn);
@@ -2745,6 +3154,10 @@ if (page === "expiry") {
 
 if (page === "outreach") {
   loadOutreachAnalysis(false);
+}
+
+if (page === "blood-kpi") {
+  loadBloodKpiPage();
 }
 
 if (page === "upload") {

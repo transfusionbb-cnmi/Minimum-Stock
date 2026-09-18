@@ -3192,3 +3192,68 @@ body {
   .outreach-reconcile-strip { align-items:flex-start; flex-direction:column; gap:3px; }
   .outreach-card-balance { text-align:left; }
 }
+
+
+/* v2.9.34 multi-select filters */
+.filter-multi-select {
+  position:relative; border:1px solid #d9e6ef; border-radius:16px; background:#fff; min-height:58px;
+  box-shadow:0 1px 0 rgba(255,255,255,.7) inset;
+}
+.filter-multi-select > summary {
+  list-style:none; cursor:pointer; padding:10px 44px 10px 14px; min-height:56px; display:flex; flex-direction:column; justify-content:center; gap:2px; position:relative;
+}
+.filter-multi-select > summary::-webkit-details-marker { display:none; }
+.filter-multi-select > summary strong { color:#183955; font-size:15px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:280px; }
+.filter-multi-select > summary small { color:#7c91a3; font-size:12px; line-height:1.35; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.filter-multi-select[open] .product-picker-chevron { transform:translateY(-50%) rotate(180deg); }
+.filter-multi-select[open] { z-index:1100; border-color:#b7d7ea; box-shadow:0 0 0 4px rgba(60,166,232,.10); }
+.filter-multi-select .product-multi-menu { display:none; }
+.filter-multi-select[open] .product-multi-menu { display:flex; }
+
+/* v2.9.34 presentation-ready monthly outcome chart */
+.trend-toolbar-row { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
+.trend-total-chip { padding:5px 10px; border:1px solid #dbe7ef; border-radius:999px; background:#f7fbfd; }
+.trend-unresolved { background:#a8b8c6; }
+.monthly-outcome-chart {
+  height:350px; display:grid; grid-template-columns:repeat(var(--trend-columns,12),minmax(64px,1fr)); gap:10px; align-items:end;
+  padding:14px 8px 0; border-bottom:1px solid #e5edf4; overflow-x:auto;
+}
+.outcome-month-group { height:100%; min-width:64px; display:grid; grid-template-rows:auto 1fr auto; gap:7px; }
+.outcome-bar-area { min-height:245px; display:flex; align-items:flex-end; justify-content:center; border-bottom:1px solid #eef3f7; }
+.outcome-stack { width:34px; min-height:2px; display:flex; flex-direction:column-reverse; justify-content:flex-start; overflow:hidden; border-radius:8px 8px 2px 2px; background:#edf3f7; box-shadow:inset 0 0 0 1px rgba(31,65,91,.04); }
+.outcome-segment { display:block; width:100%; min-height:0; }
+.outcome-segment.is-used { background:#2d9f73; }
+.outcome-segment.is-expired { background:#dc6d68; }
+.outcome-segment.is-rejected { background:#d7a44b; }
+.outcome-segment.is-unresolved { background:#a8b8c6; }
+
+/* KPI blood page */
+.kpi-blood-shell { max-width:1280px; margin:0 auto; }
+.kpi-hero-grid { display:grid; grid-template-columns:minmax(260px,.8fr) minmax(0,1.6fr); gap:16px; }
+.kpi-primary-card { border:1px solid #dcecf8; border-radius:22px; background:#fff; padding:20px; box-shadow:0 8px 22px rgba(22,73,110,.05); }
+.kpi-primary-card .kpi-value { font-size:48px; line-height:1; font-weight:900; color:#173b5d; margin:12px 0 6px; }
+.kpi-primary-card .kpi-delta { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; font-size:13px; font-weight:800; background:#eef9f3; color:#27704f; }
+.kpi-primary-card .kpi-delta.is-up { background:#fff1f1; color:#99504d; }
+.kpi-formula { color:#6f8598; font-size:13px; margin-top:14px; line-height:1.5; }
+.kpi-line-card { border:1px solid #dcecf8; border-radius:22px; background:#fff; padding:20px; box-shadow:0 8px 22px rgba(22,73,110,.05); }
+.kpi-line-svg { width:100%; height:auto; display:block; }
+.kpi-year-select { width:130px; }
+.kpi-mini-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:14px; }
+.kpi-mini-stat { padding:12px; border-radius:14px; background:#f7fbfd; border:1px solid #e1edf5; }
+.kpi-mini-stat span { display:block; font-size:12px; color:#7790a4; }
+.kpi-mini-stat b { display:block; font-size:19px; color:#173b5d; margin-top:2px; }
+
+@media (max-width: 900px) {
+  .filter-multi-select > summary strong { max-width:180px; }
+  .monthly-outcome-chart { grid-template-columns:repeat(var(--trend-columns,12),64px); }
+  .kpi-hero-grid { grid-template-columns:1fr; }
+}
+@media (max-width: 560px) {
+  .filter-multi-select .product-multi-menu {
+    position:fixed; left:8px; right:8px; bottom:0; top:auto; width:auto; max-height:min(78dvh,720px);
+    border-radius:22px 22px 0 0; border-bottom:0; box-shadow:0 -14px 42px rgba(31,59,79,.22); z-index:1101;
+  }
+  .monthly-outcome-chart { height:285px; }
+  .outcome-bar-area { min-height:190px; }
+  .kpi-mini-stats { grid-template-columns:1fr; }
+}

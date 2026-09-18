@@ -2372,17 +2372,17 @@
     }
     const client = getClient();
 
-    // v2.9.31: family = BagNumber + product family เพื่อไม่ให้ RBC/Plasma/Platelet ของ donor เดียวกันกลบผลกัน
-    const { data, error } = await client.rpc("minimum_stock_schema_status_v2933");
+    // v2.9.34: multi-select filters + Blood KPI + presentation-ready trend
+    const { data, error } = await client.rpc("minimum_stock_schema_status_v2934");
     const missingRpc = error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""));
     if (missingRpc) {
-      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.9.33 | กรุณารัน SQL-v2.9.33-REPORT-PERFORMANCE-INDEX.sql 1 ครั้ง");
+      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.9.34 | กรุณารัน SQL-v2.9.34-MULTI-FILTER-KPI-CHARTS.sql 1 ครั้ง");
     }
     if (error) {
-      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.33-REPORT-PERFORMANCE-INDEX.sql");
+      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.34-MULTI-FILTER-KPI-CHARTS.sql");
     }
     if (data && data.ok === false) {
-      throw new Error(data.message || "โครงสร้าง Supabase v2.9.33 ยังไม่พร้อม | กรุณารัน SQL-v2.9.33-REPORT-PERFORMANCE-INDEX.sql");
+      throw new Error(data.message || "โครงสร้าง Supabase v2.9.34 ยังไม่พร้อม | กรุณารัน SQL-v2.9.34-MULTI-FILTER-KPI-CHARTS.sql");
     }
     return data || { ok: true };
   }
@@ -2410,21 +2410,17 @@
   }
 
   function normalizeOutreachFilters(filters = {}) {
-    const rawProducts = Array.isArray(filters.productTypes)
-      ? filters.productTypes
-      : (filters.productType ? [filters.productType] : []);
-    const productTypes = Array.from(new Set(rawProducts
+    const normalizeList = (many, one) => Array.from(new Set((Array.isArray(many) ? many : (one ? [one] : []))
       .map(value => String(value || "").trim())
       .filter(Boolean)));
-
     return {
       dateFrom: filters.dateFrom || "",
       dateTo: filters.dateTo || "",
-      sourceGroup: filters.sourceGroup || "",
-      source: filters.source || "",
-      productTypes,
-      bloodGroup: filters.bloodGroup || "",
-      rh: filters.rh || ""
+      sourceGroups: normalizeList(filters.sourceGroups, filters.sourceGroup),
+      sources: normalizeList(filters.sources, filters.source),
+      productTypes: normalizeList(filters.productTypes, filters.productType),
+      bloodGroups: normalizeList(filters.bloodGroups, filters.bloodGroup),
+      rhs: normalizeList(filters.rhs, filters.rh)
     };
   }
 
@@ -2516,52 +2512,29 @@
     const params = {
       p_date_from: f.dateFrom || null,
       p_date_to: f.dateTo || null,
-      p_source_group: f.sourceGroup || null,
-      p_donate_source: f.source || null,
+      p_source_groups: f.sourceGroups.length ? f.sourceGroups : null,
+      p_donate_sources: f.sources.length ? f.sources : null,
       p_product_types: f.productTypes.length ? f.productTypes : null,
-      p_blood_group: f.bloodGroup || null,
-      p_rh: f.rh || null
+      p_blood_groups: f.bloodGroups.length ? f.bloodGroups : null,
+      p_rhs: f.rhs.length ? f.rhs : null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2933", params);
-    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const previous = await client.rpc("minimum_stock_outreach_master_report_v2930", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2934", params);
+    const missing = error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""));
+    if (missing) {
+      const multiRequested = f.sourceGroups.length > 1 || f.sources.length > 1 || f.bloodGroups.length > 1 || f.rhs.length > 1;
+      if (multiRequested) throw new Error("Supabase ยังไม่ได้ติดตั้งตัวกรองหลายรายการ v2.9.34 | กรุณารัน SQL-v2.9.34-MULTI-FILTER-KPI-CHARTS.sql");
+      const legacyParams = {
+        p_date_from: f.dateFrom || null,
+        p_date_to: f.dateTo || null,
+        p_source_group: f.sourceGroups[0] || null,
+        p_donate_source: f.sources[0] || null,
+        p_product_types: f.productTypes.length ? f.productTypes : null,
+        p_blood_group: f.bloodGroups[0] || null,
+        p_rh: f.rhs[0] || null
+      };
+      const previous = await client.rpc("minimum_stock_outreach_master_report_v2933", legacyParams);
       data = previous.data;
       error = previous.error;
-    }
-    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const previous = await client.rpc("minimum_stock_outreach_master_report_v2929", params);
-      data = previous.data;
-      error = previous.error;
-    }
-    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const previous = await client.rpc("minimum_stock_outreach_master_report_v2927", params);
-      data = previous.data;
-      error = previous.error;
-    }
-    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const previous = await client.rpc("minimum_stock_outreach_master_report_v2931", params);
-      data = previous.data;
-      error = previous.error;
-    }
-    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const previous = await client.rpc("minimum_stock_outreach_master_report_v2919", params);
-      data = previous.data;
-      error = previous.error;
-    }
-    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const previous = await client.rpc("minimum_stock_outreach_master_report_v2916", params);
-      data = previous.data;
-      error = previous.error;
-    }
-    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const previous = await client.rpc("minimum_stock_outreach_master_report_v2915", params);
-      data = previous.data;
-      error = previous.error;
-    }
-    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const legacy = await client.rpc("minimum_stock_outreach_master_report_v280", params);
-      data = legacy.data;
-      error = legacy.error;
     }
     if (error) throw new Error("คำนวณรายงานวิเคราะห์ออกหน่วยไม่สำเร็จ: " + error.message);
     return data || { summary: {}, groups: [], sources: [] };
@@ -2575,56 +2548,34 @@
       p_year: safeYear,
       p_date_from: f.dateFrom || null,
       p_date_to: f.dateTo || null,
-      p_source_group: f.sourceGroup || null,
-      p_donate_source: f.source || null,
+      p_source_groups: f.sourceGroups.length ? f.sourceGroups : null,
+      p_donate_sources: f.sources.length ? f.sources : null,
       p_product_types: f.productTypes.length ? f.productTypes : null,
-      p_blood_group: f.bloodGroup || null,
-      p_rh: f.rh || null
+      p_blood_groups: f.bloodGroups.length ? f.bloodGroups : null,
+      p_rhs: f.rhs.length ? f.rhs : null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2933", params);
-
-    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2930", params);
-      data = previous.data;
-      error = previous.error;
-    }
-    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2929", params);
-      data = previous.data;
-      error = previous.error;
-    }
-    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2927", params);
-      data = previous.data;
-      error = previous.error;
-    }
-    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2921", params);
-      data = previous.data;
-      error = previous.error;
-    }
-    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2931", params);
-      data = previous.data;
-      error = previous.error;
-    }
-    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
-      const legacyParams = {
-        p_year: safeYear,
-        p_source_group: f.sourceGroup || null,
-        p_donate_source: f.source || null,
-        p_product_types: f.productTypes.length ? f.productTypes : null,
-        p_blood_group: f.bloodGroup || null,
-        p_rh: f.rh || null
-      };
-      const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2919", legacyParams);
-      data = previous.data;
-      error = previous.error;
+    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2934", params);
+    const missing = error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""));
+    if (missing) {
+      const multiRequested = f.sourceGroups.length > 1 || f.sources.length > 1 || f.bloodGroups.length > 1 || f.rhs.length > 1;
+      if (!multiRequested) {
+        const legacyParams = {
+          p_year: safeYear,
+          p_date_from: f.dateFrom || null,
+          p_date_to: f.dateTo || null,
+          p_source_group: f.sourceGroups[0] || null,
+          p_donate_source: f.sources[0] || null,
+          p_product_types: f.productTypes.length ? f.productTypes : null,
+          p_blood_group: f.bloodGroups[0] || null,
+          p_rh: f.rhs[0] || null
+        };
+        const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2933", legacyParams);
+        data = previous.data;
+        error = previous.error;
+      }
     }
     if (!error) return data || { year: safeYear, years: [], months: [] };
 
-    // v2.9.22: ถ้า RPC กราฟพลาด (เช่นเลือกเฉพาะผลิตภัณฑ์แล้วฐานตอบช้า/ไม่รับ function บางแบบ)
-    // fallback ไปดึงแถวที่กรองแล้วจาก master มา aggregate ใน browser แทน เพื่อให้กราฟยังแสดงได้
     try {
       console.warn("outreach monthly trend rpc failed, fallback to family-complete client aggregation", error);
       const cacheKey = JSON.stringify(f);
@@ -2639,7 +2590,7 @@
       }
       return buildOutreachMonthlyTrendFromRows(safeYear, fallbackRows, f);
     } catch (fallbackErr) {
-      throw new Error("โหลดกราฟแนวโน้มรายเดือนไม่สำเร็จ: " + (fallbackErr?.message || error.message || error));
+      throw new Error("โหลดกราฟแนวโน้มรายเดือนไม่สำเร็จ: " + (fallbackErr?.message || error?.message || error));
     }
   }
 
@@ -2696,8 +2647,8 @@
 
     const filters = normalizeOutreachFilters(options.filters || {});
     const hasFilters = Boolean(
-      filters.dateFrom || filters.dateTo || filters.sourceGroup || filters.source ||
-      filters.productTypes.length || filters.bloodGroup || filters.rh
+      filters.dateFrom || filters.dateTo || filters.sourceGroups.length || filters.sources.length ||
+      filters.productTypes.length || filters.bloodGroups.length || filters.rhs.length
     );
     if (!hasFilters && !options.forceRefresh && cachedOutreachSnapshot) return cachedOutreachSnapshot;
 
@@ -2761,16 +2712,32 @@
     return result;
   }
 
+  async function getBloodKpiRedCellDependency(year = null) {
+    if (!isConfigured()) throw new Error("KPI เลือดต้องใช้ Supabase");
+    await ensureOutreachSchema();
+    const client = getClient();
+    const safeYear = year === null || year === undefined || year === "" ? null : Number(year);
+    const { data, error } = await client.rpc("minimum_stock_rbc_trc_dependency_v2934", {
+      p_year: Number.isFinite(safeYear) ? safeYear : null
+    });
+    if (error) throw new Error("โหลด KPI การพึ่งพาเลือดแดงจากสภากาชาดไทยไม่สำเร็จ: " + error.message);
+    return data || { year: null, years: [], summary: {}, months: [] };
+  }
+
   function applyOutreachRowQueryFilters(query, filters = {}) {
     const f = normalizeOutreachFilters(filters);
     if (f.dateFrom) query = query.gte("cohort_date", f.dateFrom);
     if (f.dateTo) query = query.lte("cohort_date", f.dateTo);
-    if (f.sourceGroup) query = query.eq("source_group", f.sourceGroup);
-    if (f.source) query = query.eq("donate_source", f.source);
+    if (f.sourceGroups.length === 1) query = query.eq("source_group", f.sourceGroups[0]);
+    if (f.sourceGroups.length > 1) query = query.in("source_group", f.sourceGroups);
+    if (f.sources.length === 1) query = query.eq("donate_source", f.sources[0]);
+    if (f.sources.length > 1) query = query.in("donate_source", f.sources);
     if (f.productTypes.length === 1) query = query.eq("product_type", f.productTypes[0]);
     if (f.productTypes.length > 1) query = query.in("product_type", f.productTypes);
-    if (f.bloodGroup) query = query.eq("blood_group", f.bloodGroup);
-    if (f.rh) query = query.eq("rh", f.rh);
+    if (f.bloodGroups.length === 1) query = query.eq("blood_group", f.bloodGroups[0]);
+    if (f.bloodGroups.length > 1) query = query.in("blood_group", f.bloodGroups);
+    if (f.rhs.length === 1) query = query.eq("rh", f.rhs[0]);
+    if (f.rhs.length > 1) query = query.in("rh", f.rhs);
     return query;
   }
 
@@ -2781,29 +2748,19 @@
     const params = {
       p_date_from: f.dateFrom || null,
       p_date_to: f.dateTo || null,
-      p_source_group: f.sourceGroup || null,
-      p_donate_source: f.source || null,
+      p_source_groups: f.sourceGroups.length ? f.sourceGroups : null,
+      p_donate_sources: f.sources.length ? f.sources : null,
       p_product_types: f.productTypes.length ? f.productTypes : null,
-      p_blood_group: f.bloodGroup || null,
-      p_rh: f.rh || null
+      p_blood_groups: f.bloodGroups.length ? f.bloodGroups : null,
+      p_rhs: f.rhs.length ? f.rhs : null
     };
     const rows = [];
     const chunk = 1000;
     let from = 0;
     while (true) {
       let response = await client
-        .rpc("minimum_stock_outreach_family_rows_v2933", params)
+        .rpc("minimum_stock_outreach_family_rows_v2934", params)
         .range(from, from + chunk - 1);
-      if (response.error && /Could not find the function|PGRST202|does not exist/i.test(String(response.error.message || response.error.code || ""))) {
-        response = await client
-          .rpc("minimum_stock_outreach_family_rows_v2930", params)
-          .range(from, from + chunk - 1);
-      }
-      if (response.error && /Could not find the function|PGRST202|does not exist/i.test(String(response.error.message || response.error.code || ""))) {
-        response = await client
-          .rpc("minimum_stock_outreach_family_rows_v2929", params)
-          .range(from, from + chunk - 1);
-      }
       const { data, error } = response;
       if (error) throw new Error("โหลดสมาชิกถุงต้นทางสำหรับสรุป/ส่งออกไม่สำเร็จ: " + error.message);
       const part = (data || []).map(fromOutreachDbRow);
@@ -2822,8 +2779,8 @@
     const perPage = Math.max(1, Math.min(1000, Number(options.perPage || 100)));
     const page = Math.max(1, Number(options.page || 1));
     const extraFilters = { ...(options.filters || {}) };
-    if (options.sourceGroup) extraFilters.sourceGroup = options.sourceGroup;
-    if (options.source) extraFilters.source = options.source;
+    if (options.sourceGroup) extraFilters.sourceGroups = [options.sourceGroup];
+    if (options.source) extraFilters.sources = [options.source];
 
     const buildQuery = (withCount = false) => {
       let query = client
@@ -3281,6 +3238,7 @@
     getMobilePlanning,
     getOutreachAnalysis,
     getOutreachMonthlyTrend,
+    getBloodKpiRedCellDependency,
     getOutreachFamilyRows,
     getOutreachRows,
     adminClearAllData,
