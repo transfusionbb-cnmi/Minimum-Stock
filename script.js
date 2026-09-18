@@ -279,7 +279,8 @@ let currentOutreachSourceSummary = [];
 let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260918-v2-9-34-multi-filter-kpi-charts";
+let currentTrcRareData = null;
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260918-v2-9-35-trc-rare-registry";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -2998,6 +2999,10 @@ function renderBloodKpiPage(data) {
   const summary = data?.summary || {};
   const months = Array.isArray(data?.months) ? data.months : [];
   const rate = Number(summary.rate || 0);
+  const adjustedRate = Number(summary.adjustedRate ?? rate);
+  const rareTrcRbc = Number(summary.rareTrcRbc || 0);
+  const routineTrcRbc = Number(summary.routineTrcRbc ?? Math.max(0, Number(summary.trcRbc || 0) - rareTrcRbc));
+  const specialReady = data?.specialTrackingReady !== false;
   const previousRate = Number(summary.previousRate || 0);
   const previousTotal = Number(summary.previousTotalRbc || 0);
   const delta = Number(summary.deltaPp || 0);
@@ -3033,7 +3038,8 @@ function renderBloodKpiPage(data) {
             <div class="kpi-mini-stat"><span>รับจากกาชาด</span><b>${Number(summary.trcRbc||0).toLocaleString()}</b></div>
             <div class="kpi-mini-stat"><span>ปีก่อนช่วงเดียวกัน</span><b>${previousRate.toFixed(1)}%</b></div>
           </div>
-          <div class="kpi-formula">อัตราพึ่งพา = เลือดแดงจากสภากาชาดไทย ÷ เลือดแดงรับเข้าทั้งหมด × 100</div>
+          <div class="kpi-formula">อัตราพึ่งพารวม = เลือดแดงจากสภากาชาดไทย ÷ เลือดแดงรับเข้าทั้งหมด × 100</div>
+          ${specialReady ? `<div class="kpi-adjusted-box mt-3"><div><span>มุมมองปรับแล้ว · ตัด Rare/Ag-matched</span><b>${adjustedRate.toFixed(1)}%</b></div><div class="kpi-adjusted-detail">TRC ที่เป็น routine ${routineTrcRbc.toLocaleString()} ถุง · Rare/Ag-matched ${rareTrcRbc.toLocaleString()} ถุง</div></div>` : `<div class="kpi-adjusted-box is-warning mt-3"><div><span>ยังไม่ได้แยก Rare/Ag-matched</span><b>—</b></div><div class="kpi-adjusted-detail">รัน SQL v2.9.35 แล้วใช้เมนู “กาชาดจำเป็น” เพื่อเริ่มแยกถุง</div></div>`}
         </div>
         <div class="kpi-line-card">
           <div class="panel-heading-row mb-2">
@@ -3047,12 +3053,12 @@ function renderBloodKpiPage(data) {
         <div class="panel-heading-row"><div><h3>รายละเอียดรายเดือน</h3><div class="small-muted">ใช้จำนวน RBC family ตาม CohortDate</div></div></div>
         <div class="table-responsive">
           <table class="table simple-table align-middle mb-0">
-            <thead><tr><th>เดือน</th><th class="text-end">RBC รับเข้า</th><th class="text-end">จากกาชาด</th><th class="text-end">อัตราพึ่งพา</th><th class="text-end">ปีก่อน</th></tr></thead>
-            <tbody>${months.map(m => `<tr><td>${["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."][Number(m.month||1)-1]}</td><td class="text-end">${Number(m.totalRbc||0).toLocaleString()}</td><td class="text-end">${Number(m.trcRbc||0).toLocaleString()}</td><td class="text-end fw-bold">${Number(m.rate||0).toFixed(1)}%</td><td class="text-end">${Number(m.previousRate||0).toFixed(1)}%</td></tr>`).join("")}</tbody>
+            <thead><tr><th>เดือน</th><th class="text-end">RBC รับเข้า</th><th class="text-end">TRC รวม</th><th class="text-end">Rare/Ag</th><th class="text-end">พึ่งพารวม</th><th class="text-end">ปรับแล้ว</th><th class="text-end">ปีก่อน</th></tr></thead>
+            <tbody>${months.map(m => `<tr><td>${["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."][Number(m.month||1)-1]}</td><td class="text-end">${Number(m.totalRbc||0).toLocaleString()}</td><td class="text-end">${Number(m.trcRbc||0).toLocaleString()}</td><td class="text-end">${specialReady ? Number(m.rareTrcRbc||0).toLocaleString() : "—"}</td><td class="text-end fw-bold">${Number(m.rate||0).toFixed(1)}%</td><td class="text-end fw-bold kpi-adjusted-rate">${specialReady ? Number((m.adjustedRate ?? m.rate) || 0).toFixed(1)+"%" : "—"}</td><td class="text-end">${Number(m.previousRate||0).toFixed(1)}%</td></tr>`).join("")}</tbody>
           </table>
         </div>
       </div>
-      <div class="small-muted mb-4">KPI อื่นสามารถเพิ่มต่อในหน้านี้ได้ภายหลัง โดยไม่กระทบสูตร KPI ปัจจุบัน</div>
+      <div class="small-muted mb-4">ตัวเลข “พึ่งพารวม” ยังใช้สูตรเดิมเพื่อคงประวัติ KPI ส่วน “ปรับแล้ว” เป็นมุมมองบริหารที่ตัดเฉพาะถุง Rare/Ag-matched ที่ลงทะเบียนและจับคู่เป็น TRC จริงออกจากทั้งตัวเศษและฐานคำนวณ</div>
     </div>`;
 }
 
@@ -3109,6 +3115,150 @@ function downloadBloodKpiChartPng() {
   const link=document.createElement('a');link.download=`blood-kpi-rbc-trc-${year+543}.png`;link.href=canvas.toDataURL('image/png');link.click();
 }
 
+
+function trcRareStatusBadge(row) {
+  if (!row?.matched) return `<span class="trc-match-badge is-pending">รอ LIS</span>`;
+  if (row?.sourceGroup === OUTREACH_GROUP_TRC) return `<span class="trc-match-badge is-ok">จับคู่ TRC แล้ว</span>`;
+  return `<span class="trc-match-badge is-warning">พบใน LIS แต่ไม่ใช่ TRC</span>`;
+}
+
+function formatTrcRareProduct(value) {
+  const text = String(value || "").trim();
+  return text || "-";
+}
+
+async function loadTrcRarePage(options = {}) {
+  const box = document.getElementById("trcRareDashboard");
+  if (!box) return;
+  if (!options.silent) box.innerHTML = `<div class="hero-card mt-4"><div class="fw-bold">กำลังโหลดทะเบียนกาชาดจำเป็น...</div><div class="small-muted">กำลังจับคู่ Bag No. กับข้อมูล LIS</div></div>`;
+  try {
+    const data = await MinimumStockBackend.getTrcRareRegistry(300);
+    currentTrcRareData = data;
+    renderTrcRarePage(data);
+    window.setTimeout(() => document.getElementById("trcRareBagInput")?.focus(), 80);
+  } catch (err) {
+    box.innerHTML = `<div class="trc-rare-shell"><div class="simple-page-head mt-2"><div><h1>กาชาดจำเป็น</h1><div class="page-subline">แยกถุง Rare / Ag-matched ออกจากการพึ่งพากาชาดทั่วไป</div></div></div><div class="simple-panel"><h4 class="fw-bold mb-2">ยังเปิดทะเบียนไม่ได้</h4><div class="small-muted">${escapeOutreachHtml(err.message)}</div></div></div>`;
+  }
+}
+
+function renderTrcRarePage(data) {
+  const box = document.getElementById("trcRareDashboard");
+  if (!box) return;
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  const summary = data?.summary || {};
+  box.innerHTML = `
+    <div class="trc-rare-shell">
+      <div class="simple-page-head mt-2">
+        <div>
+          <h1>กาชาดจำเป็น</h1>
+          <div class="page-subline">ใช้เฉพาะถุงที่ต้องเบิกเพราะเลือดหายาก / ต้องคัดเลือก Ag-negative หรือ antigen-matched</div>
+        </div>
+        <button class="btn btn-light no-print" type="button" onclick="loadTrcRarePage()">รีเฟรช</button>
+      </div>
+
+      <div class="trc-rule-strip mb-3"><b>ไม่ใช้สำหรับ “สต๊อกไม่พอ / หาเองไม่ทัน”</b><span>ไม่ต้องกรอก HN หรือชื่อผู้ป่วย ระบบเก็บเฉพาะ Bag No. + ผลิตภัณฑ์</span></div>
+
+      <div class="trc-rare-grid mb-3">
+        <div class="simple-panel trc-entry-card">
+          <div class="panel-heading-row mb-3"><div><h3>ยิงบาร์โค้ดถุง</h3><div class="small-muted">ลงไว้ก่อนได้ แม้ LIS ยังไม่อัปเดต ระบบจะจับคู่ให้ภายหลัง</div></div></div>
+          <form id="trcRareForm" onsubmit="submitTrcRareTag(event)">
+            <label class="trc-field">Bag No.
+              <input id="trcRareBagInput" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" placeholder="ยิงบาร์โค้ดตรงนี้" onkeydown="handleTrcRareBarcodeKey(event)" required />
+            </label>
+            <label class="trc-field">ผลิตภัณฑ์
+              <select id="trcRareProductInput" class="form-select" required>
+                <option value="LPRC">LPRC</option>
+                <option value="LDPRC">LDPRC</option>
+                <option value="FFP">FFP</option>
+                <option value="LDPPC">LDPPC</option>
+                <option value="SDP">SDP</option>
+                <option value="Cryoprecipitate">Cryoprecipitate</option>
+              </select>
+            </label>
+            <label class="trc-field">หมายเหตุ <span class="small-muted">(ไม่บังคับ)</span>
+              <input id="trcRareNoteInput" type="text" autocomplete="off" placeholder="เช่น anti-Jka / ต้องการ Jk(a−) — ไม่ใส่ข้อมูลผู้ป่วย" />
+            </label>
+            <button id="trcRareSaveBtn" class="btn btn-main w-100" type="submit">บันทึกถุงกาชาดจำเป็น</button>
+            <div id="trcRareInlineStatus" class="trc-inline-status" aria-live="polite"></div>
+          </form>
+        </div>
+
+        <div class="trc-summary-card">
+          <div class="trc-summary-item"><span>ลงทะเบียนอยู่</span><b>${Number(summary.active || 0).toLocaleString()}</b></div>
+          <div class="trc-summary-item is-ok"><span>จับคู่ TRC แล้ว</span><b>${Number(summary.matchedTrc || 0).toLocaleString()}</b></div>
+          <div class="trc-summary-item is-pending"><span>รอ LIS</span><b>${Number(summary.pending || 0).toLocaleString()}</b></div>
+          <div class="trc-summary-item is-warning"><span>ต้องตรวจสอบ</span><b>${Number(summary.nonTrc || 0).toLocaleString()}</b></div>
+          <div class="trc-summary-help">KPI จะตัดออกเฉพาะรายการที่ <b>จับคู่กับ LIS และเป็นแหล่งกาชาดไทยจริง</b> เท่านั้น</div>
+        </div>
+      </div>
+
+      <div class="simple-panel">
+        <div class="panel-heading-row mb-2"><div><h3>รายการล่าสุด</h3><div class="small-muted">${rows.length.toLocaleString()} รายการ · ถุงเดิมยิงซ้ำจะอัปเดตรายการเดิม ไม่เพิ่มซ้ำ</div></div></div>
+        <div class="trc-rare-list">
+          ${rows.length ? rows.map(row => `
+            <div class="trc-rare-row">
+              <div class="trc-rare-main">
+                <div class="trc-rare-bag">${escapeOutreachHtml(row.bagNumber || "-")}</div>
+                <div class="trc-rare-meta"><span>${escapeOutreachHtml(formatTrcRareProduct(row.productType))}</span><span>${escapeOutreachHtml(formatDisplayDateTime(row.createdAt) || "-")}</span>${row.note ? `<span>${escapeOutreachHtml(row.note)}</span>` : ""}</div>
+              </div>
+              <div class="trc-rare-match">${trcRareStatusBadge(row)}${row.matched ? `<small>${escapeOutreachHtml(row.donateSource || row.sourceGroup || "")}</small>` : `<small>จะจับคู่อัตโนมัติหลังอัป LIS</small>`}</div>
+              <button class="btn btn-light btn-sm trc-remove-btn no-print" type="button" onclick="removeTrcRareTag(${Number(row.id)})">ยกเลิก</button>
+            </div>`).join("") : `<div class="empty-state py-4"><div class="fw-bold">ยังไม่มีถุงที่ลงทะเบียน</div><div class="small-muted">ยิง Bag No. ด้านบนเพื่อเริ่มใช้งาน</div></div>`}
+        </div>
+      </div>
+    </div>`;
+}
+
+function handleTrcRareBarcodeKey(event) {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  const value = String(event.target?.value || "").trim();
+  if (!value) return;
+  document.getElementById("trcRareProductInput")?.focus();
+}
+
+async function submitTrcRareTag(event) {
+  event?.preventDefault?.();
+  const bagInput = document.getElementById("trcRareBagInput");
+  const productInput = document.getElementById("trcRareProductInput");
+  const noteInput = document.getElementById("trcRareNoteInput");
+  const btn = document.getElementById("trcRareSaveBtn");
+  const bagNumber = String(bagInput?.value || "").trim();
+  const productType = String(productInput?.value || "").trim();
+  const note = String(noteInput?.value || "").trim();
+  if (!bagNumber || !productType) return;
+  const previousProduct = productType;
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = "กำลังบันทึก..."; }
+    const result = await MinimumStockBackend.saveTrcRareTag({ bagNumber, productType, note });
+    await loadTrcRarePage({ silent: true });
+    const nextProduct = document.getElementById("trcRareProductInput");
+    if (nextProduct) nextProduct.value = previousProduct;
+    const nextBag = document.getElementById("trcRareBagInput");
+    if (nextBag) { nextBag.value = ""; nextBag.focus(); }
+    const status = document.getElementById("trcRareInlineStatus");
+    if (status) {
+      status.className = "trc-inline-status is-ok";
+      status.textContent = `${result?.updated ? "อัปเดต" : "บันทึก"} ${bagNumber} · ${productType} แล้ว — ยิงถุงต่อไปได้เลย`;
+    }
+  } catch (err) {
+    showModal("error", "บันทึกไม่สำเร็จ", err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "บันทึกถุงกาชาดจำเป็น"; }
+  }
+}
+
+async function removeTrcRareTag(id) {
+  const ok = await showConfirmModal("ยกเลิกรายการนี้", "รายการจะไม่ถูกนำไปตัดออกจากอัตราพึ่งพากาชาด แต่ Audit Log ยังเก็บประวัติไว้", { confirmText: "ยืนยันยกเลิก" });
+  if (!ok) return;
+  try {
+    await MinimumStockBackend.removeTrcRareTag(id);
+    await loadTrcRarePage({ silent: true });
+  } catch (err) {
+    showModal("error", "ยกเลิกไม่สำเร็จ", err.message);
+  }
+}
+
 function scrollToUpload() {
   const uploadBtn = document.querySelector("[onclick=\"showDashboardPage('upload', this)\"]");
   showDashboardPage("upload", uploadBtn);
@@ -3158,6 +3308,10 @@ if (page === "outreach") {
 
 if (page === "blood-kpi") {
   loadBloodKpiPage();
+}
+
+if (page === "trc-rare") {
+  loadTrcRarePage();
 }
 
 if (page === "upload") {

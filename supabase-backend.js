@@ -2717,11 +2717,68 @@
     await ensureOutreachSchema();
     const client = getClient();
     const safeYear = year === null || year === undefined || year === "" ? null : Number(year);
-    const { data, error } = await client.rpc("minimum_stock_rbc_trc_dependency_v2934", {
+    let { data, error } = await client.rpc("minimum_stock_rbc_trc_dependency_v2935", {
       p_year: Number.isFinite(safeYear) ? safeYear : null
     });
+    if (error && /Could not find the function|PGRST202|does not exist|schema cache/i.test(String(error.message || error.code || ""))) {
+      const legacy = await client.rpc("minimum_stock_rbc_trc_dependency_v2934", {
+        p_year: Number.isFinite(safeYear) ? safeYear : null
+      });
+      data = legacy.data;
+      error = legacy.error;
+      if (data && typeof data === "object") data.specialTrackingReady = false;
+    }
     if (error) throw new Error("โหลด KPI การพึ่งพาเลือดแดงจากสภากาชาดไทยไม่สำเร็จ: " + error.message);
-    return data || { year: null, years: [], summary: {}, months: [] };
+    if (data && typeof data === "object" && data.specialTrackingReady !== false) data.specialTrackingReady = true;
+    return data || { year: null, years: [], summary: {}, months: [], specialTrackingReady: false };
+  }
+
+  async function getTrcRareRegistry(limit = 300) {
+    if (!isConfigured()) throw new Error("ทะเบียนกาชาดจำเป็นต้องใช้ Supabase");
+    const client = getClient();
+    const safeLimit = Math.max(1, Math.min(500, Number(limit || 300)));
+    const { data, error } = await client.rpc("minimum_stock_trc_rare_list_v2935", { p_limit: safeLimit });
+    if (error) {
+      if (/Could not find the function|PGRST202|does not exist|schema cache/i.test(String(error.message || error.code || ""))) {
+        throw new Error("ยังไม่ได้ติดตั้งทะเบียนกาชาดจำเป็น v2.9.35 | กรุณารัน SQL-v2.9.35-TRC-RARE-REGISTRY.sql 1 ครั้ง");
+      }
+      throw new Error("โหลดทะเบียนกาชาดจำเป็นไม่สำเร็จ: " + error.message);
+    }
+    return data || { summary: {}, rows: [] };
+  }
+
+  async function saveTrcRareTag(payload = {}) {
+    if (!isConfigured()) throw new Error("ทะเบียนกาชาดจำเป็นต้องใช้ Supabase");
+    const client = getClient();
+    const bagNumber = String(payload.bagNumber || "").trim();
+    const productType = String(payload.productType || "").trim();
+    const note = String(payload.note || "").trim();
+    if (!bagNumber) throw new Error("กรุณายิงหรือกรอก Bag No.");
+    if (!productType) throw new Error("กรุณาเลือกชนิดผลิตภัณฑ์");
+    const { data, error } = await client.rpc("minimum_stock_trc_rare_upsert_v2935", {
+      p_bag_number: bagNumber,
+      p_product_type: productType,
+      p_note: note
+    });
+    if (error) {
+      if (/Could not find the function|PGRST202|does not exist|schema cache/i.test(String(error.message || error.code || ""))) {
+        throw new Error("ยังไม่ได้ติดตั้งทะเบียนกาชาดจำเป็น v2.9.35 | กรุณารัน SQL-v2.9.35-TRC-RARE-REGISTRY.sql 1 ครั้ง");
+      }
+      throw new Error("บันทึกถุงกาชาดจำเป็นไม่สำเร็จ: " + error.message);
+    }
+    try { await logAudit("trc_rare_tag_save", { bagNumber, productType }); } catch (_) {}
+    return data || { ok: true };
+  }
+
+  async function removeTrcRareTag(id) {
+    if (!isConfigured()) throw new Error("ทะเบียนกาชาดจำเป็นต้องใช้ Supabase");
+    const client = getClient();
+    const safeId = Number(id);
+    if (!Number.isFinite(safeId)) throw new Error("ไม่พบรายการที่ต้องการยกเลิก");
+    const { data, error } = await client.rpc("minimum_stock_trc_rare_remove_v2935", { p_id: safeId });
+    if (error) throw new Error("ยกเลิกรายการไม่สำเร็จ: " + error.message);
+    try { await logAudit("trc_rare_tag_remove", { id: safeId }); } catch (_) {}
+    return data || { ok: true };
   }
 
   function applyOutreachRowQueryFilters(query, filters = {}) {
@@ -3239,6 +3296,9 @@
     getOutreachAnalysis,
     getOutreachMonthlyTrend,
     getBloodKpiRedCellDependency,
+    getTrcRareRegistry,
+    saveTrcRareTag,
+    removeTrcRareTag,
     getOutreachFamilyRows,
     getOutreachRows,
     adminClearAllData,
