@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260918-v2-9-36-trc-rare-sdr-ui";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260918-v2-9-38-product-select-required";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -3188,7 +3188,8 @@ function renderTrcRarePage(data) {
             </label>
             <label class="trc-field">ผลิตภัณฑ์
               <select id="trcRareProductInput" class="form-select" required>
-                <option value="SDR" selected>SDR</option>
+                <option value="" selected disabled>กรุณาเลือก</option>
+                <option value="SDR">SDR</option>
                 <option value="LPRC">LPRC</option>
                 <option value="LDPRC">LDPRC</option>
                 <option value="FFP">FFP</option>
@@ -3259,7 +3260,7 @@ function clearTrcRareForm() {
   const noteInput = document.getElementById("trcRareNoteInput");
   const status = document.getElementById("trcRareInlineStatus");
   if (bagInput) bagInput.value = "";
-  if (productInput) productInput.value = "SDR";
+  if (productInput) productInput.value = "";
   if (noteInput) noteInput.value = "";
   if (status) { status.className = "trc-inline-status"; status.textContent = ""; }
   bagInput?.focus();
@@ -3282,14 +3283,25 @@ async function submitTrcRareTag(event) {
   const bagNumber = String(bagInput?.value || "").trim();
   const productType = String(productInput?.value || "").trim();
   const note = String(noteInput?.value || "").trim();
-  if (!bagNumber || !productType) return;
-  const previousProduct = productType;
+  if (!bagNumber) {
+    bagInput?.focus();
+    return;
+  }
+  if (!productType) {
+    const status = document.getElementById("trcRareInlineStatus");
+    if (status) {
+      status.className = "trc-inline-status is-warning";
+      status.textContent = "กรุณาเลือกผลิตภัณฑ์ก่อนบันทึก";
+    }
+    productInput?.focus();
+    return;
+  }
   try {
     if (btn) { btn.disabled = true; btn.textContent = "กำลังบันทึก..."; }
     const result = await MinimumStockBackend.saveTrcRareTag({ bagNumber, productType, note });
     await loadTrcRarePage({ silent: true });
     const nextProduct = document.getElementById("trcRareProductInput");
-    if (nextProduct) nextProduct.value = previousProduct;
+    if (nextProduct) nextProduct.value = "";
     const nextBag = document.getElementById("trcRareBagInput");
     if (nextBag) { nextBag.value = ""; nextBag.focus(); }
     const status = document.getElementById("trcRareInlineStatus");
