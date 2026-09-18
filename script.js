@@ -19,7 +19,7 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
     const confirmCancelBtn = document.getElementById("confirmCancelBtn");
 
     let selectedFile = null;
-    window.addEventListener("minimumStockAuthReady", () => { loadDashboardOnStart(); loadLisUploadGuide(); });
+    window.addEventListener("minimumStockAuthReady", () => { loadDashboardOnStart(); loadLisUploadGuide(); handleAppHashRoute(true); });
 
     uploadZone.addEventListener("click", () => fileInput.click());
 
@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260918-v2-9-39-blood-kpi-executive-export";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260918-v2-9-40-kpi-tree-lazy-routes";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -2980,44 +2980,310 @@ document.addEventListener("DOMContentLoaded", bindOutreachDetailModal);
 
 let currentBloodKpiInsights = null;
 
-async function loadBloodKpiPage(year = null) {
-  const box = document.getElementById("bloodKpiDashboard");
-  if (!box) return;
-  box.innerHTML = `<div class="hero-card mt-4"><div class="fw-bold">กำลังโหลด KPI เลือด...</div><div class="small-muted">กำลังสรุปผลถุงเลือด แนวโน้ม และกราฟพร้อม Export</div></div>`;
-  try {
-    const selectedYear = Number(year || (currentBloodKpiData?.year) || new Date().getFullYear());
-    const dependencyPromise = MinimumStockBackend.getBloodKpiRedCellDependency(selectedYear);
-    const analysisPromise = currentOutreachAnalysisData?.batchId
-      ? Promise.resolve(currentOutreachAnalysisData)
-      : MinimumStockBackend.getOutreachAnalysis({});
-    const familyRowsPromise = MinimumStockBackend.getOutreachFamilyRows({});
-    const dashboardPromise = currentDashboardData?.results?.length
-      ? Promise.resolve(currentDashboardData)
-      : MinimumStockBackend.getDashboard({});
 
-    const [dependency, analysis, familyRowsResult, dashboard] = await Promise.all([
-      dependencyPromise,
-      analysisPromise,
-      familyRowsPromise,
-      dashboardPromise
-    ]);
+const KPI_SUBROUTES = new Set(['overview','utilization','expiry','trc','turnaround','aging','outreach','minimum']);
+let currentBloodKpiRoute = 'overview';
+let currentBloodKpiRouteData = null;
+const bloodKpiLazyCache = {
+  dependency: new Map(),
+  trend: new Map(),
+  analysis: null,
+  familyRows: null,
+  dashboard: null,
+  insights: new Map()
+};
 
-    currentBloodKpiData = dependency;
-    if (analysis?.batchId) currentOutreachAnalysisData = analysis;
-    if (dashboard?.results?.length) currentDashboardData = dashboard;
+function getKpiRouteFromHash() {
+  const raw = String(window.location.hash || '').replace(/^#\/?/, '');
+  if (raw === 'kpi' || raw === 'blood-kpi') return 'overview';
+  const m = raw.match(/^(?:kpi|blood-kpi)\/([^/?#]+)/i);
+  const route = String(m?.[1] || 'overview').toLowerCase();
+  return KPI_SUBROUTES.has(route) ? route : 'overview';
+}
 
-    const insights = buildBloodKpiInsights({
-      dependency,
-      analysis,
-      familyRows: familyRowsResult?.rows || [],
-      dashboard,
-      year: selectedYear
-    });
-    currentBloodKpiInsights = insights;
-    renderBloodKpiPage({ ...dependency, insights });
-  } catch (err) {
-    box.innerHTML = `<div class="hero-card mt-4"><h4 class="fw-bold mb-2">เปิด KPI ไม่ได้</h4><div class="small-muted">${escapeOutreachHtml(err.message)}</div></div>`;
+function getKpiHash(route) {
+  const safe = KPI_SUBROUTES.has(route) ? route : 'overview';
+  return safe === 'overview' ? '#/kpi' : `#/kpi/${safe}`;
+}
+
+function setKpiTreeState(route) {
+  const tree = document.getElementById('kpiTree');
+  if (tree) tree.classList.add('open');
+  document.querySelectorAll('.side-tree-child[data-kpi-route]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.kpiRoute === route);
+  });
+  const parent = document.getElementById('bloodKpiMenuBtn');
+  if (parent) parent.classList.add('active');
+}
+
+function toggleKpiTreeAndOpen(route = 'overview', btn = null) {
+  const target = getKpiHash(route);
+  if (window.location.hash === target) {
+    handleAppHashRoute(true);
+  } else {
+    window.location.hash = target;
   }
+}
+
+function openKpiRoute(route, btn, event) {
+  if (event) event.preventDefault();
+  toggleKpiTreeAndOpen(route, btn);
+}
+
+function handleAppHashRoute(force = false) {
+  const raw = String(window.location.hash || '');
+  if (!/^#\/(?:kpi|blood-kpi)(?:\/|$)/i.test(raw)) return false;
+  const route = getKpiRouteFromHash();
+  const parent = document.getElementById('bloodKpiMenuBtn');
+  showDashboardPage('blood-kpi', parent, { skipKpiLoad: true });
+  setKpiTreeState(route);
+  loadBloodKpiPage(null, route, { force });
+  return true;
+}
+
+window.addEventListener('hashchange', () => handleAppHashRoute(false));
+
+async function ensureBloodKpiDependency(year) {
+  const key = Number(year || new Date().getFullYear());
+  if (bloodKpiLazyCache.dependency.has(key)) return bloodKpiLazyCache.dependency.get(key);
+  const data = await MinimumStockBackend.getBloodKpiRedCellDependency(key);
+  bloodKpiLazyCache.dependency.set(key, data);
+  currentBloodKpiData = data;
+  return data;
+}
+
+async function ensureBloodKpiAnalysis() {
+  if (bloodKpiLazyCache.analysis) return bloodKpiLazyCache.analysis;
+  const data = currentOutreachAnalysisData?.batchId ? currentOutreachAnalysisData : await MinimumStockBackend.getOutreachAnalysis({});
+  bloodKpiLazyCache.analysis = data;
+  if (data?.batchId) currentOutreachAnalysisData = data;
+  return data;
+}
+
+async function ensureBloodKpiTrend(year) {
+  const key = Number(year || new Date().getFullYear());
+  if (bloodKpiLazyCache.trend.has(key)) return bloodKpiLazyCache.trend.get(key);
+  const data = await MinimumStockBackend.getOutreachMonthlyTrend(key, {});
+  bloodKpiLazyCache.trend.set(key, data);
+  return data;
+}
+
+async function ensureBloodKpiFamilyRows() {
+  if (Array.isArray(bloodKpiLazyCache.familyRows)) return bloodKpiLazyCache.familyRows;
+  const result = await MinimumStockBackend.getOutreachFamilyRows({});
+  bloodKpiLazyCache.familyRows = result?.rows || [];
+  return bloodKpiLazyCache.familyRows;
+}
+
+async function ensureBloodKpiDashboard() {
+  if (bloodKpiLazyCache.dashboard?.results?.length) return bloodKpiLazyCache.dashboard;
+  const data = currentDashboardData?.results?.length ? currentDashboardData : await MinimumStockBackend.getDashboard({});
+  bloodKpiLazyCache.dashboard = data;
+  if (data?.results?.length) currentDashboardData = data;
+  return data;
+}
+
+async function ensureBloodKpiHeavyInsights(year) {
+  const key = Number(year || new Date().getFullYear());
+  if (bloodKpiLazyCache.insights.has(key)) return bloodKpiLazyCache.insights.get(key);
+  const rows = await ensureBloodKpiFamilyRows();
+  const insights = buildBloodKpiInsights({
+    dependency: { summary: {} },
+    analysis: { report: { summary: {} } },
+    familyRows: rows,
+    dashboard: { results: [] },
+    year: key
+  });
+  bloodKpiLazyCache.insights.set(key, insights);
+  return insights;
+}
+
+function kpiPageHeader(title, subtitle, year, years = []) {
+  const yearList = (years.length ? years : [year]).map(Number).filter(Number.isFinite);
+  const options = yearList.map(y => `<option value="${y}" ${y===year?'selected':''}>${y+543}</option>`).join('');
+  return `<div class="simple-page-head mt-2">
+    <div><div class="page-kicker">BLOOD KPI</div><h1>${escapeOutreachHtml(title)}</h1><div class="page-subline">${escapeOutreachHtml(subtitle)}</div></div>
+    <div class="d-flex gap-2 align-items-end flex-wrap no-print">
+      ${options ? `<label class="outreach-filter-item mb-0">ปีที่ดู<select class="form-select kpi-year-select" onchange="loadBloodKpiPage(this.value, currentBloodKpiRoute)">${options}</select></label>` : ''}
+      <button class="btn btn-light" type="button" onclick="downloadCurrentKpiPng()">PNG</button>
+      <button class="btn btn-main" type="button" onclick="window.print()">PDF</button>
+    </div>
+  </div>`;
+}
+
+function renderKpiOverview({ dependency, analysis, year }) {
+  const summary = normalizeOutreachSummary(analysis?.report?.summary || {});
+  const used = Number(summary.used || 0), expired = Number(summary.expired || 0);
+  const finalBase = used + expired;
+  const utilization = finalBase ? outreachPercent(used, finalBase) : 0;
+  const expiry = finalBase ? outreachPercent(expired, finalBase) : 0;
+  const depSummary = dependency?.summary || {};
+  const routineRate = Number((depSummary.adjustedRate ?? depSummary.rate) || 0);
+  currentBloodKpiRouteData = { route: 'overview', year, utilization, expiry, routineRate };
+  return `${kpiPageHeader('ภาพรวม KPI เลือด','เปิดเร็ว · กด KPI แต่ละหัวข้อเพื่อดูรายละเอียด โดยไม่โหลดข้อมูลหนักพร้อมกัน',year,dependency?.years||[])}
+    <div class="simple-kpi-grid blood-kpi-main-grid mb-3">
+      <button class="simple-kpi kpi-click-card" onclick="openKpiRoute('utilization',null,event)"><span>การใช้ประโยชน์จากโลหิต</span><strong>${utilization.toFixed(1)}%</strong><small>Used ÷ (Used + Expired)</small></button>
+      <button class="simple-kpi is-alert kpi-click-card" onclick="openKpiRoute('expiry',null,event)"><span>โลหิตหมดอายุ</span><strong>${expiry.toFixed(1)}%</strong><small>Expired ÷ (Used + Expired)</small></button>
+      <button class="simple-kpi is-good kpi-click-card" onclick="openKpiRoute('trc',null,event)"><span>พึ่งพากาชาด Routine</span><strong>${routineRate.toFixed(1)}%</strong><small>ตัด Rare / Ag-matched</small></button>
+    </div>
+    <div class="kpi-overview-links">
+      ${[
+        ['turnaround','ระยะเวลารับเข้า → ใช้','ดู Median และแยกตามแหล่งเลือด'],
+        ['aging','เลือดค้างนาน','ดู RBC ที่ค้างในคลังตามเกณฑ์'],
+        ['outreach','ประสิทธิผลออกหน่วย','ดูภาพรวมและรายจุดออกหน่วย'],
+        ['minimum','Minimum Stock','ดูรายการต่ำกว่า Minimum วันนี้']
+      ].map(([route,title,sub])=>`<button class="kpi-overview-link" onclick="openKpiRoute('${route}',null,event)"><strong>${title}</strong><span>${sub}</span><b>›</b></button>`).join('')}
+    </div>`;
+}
+
+function groupKpiRatesFromAnalysis(analysis) {
+  return normalizeOutreachGroupSummary(analysis?.report?.groups || []).map(item => {
+    const finalBase = Number(item.used||0) + Number(item.expired||0);
+    return {
+      label: item.sourceGroup || '(ไม่ระบุ)',
+      used: Number(item.used||0),
+      expired: Number(item.expired||0),
+      totalFinal: finalBase,
+      utilizationRate: finalBase ? outreachPercent(item.used, finalBase) : 0,
+      expiredRate: finalBase ? outreachPercent(item.expired, finalBase) : 0
+    };
+  });
+}
+
+function trendToOutcomeRows(trend) {
+  return (trend?.months || []).map(m => {
+    const used = Number(m.released || 0), expired = Number(m.expired || 0);
+    const totalFinal = used + expired;
+    return {
+      month: Number(m.month || 0), used, expired,
+      unresolved: Number(m.unresolved || 0),
+      utilizationRate: totalFinal ? outreachPercent(used,totalFinal) : 0,
+      expiredRate: totalFinal ? outreachPercent(expired,totalFinal) : 0
+    };
+  });
+}
+
+function renderKpiUtilization({ analysis, trend, dependency, year }) {
+  const summary = normalizeOutreachSummary(analysis?.report?.summary || {});
+  const finalBase = Number(summary.used||0) + Number(summary.expired||0);
+  const rate = finalBase ? outreachPercent(summary.used, finalBase) : 0;
+  const groups = groupKpiRatesFromAnalysis(analysis).sort((a,b)=>b.utilizationRate-a.utilizationRate);
+  const monthly = trendToOutcomeRows(trend);
+  currentBloodKpiRouteData = { route:'utilization', year, rate, groups, monthly };
+  return `${kpiPageHeader('อัตราการใช้ประโยชน์จากโลหิต','ดูการนำเลือดไปใช้จริง โดยไม่ปน Rejected / ทำลายด้วยเหตุอื่น',year,dependency?.years||trend?.years||[])}
+    <div class="simple-kpi-grid blood-kpi-mini-grid mb-3"><div class="simple-kpi is-good"><span>อัตราการใช้ประโยชน์</span><strong>${rate.toFixed(1)}%</strong><small>${Number(summary.used||0).toLocaleString()} / ${finalBase.toLocaleString()} ถุงที่มีผลลัพธ์ Used หรือ Expired</small></div></div>
+    <div class="kpi-two-chart-grid"><div class="simple-panel"><div class="panel-heading-row"><div><h3>แนวโน้มรายเดือน</h3><div class="small-muted">จำนวน Used / Expired / ยังอยู่ในคลัง</div></div></div>${renderBloodOutcomeMonthlySvg(monthly,year)}</div>
+    <div class="simple-panel"><div class="panel-heading-row"><div><h3>การใช้ประโยชน์แยกตามแหล่งเลือด</h3><div class="small-muted">แยก 4 กลุ่มหลัก</div></div></div>${renderHorizontalBarChartSvg(groups,{valueKey:'utilizationRate',suffix:'%',color:'#68c3a3',max:100})}</div></div>`;
+}
+
+function renderKpiExpiry({ analysis, trend, dependency, year }) {
+  const summary = normalizeOutreachSummary(analysis?.report?.summary || {});
+  const finalBase = Number(summary.used||0) + Number(summary.expired||0);
+  const rate = finalBase ? outreachPercent(summary.expired, finalBase) : 0;
+  const groups = groupKpiRatesFromAnalysis(analysis).sort((a,b)=>b.expiredRate-a.expiredRate);
+  const monthly = trendToOutcomeRows(trend);
+  currentBloodKpiRouteData = { route:'expiry', year, rate, groups, monthly };
+  return `${kpiPageHeader('อัตราโลหิตหมดอายุ','ดู Expired แยกตามช่วงเวลาและกลุ่มแหล่งรับเข้า',year,dependency?.years||trend?.years||[])}
+    <div class="simple-kpi-grid blood-kpi-mini-grid mb-3"><div class="simple-kpi is-alert"><span>อัตราโลหิตหมดอายุ</span><strong>${rate.toFixed(1)}%</strong><small>${Number(summary.expired||0).toLocaleString()} / ${finalBase.toLocaleString()} ถุงที่มีผลลัพธ์ Used หรือ Expired</small></div></div>
+    <div class="kpi-two-chart-grid"><div class="simple-panel"><div class="panel-heading-row"><div><h3>หมดอายุแยกตามแหล่งเลือด</h3><div class="small-muted">หาเองใน รพ. / ออกหน่วย / กาชาด / รพ.อื่น</div></div></div>${renderHorizontalBarChartSvg(groups,{valueKey:'expiredRate',suffix:'%',color:'#f28b82',max:100})}</div>
+    <div class="simple-panel"><div class="panel-heading-row"><div><h3>แนวโน้มรายเดือน</h3><div class="small-muted">ใช้ดูเดือนที่ Expired สูงผิดปกติ</div></div></div>${renderBloodOutcomeMonthlySvg(monthly,year)}</div></div>`;
+}
+
+function renderKpiTrc({ dependency, year }) {
+  const summary = dependency?.summary || {};
+  const months = dependency?.months || [];
+  const comparisonYear = Number(dependency?.comparisonYear || year-1);
+  const overall = Number(summary.rate||0), adjusted = Number(summary.adjustedRate ?? overall);
+  const rare = Number(summary.rareTrcRbc||0), routine = Number(summary.routineTrcRbc ?? Math.max(0,Number(summary.trcRbc||0)-rare));
+  currentBloodKpiRouteData = { route:'trc', year, overall, adjusted, rare, routine, months };
+  return `${kpiPageHeader('อัตราพึ่งพากาชาด Routine','แยกการพึ่งพาทั่วไปออกจาก Rare / Ag-matched ที่จำเป็น',year,dependency?.years||[])}
+    <div class="simple-kpi-grid blood-kpi-main-grid mb-3"><div class="simple-kpi"><span>พึ่งพากาชาดรวม</span><strong>${overall.toFixed(1)}%</strong><small>${Number(summary.trcRbc||0).toLocaleString()} ถุง</small></div><div class="simple-kpi is-good"><span>พึ่งพากาชาด Routine</span><strong>${adjusted.toFixed(1)}%</strong><small>${routine.toLocaleString()} ถุง</small></div><div class="simple-kpi"><span>Rare / Ag-matched</span><strong>${rare.toLocaleString()}</strong><small>ถุงที่ตัดออกจากมุมมอง Routine</small></div></div>
+    <div class="simple-panel"><div class="panel-heading-row"><div><h3>แนวโน้มรายเดือน</h3><div class="small-muted">รวม / ปรับแล้ว / ปีก่อน</div></div></div>${renderBloodKpiLineSvg(months,year,comparisonYear)}</div>`;
+}
+
+function renderKpiTurnaround({ insights, dependency, year }) {
+  const rows=(insights.sourceGroupRates||[]).filter(r=>Number.isFinite(r.medianDaysToUse)).sort((a,b)=>a.medianDaysToUse-b.medianDaysToUse);
+  currentBloodKpiRouteData={route:'turnaround',year,value:insights.medianDaysToUse,groups:rows};
+  return `${kpiPageHeader('ระยะเวลารับเข้า → ใช้','Median จำนวนวันตั้งแต่รับเข้าจนถึงใช้/จ่าย',year,dependency?.years||[])}<div class="simple-kpi-grid blood-kpi-mini-grid mb-3"><div class="simple-kpi"><span>Median รวม</span><strong>${Number.isFinite(insights.medianDaysToUse)?insights.medianDaysToUse:'—'}</strong><small>วัน</small></div></div><div class="simple-panel"><div class="panel-heading-row"><div><h3>แยกตามแหล่งเลือด</h3><div class="small-muted">ยิ่งต่ำ = หมุนเวียนได้เร็วกว่า</div></div></div>${renderHorizontalBarChartSvg(rows,{valueKey:'medianDaysToUse',suffix:' วัน',color:'#5aa9e6'})}</div>`;
+}
+
+function renderKpiAging({ insights, dependency, year }) {
+  currentBloodKpiRouteData={route:'aging',year,rate:insights.longHeldRate,count:insights.longHeldCount,base:insights.longHeldBase};
+  return `${kpiPageHeader('อัตราเลือดค้างนาน','RBC ที่ยังอยู่ในคลังและมีอายุ stock ตั้งแต่ 21 วันขึ้นไป',year,dependency?.years||[])}<div class="simple-kpi-grid blood-kpi-mini-grid mb-3"><div class="simple-kpi is-alert"><span>RBC ค้างนาน ≥ 21 วัน</span><strong>${Number(insights.longHeldRate||0).toFixed(1)}%</strong><small>${Number(insights.longHeldCount||0).toLocaleString()} / ${Number(insights.longHeldBase||0).toLocaleString()} ถุงที่ยังไม่จบผลลัพธ์</small></div></div><div class="attention-strip"><div><strong>หมายเหตุ</strong><span> ตัวชี้วัดนี้เป็น Early Warning ก่อนหมดอายุ ไม่ใช่ Expired KPI</span></div></div>`;
+}
+
+function renderKpiOutreach({ insights, dependency, year }) {
+  const rows=insights.outreachEffectRows||[];
+  currentBloodKpiRouteData={route:'outreach',year,rate:insights.outreachEffectiveness,rows};
+  return `${kpiPageHeader('ประสิทธิผลเลือดจากการออกหน่วย','ดูภาพรวมและรายจุดออกหน่วย เพื่อประเมินว่าถุงที่รับมาถูกใช้จริงมากน้อยเพียงใด',year,dependency?.years||[])}<div class="simple-kpi-grid blood-kpi-mini-grid mb-3"><div class="simple-kpi is-good"><span>ประสิทธิผลรวม</span><strong>${Number(insights.outreachEffectiveness||0).toFixed(1)}%</strong><small>Used ÷ (Used + Expired) เฉพาะเลือดจากออกหน่วย</small></div></div><div class="simple-panel"><div class="panel-heading-row"><div><h3>รายจุดออกหน่วย</h3><div class="small-muted">เรียงตามอัตราการใช้ประโยชน์</div></div></div>${renderHorizontalBarChartSvg(rows,{valueKey:'rate',suffix:'%',color:'#68c3a3',max:100,sublabelKey:'finalCount',sublabelSuffix:' ถุงมีผลลัพธ์แล้ว'})}</div>`;
+}
+
+function renderKpiMinimum({ dashboard, year }) {
+  const rows=(dashboard?.results||[]).filter(r=>Number(r?.gap||0)<0).map(r=>({type:r.type||'',bloodGroup:r.bloodGroup||'',minimumStock:Number(r.minimumStock||0),netAvailable:Number(r.netAvailable||0),gap:Number(r.gap||0)}));
+  currentBloodKpiRouteData={route:'minimum',year,rows,total:Number(dashboard?.results?.length||0)};
+  return `${kpiPageHeader('Minimum Stock','มุมมองวันนี้ · KPI ร้อยละของจำนวนวันที่ต่ำกว่า Minimum จะเริ่มคำนวณได้เมื่อมี Daily Snapshot',year,[])}<div class="simple-kpi-grid blood-kpi-main-grid mb-3"><div class="simple-kpi is-alert"><span>ต่ำกว่า Minimum วันนี้</span><strong>${rows.length}</strong><small>จาก ${Number(dashboard?.results?.length||0)} รายการ</small></div><div class="simple-kpi"><span>Daily KPI</span><strong>เตรียมไว้</strong><small>ต้องสะสม snapshot รายวันก่อน</small></div></div><div class="simple-panel"><div class="panel-heading-row"><div><h3>รายการที่ต่ำกว่า Minimum วันนี้</h3></div></div><div class="table-responsive"><table class="table simple-table align-middle mb-0"><thead><tr><th>ชนิด</th><th>หมู่เลือด</th><th class="text-end">Minimum</th><th class="text-end">ใช้ได้จริง</th><th class="text-end">ขาด</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${escapeOutreachHtml(r.type)}</td><td><b>${escapeOutreachHtml(r.bloodGroup)}</b></td><td class="text-end">${r.minimumStock}</td><td class="text-end">${r.netAvailable}</td><td class="text-end text-danger">${Math.abs(r.gap)}</td></tr>`).join(''):`<tr><td colspan="5" class="small-muted">ไม่มีรายการต่ำกว่า Minimum วันนี้</td></tr>`}</tbody></table></div></div>`;
+}
+
+async function loadBloodKpiPage(year = null, route = null, options = {}) {
+  const box = document.getElementById('bloodKpiDashboard');
+  if (!box) return;
+  const safeRoute = KPI_SUBROUTES.has(route) ? route : (route || getKpiRouteFromHash());
+  currentBloodKpiRoute = KPI_SUBROUTES.has(safeRoute) ? safeRoute : 'overview';
+  setKpiTreeState(currentBloodKpiRoute);
+  const selectedYear = Number(year || currentBloodKpiData?.year || new Date().getFullYear());
+  const heavy = ['turnaround','aging','outreach'].includes(currentBloodKpiRoute);
+  box.innerHTML = `<div class="hero-card mt-4"><div class="fw-bold">กำลังโหลด ${heavy?'ข้อมูลเฉพาะ KPI นี้':'KPI'}...</div><div class="small-muted">${heavy?'หน้านี้ใช้ข้อมูลระดับ Bag family จึงโหลดเมื่อกดเข้าหน้านี้เท่านั้น':'ไม่โหลด KPI อื่นพร้อมกัน'}</div></div>`;
+  try {
+    let html = '';
+    if (currentBloodKpiRoute === 'overview') {
+      const [dependency, analysis] = await Promise.all([ensureBloodKpiDependency(selectedYear), ensureBloodKpiAnalysis()]);
+      html = renderKpiOverview({dependency,analysis,year:selectedYear});
+    } else if (currentBloodKpiRoute === 'utilization') {
+      const [dependency, analysis, trend] = await Promise.all([ensureBloodKpiDependency(selectedYear), ensureBloodKpiAnalysis(), ensureBloodKpiTrend(selectedYear)]);
+      html = renderKpiUtilization({dependency,analysis,trend,year:selectedYear});
+    } else if (currentBloodKpiRoute === 'expiry') {
+      const [dependency, analysis, trend] = await Promise.all([ensureBloodKpiDependency(selectedYear), ensureBloodKpiAnalysis(), ensureBloodKpiTrend(selectedYear)]);
+      html = renderKpiExpiry({dependency,analysis,trend,year:selectedYear});
+    } else if (currentBloodKpiRoute === 'trc') {
+      const dependency = await ensureBloodKpiDependency(selectedYear);
+      html = renderKpiTrc({dependency,year:selectedYear});
+    } else if (['turnaround','aging','outreach'].includes(currentBloodKpiRoute)) {
+      const [dependency, insights] = await Promise.all([ensureBloodKpiDependency(selectedYear), ensureBloodKpiHeavyInsights(selectedYear)]);
+      html = currentBloodKpiRoute === 'turnaround' ? renderKpiTurnaround({insights,dependency,year:selectedYear}) : currentBloodKpiRoute === 'aging' ? renderKpiAging({insights,dependency,year:selectedYear}) : renderKpiOutreach({insights,dependency,year:selectedYear});
+    } else if (currentBloodKpiRoute === 'minimum') {
+      const dashboard = await ensureBloodKpiDashboard();
+      html = renderKpiMinimum({dashboard,year:selectedYear});
+    }
+    box.innerHTML = html;
+  } catch (err) {
+    box.innerHTML = `<div class="hero-card mt-4"><h4 class="fw-bold mb-2">เปิด KPI นี้ไม่ได้</h4><div class="small-muted mb-3">${escapeOutreachHtml(err.message)}</div><button class="btn btn-main" type="button" onclick="loadBloodKpiPage(null,currentBloodKpiRoute,{force:true})">ลองใหม่</button></div>`;
+  }
+}
+
+function downloadCurrentKpiPng() {
+  const data = currentBloodKpiRouteData || {};
+  const canvas = document.createElement('canvas');
+  canvas.width = 1600; canvas.height = 900;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle='#ffffff';ctx.fillRect(0,0,1600,900);
+  ctx.fillStyle='#173b5d';ctx.font='700 38px sans-serif';
+  const titles={overview:'ภาพรวม KPI เลือด',utilization:'อัตราการใช้ประโยชน์จากโลหิต',expiry:'อัตราโลหิตหมดอายุ',trc:'อัตราพึ่งพากาชาด Routine',turnaround:'ระยะเวลารับเข้า → ใช้',aging:'อัตราเลือดค้างนาน',outreach:'ประสิทธิผลเลือดจากการออกหน่วย',minimum:'Minimum Stock'};
+  ctx.fillText(titles[data.route]||'KPI เลือด',60,65);
+  ctx.fillStyle='#7890a4';ctx.font='400 18px sans-serif';ctx.fillText(`ปี ${Number(data.year||new Date().getFullYear())+543} · Blood Stock CNMI`,60,98);
+  const cards=[];
+  if(data.route==='overview'){cards.push(['ใช้ประโยชน์',`${Number(data.utilization||0).toFixed(1)}%`],['หมดอายุ',`${Number(data.expiry||0).toFixed(1)}%`],['พึ่งกาชาด Routine',`${Number(data.routineRate||0).toFixed(1)}%`]);}
+  if(data.route==='utilization') cards.push(['ใช้ประโยชน์',`${Number(data.rate||0).toFixed(1)}%`]);
+  if(data.route==='expiry') cards.push(['หมดอายุ',`${Number(data.rate||0).toFixed(1)}%`]);
+  if(data.route==='trc') cards.push(['พึ่งพารวม',`${Number(data.overall||0).toFixed(1)}%`],['Routine',`${Number(data.adjusted||0).toFixed(1)}%`],['Rare/Ag',`${Number(data.rare||0).toLocaleString()} ถุง`]);
+  if(data.route==='turnaround') cards.push(['Median รับเข้า→ใช้',`${Number.isFinite(data.value)?data.value:'—'} วัน`]);
+  if(data.route==='aging') cards.push(['RBC ค้าง ≥21 วัน',`${Number(data.rate||0).toFixed(1)}%`]);
+  if(data.route==='outreach') cards.push(['ประสิทธิผลรวม',`${Number(data.rate||0).toFixed(1)}%`]);
+  if(data.route==='minimum') cards.push(['ต่ำกว่า Minimum วันนี้',`${(data.rows||[]).length} รายการ`]);
+  cards.forEach((c,i)=>{const x=60+i*390,y=140;ctx.fillStyle='#f7fbfe';ctx.strokeStyle='#dce8f2';ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(x,y,350,130,18);ctx.fill();ctx.stroke();ctx.fillStyle='#6f8598';ctx.font='400 18px sans-serif';ctx.fillText(c[0],x+20,y+35);ctx.fillStyle='#173b5d';ctx.font='700 38px sans-serif';ctx.fillText(c[1],x+20,y+90);});
+  const chartRows=data.groups||data.rows||[];
+  if(Array.isArray(chartRows)&&chartRows.length){const values=chartRows.slice(0,8).map(r=>({label:r.label||`${r.type||''} ${r.bloodGroup||''}`.trim(),value:Number(r.utilizationRate??r.expiredRate??r.medianDaysToUse??r.rate??Math.abs(r.gap||0))}));const max=Math.max(...values.map(v=>v.value),1);values.forEach((r,i)=>{const y=330+i*58;ctx.fillStyle='#35556f';ctx.font='400 17px sans-serif';ctx.fillText(String(r.label).slice(0,38),60,y+18);ctx.fillStyle='#eef3f8';ctx.fillRect(430,y,900,22);ctx.fillStyle='#5aa9e6';ctx.fillRect(430,y,Math.max(5,900*r.value/max),22);ctx.fillStyle='#35556f';ctx.fillText(r.value.toFixed(1),1350,y+18);});}
+  ctx.fillStyle='#8ca0b2';ctx.font='400 14px sans-serif';ctx.fillText(`Export ${new Date().toLocaleDateString('th-TH')} · ใช้สำหรับนำเสนอ/แนบรายงาน`,60,860);
+  const a=document.createElement('a');a.download=`blood-kpi-${data.route||'summary'}-${new Date().toISOString().slice(0,10)}.png`;a.href=canvas.toDataURL('image/png');a.click();
 }
 
 function parseBloodKpiDate(value) {
@@ -3887,18 +4153,27 @@ function formatDisplayDateTime(value) {
   });
 }
 
-    function showDashboardPage(page, btn) {
+    function showDashboardPage(page, btn, options = {}) {
   document.querySelectorAll(".dashboard-page").forEach(el => {
     el.classList.remove("active");
   });
 
-  document.getElementById("page-" + page).classList.add("active");
+  const targetPage = document.getElementById("page-" + page);
+  if (targetPage) targetPage.classList.add("active");
 
   document.querySelectorAll(".side-btn").forEach(el => {
     el.classList.remove("active");
   });
 
-  btn.classList.add("active");
+  if (btn) btn.classList.add("active");
+
+  if (page !== "blood-kpi") {
+    document.querySelectorAll(".side-tree-child").forEach(el => el.classList.remove("active"));
+    document.getElementById("kpiTree")?.classList.remove("open");
+    if (/^#\/(?:kpi|blood-kpi)(?:\/|$)/i.test(String(window.location.hash || ""))) {
+      history.replaceState(null, document.title, window.location.pathname + window.location.search);
+    }
+  }
 
   toggleSidebar(false);
 
@@ -3914,8 +4189,8 @@ if (page === "outreach") {
   loadOutreachAnalysis(false);
 }
 
-if (page === "blood-kpi") {
-  loadBloodKpiPage();
+if (page === "blood-kpi" && !options.skipKpiLoad) {
+  loadBloodKpiPage(null, getKpiRouteFromHash());
 }
 
 if (page === "trc-rare") {
