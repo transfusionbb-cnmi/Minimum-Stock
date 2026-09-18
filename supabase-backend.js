@@ -2373,16 +2373,16 @@
     const client = getClient();
 
     // v2.9.31: family = BagNumber + product family เพื่อไม่ให้ RBC/Plasma/Platelet ของ donor เดียวกันกลบผลกัน
-    const { data, error } = await client.rpc("minimum_stock_schema_status_v2931");
+    const { data, error } = await client.rpc("minimum_stock_schema_status_v2933");
     const missingRpc = error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""));
     if (missingRpc) {
-      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.9.31 | กรุณารัน SQL-v2.9.31-PRODUCT-FAMILY-OUTCOME-FIX.sql 1 ครั้ง");
+      throw new Error("Supabase ยังไม่ได้ติดตั้งโครงสร้าง v2.9.33 | กรุณารัน SQL-v2.9.33-REPORT-PERFORMANCE-INDEX.sql 1 ครั้ง");
     }
     if (error) {
-      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.31-PRODUCT-FAMILY-OUTCOME-FIX.sql");
+      throw new Error("ตรวจสอบโครงสร้าง Supabase ไม่สำเร็จ: " + error.message + " | กรุณารัน SQL-v2.9.33-REPORT-PERFORMANCE-INDEX.sql");
     }
     if (data && data.ok === false) {
-      throw new Error(data.message || "โครงสร้าง Supabase v2.9.31 ยังไม่พร้อม | กรุณารัน SQL-v2.9.31-PRODUCT-FAMILY-OUTCOME-FIX.sql");
+      throw new Error(data.message || "โครงสร้าง Supabase v2.9.33 ยังไม่พร้อม | กรุณารัน SQL-v2.9.33-REPORT-PERFORMANCE-INDEX.sql");
     }
     return data || { ok: true };
   }
@@ -2522,7 +2522,7 @@
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2931", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2933", params);
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_master_report_v2930", params);
       data = previous.data;
@@ -2535,6 +2535,11 @@
     }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_master_report_v2927", params);
+      data = previous.data;
+      error = previous.error;
+    }
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_master_report_v2931", params);
       data = previous.data;
       error = previous.error;
     }
@@ -2576,7 +2581,7 @@
       p_blood_group: f.bloodGroup || null,
       p_rh: f.rh || null
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2931", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2933", params);
 
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2930", params);
@@ -2595,6 +2600,11 @@
     }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2921", params);
+      data = previous.data;
+      error = previous.error;
+    }
+    if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_monthly_trend_v2931", params);
       data = previous.data;
       error = previous.error;
     }
@@ -2782,7 +2792,7 @@
     let from = 0;
     while (true) {
       let response = await client
-        .rpc("minimum_stock_outreach_family_rows_v2931", params)
+        .rpc("minimum_stock_outreach_family_rows_v2933", params)
         .range(from, from + chunk - 1);
       if (response.error && /Could not find the function|PGRST202|does not exist/i.test(String(response.error.message || response.error.code || ""))) {
         response = await client
