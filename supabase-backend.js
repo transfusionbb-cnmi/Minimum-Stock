@@ -2717,20 +2717,34 @@
     await ensureOutreachSchema();
     const client = getClient();
     const safeYear = year === null || year === undefined || year === "" ? null : Number(year);
-    let { data, error } = await client.rpc("minimum_stock_rbc_trc_dependency_v2935", {
-      p_year: Number.isFinite(safeYear) ? safeYear : null
-    });
-    if (error && /Could not find the function|PGRST202|does not exist|schema cache/i.test(String(error.message || error.code || ""))) {
-      const legacy = await client.rpc("minimum_stock_rbc_trc_dependency_v2934", {
-        p_year: Number.isFinite(safeYear) ? safeYear : null
-      });
+    const params = { p_year: Number.isFinite(safeYear) ? safeYear : null };
+
+    let { data, error } = await client.rpc("minimum_stock_rbc_trc_dependency_v2936", params);
+    const missingFn = (err) => err && /Could not find the function|PGRST202|does not exist|schema cache/i.test(String(err.message || err.code || ""));
+
+    if (missingFn(error)) {
+      const v2935 = await client.rpc("minimum_stock_rbc_trc_dependency_v2935", params);
+      data = v2935.data;
+      error = v2935.error;
+      if (data && typeof data === "object") data.sdrTrackingReady = false;
+    }
+
+    if (missingFn(error)) {
+      const legacy = await client.rpc("minimum_stock_rbc_trc_dependency_v2934", params);
       data = legacy.data;
       error = legacy.error;
-      if (data && typeof data === "object") data.specialTrackingReady = false;
+      if (data && typeof data === "object") {
+        data.specialTrackingReady = false;
+        data.sdrTrackingReady = false;
+      }
     }
+
     if (error) throw new Error("โหลด KPI การพึ่งพาเลือดแดงจากสภากาชาดไทยไม่สำเร็จ: " + error.message);
-    if (data && typeof data === "object" && data.specialTrackingReady !== false) data.specialTrackingReady = true;
-    return data || { year: null, years: [], summary: {}, months: [], specialTrackingReady: false };
+    if (data && typeof data === "object") {
+      if (data.specialTrackingReady !== false) data.specialTrackingReady = true;
+      if (data.sdrTrackingReady !== false) data.sdrTrackingReady = true;
+    }
+    return data || { year: null, years: [], summary: {}, months: [], specialTrackingReady: false, sdrTrackingReady: false };
   }
 
   async function getTrcRareRegistry(limit = 300) {

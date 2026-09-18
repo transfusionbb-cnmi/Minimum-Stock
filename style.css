@@ -3317,3 +3317,159 @@ body {
 
 .trc-inline-status { min-height:22px; margin-top:9px; font-size:12px; font-weight:700; color:#6f8598; }
 .trc-inline-status.is-ok { color:#247451; }
+
+/* ==================== v2.9.36 TRC rare UI + menu artwork ==================== */
+.trc-page-head { align-items:center; margin-bottom:12px; }
+.trc-head-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.trc-scope-chip,
+.trc-note-chip {
+  display:inline-flex;
+  align-items:center;
+  min-height:34px;
+  padding:7px 12px;
+  border-radius:999px;
+  border:1px solid #d6eaf7;
+  background:#f3faff;
+  color:#3a789f;
+  font-size:12px;
+  font-weight:800;
+  line-height:1.2;
+}
+.trc-scope-chip::before { content:""; width:8px; height:12px; margin-right:7px; border-radius:50% 50% 58% 58%; background:#df4e4e; transform:rotate(45deg); }
+.trc-refresh-btn {
+  width:36px;
+  height:36px;
+  border:1px solid #d8eaf6;
+  border-radius:12px;
+  background:#fff;
+  color:#4d89b2;
+  font-size:22px;
+  line-height:1;
+  display:grid;
+  place-items:center;
+}
+.trc-refresh-btn:hover { background:#eef8ff; }
+.trc-compact-notes { display:flex; gap:8px; flex-wrap:wrap; }
+.trc-note-chip { min-height:30px; padding:6px 10px; background:#fff; color:#6d879a; font-weight:700; }
+.trc-note-chip.is-warning { background:#fff9ed; border-color:#f0dfb5; color:#8a6b2a; }
+
+.trc-rare-grid { grid-template-columns:minmax(0,1.45fr) minmax(300px,.72fr); gap:18px; }
+.trc-entry-card { padding:24px; }
+.trc-entry-head h3 { margin:0 0 2px; }
+.trc-field { margin-bottom:14px; }
+.trc-field input,
+.trc-field select {
+  min-height:50px;
+  border-radius:14px;
+  border-color:#d7e7f2;
+  font-weight:700;
+  box-shadow:none;
+}
+.trc-field select { cursor:pointer; }
+.trc-input-wrap { position:relative; margin-top:6px; }
+.trc-input-wrap .trc-input-icon {
+  position:absolute;
+  left:14px;
+  top:50%;
+  transform:translateY(-50%);
+  color:#6c9fc1;
+  font-size:18px;
+  pointer-events:none;
+  z-index:1;
+}
+.trc-field .trc-input-wrap input { margin-top:0; padding-left:44px; }
+#trcRareBagInput { font-size:16px; letter-spacing:.02em; }
+
+.trc-note-details {
+  margin:-2px 0 14px;
+  border-top:1px solid #edf3f7;
+  padding-top:10px;
+}
+.trc-note-details summary {
+  cursor:pointer;
+  list-style:none;
+  color:#6f8da2;
+  font-size:12px;
+  font-weight:800;
+  width:max-content;
+}
+.trc-note-details summary::-webkit-details-marker { display:none; }
+.trc-note-details summary::before { content:"+"; margin-right:6px; color:#3f9bd4; }
+.trc-note-details[open] summary::before { content:"−"; }
+.trc-note-field { margin-top:9px; margin-bottom:0; }
+.trc-note-field input { font-size:14px; min-height:44px; }
+.trc-form-actions { display:grid; grid-template-columns:1.35fr .9fr; gap:10px; }
+.trc-form-actions .btn { min-height:48px; border-radius:14px; font-weight:800; }
+.trc-clear-btn { border:1px solid #dce8f0; background:#f4f7f9; color:#58748b; }
+.trc-clear-btn:hover { background:#eaf1f5; color:#3e6078; }
+
+.trc-summary-card {
+  align-content:start;
+  padding:16px;
+  gap:12px;
+  border-color:#d9eaf6;
+  background:#f8fcff;
+  border-radius:22px;
+}
+.trc-summary-item {
+  min-height:142px;
+  padding:16px;
+  border-color:#e0edf5;
+  border-radius:16px;
+  position:relative;
+}
+.trc-summary-icon {
+  width:38px;
+  height:38px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:#e9f5ff;
+  color:#398fca;
+  margin-bottom:14px;
+}
+.trc-summary-icon svg { width:21px; height:21px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.trc-summary-icon.is-ok { background:#e9f7f0; color:#259269; }
+.trc-summary-icon.is-pending { background:#fff6df; color:#d59318; }
+.trc-summary-icon.is-warning { background:#fff0ef; color:#cc4c4c; }
+.trc-summary-label { color:#5d7b91 !important; font-size:12px !important; font-weight:800; }
+.trc-summary-item b { margin-top:5px; font-size:31px; line-height:1; }
+.trc-summary-item.is-ok b { color:#19815a; }
+.trc-summary-item.is-pending b { color:#bc7d0a; }
+.trc-summary-item.is-warning b { color:#b73c3c; }
+.trc-summary-help { grid-column:1/-1; padding:2px 4px 0; font-size:11px; text-align:center; color:#849aaa; }
+
+.trc-recent-panel { padding:22px 24px; }
+.trc-empty-state { min-height:150px; display:grid; place-items:center; align-content:center; gap:5px; text-align:center; color:#617f95; }
+.trc-empty-icon { width:44px; height:44px; display:grid; place-items:center; border-radius:50%; background:#edf7ff; color:#4e9ed4; font-size:22px; margin-bottom:4px; }
+
+/* Keep the left navigation close to the supplied reference: soft blue tile icons,
+   pale-blue active row, no glossy/dark selected state. */
+.side-btn { min-height:52px; gap:11px; padding:8px 10px; border:1px solid transparent; }
+.side-btn.active { background:#def1ff !important; color:#187db9 !important; border-color:#c9e7fa !important; box-shadow:none !important; }
+.side-icon { width:40px !important; height:40px; min-width:40px; }
+.side-icon img { border-radius:13px; }
+.side-btn:hover { transform:none; }
+
+@media (max-width:800px) {
+  .trc-page-head { align-items:flex-start; }
+  .trc-head-actions { justify-content:flex-start; width:100%; }
+  .trc-rare-grid { grid-template-columns:1fr; }
+  .trc-entry-card { padding:18px; }
+  .trc-summary-item { min-height:118px; }
+  .trc-summary-icon { margin-bottom:9px; }
+}
+@media (max-width:520px) {
+  .trc-page-head { margin-top:0 !important; }
+  .trc-page-head h1 { font-size:30px; }
+  .trc-compact-notes { gap:6px; }
+  .trc-note-chip, .trc-scope-chip { font-size:11px; }
+  .trc-entry-card { padding:16px; }
+  .trc-form-actions { grid-template-columns:1fr .72fr; }
+  .trc-summary-card { padding:10px; gap:8px; }
+  .trc-summary-item { min-height:108px; padding:12px; }
+  .trc-summary-icon { width:32px; height:32px; margin-bottom:7px; }
+  .trc-summary-item b { font-size:25px; }
+  .trc-summary-help { font-size:10px; }
+  .trc-recent-panel { padding:16px; }
+}

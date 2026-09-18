@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-35-trc-rare-registry";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-36-trc-rare-sdr-ui";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -20,6 +20,9 @@ const APP_SHELL = [
   "./icons/menu/expiry.png",
   "./icons/menu/mobile.png",
   "./icons/menu/outreach.png",
+  "./icons/menu/kpi.png",
+  "./icons/menu/redcross.png",
+  "./icons/menu/user-add.png",
   "./icons/menu/install.png",
   "./icons/menu/users.png",
   "./icons/menu/audit.png"
