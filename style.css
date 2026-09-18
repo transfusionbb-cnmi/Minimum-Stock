@@ -3506,3 +3506,42 @@ body {
 .kpi-overview-link b{grid-area:arrow;align-self:center;font-size:24px;color:#3da5dc;}
 .kpi-overview-link:hover{background:#f7fcff;border-color:#c9e7fa;}
 @media(max-width:760px){.side-tree-children{margin-left:38px}.kpi-overview-links{grid-template-columns:1fr}}
+
+/* v2.9.42 KPI clarity refresh */
+.kpi-read-strip{
+  display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap;
+  padding:14px 18px; border-radius:16px; margin:0 0 16px 0;
+  border:1px solid #d9e7f1; background:#f7fbff; color:#42627b;
+}
+.kpi-read-strip strong{color:#214c70; min-width:130px;}
+.kpi-read-strip.good{background:#f3fbf7; border-color:#d6eee1;}
+.kpi-read-strip.alert{background:#fff6f5; border-color:#f3d8d4;}
+.kpi-read-strip.soft{background:#f9fbfd; border-color:#e3edf4;}
+.kpi-bullet-list{margin:0; padding-left:20px; color:#4f6b82; line-height:1.7;}
+.kpi-bullet-list li{margin-bottom:6px;}
+.kpi-click-card{cursor:pointer; text-align:left; border:0; width:100%; background:#fff;}
+.kpi-overview-link{cursor:pointer;}
+.simple-kpi strong{line-height:1.1;}
+.simple-panel .small-muted{line-height:1.45;}
+@media (max-width: 768px){
+  .kpi-read-strip strong{min-width:auto; width:100%;}
+}
+
+/* v2.9.43 Manual filter gate for analytics/KPI */
+.outreach-manual-gate{
+  display:flex;flex-direction:column;gap:6px;padding:18px 20px;border:1px dashed #b9d7ec;
+  background:#f8fcff;border-radius:18px;color:#496b84;margin:4px 0 16px;
+}
+.outreach-manual-gate strong{color:#214e70;font-size:1rem;}
+.kpi-filter-gate-shell{max-width:1180px;}
+.kpi-filter-gate{padding:22px;}
+.kpi-filter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:14px;}
+.kpi-filter-gate-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:18px;padding-top:16px;border-top:1px solid #e4eef5;}
+.kpi-filter-gate .outreach-filter-item{display:flex;flex-direction:column;gap:6px;font-weight:700;color:#365a75;}
+.kpi-filter-gate .form-select{min-height:48px;border-radius:14px;}
+@media (max-width:900px){.kpi-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media (max-width:620px){
+  .kpi-filter-grid{grid-template-columns:1fr;}
+  .kpi-filter-gate-footer{align-items:stretch;flex-direction:column;}
+  .kpi-filter-gate-footer .btn{width:100%;}
+}

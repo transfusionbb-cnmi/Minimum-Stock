@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-41-all-page-hash-routes";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-43-manual-filter-gate";
 const APP_SHELL = [
   "./",
   "./index.html",

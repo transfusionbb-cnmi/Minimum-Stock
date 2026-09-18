@@ -2616,6 +2616,31 @@
     return data || {};
   }
 
+  async function getOutreachFilterBootstrap() {
+    if (!isConfigured()) throw new Error("รายงานวิเคราะห์ผลถุงเลือดต้องใช้ Supabase");
+    await ensureOutreachSchema();
+    const [state, latestUpload, filterOptions] = await Promise.all([
+      getLisDataState(),
+      getLatestLisUpload(),
+      getOutreachFilterOptions()
+    ]);
+    return {
+      ok: true,
+      batchId: state?.baselineEstablished ? "master" : "",
+      calculatedAt: latestUpload?.created_at || "",
+      fileName: latestUpload?.file_name || "",
+      sourceStartDate: filterOptions?.minDate || state?.masterMinDate || "",
+      sourceEndDate: filterOptions?.maxDate || state?.masterMaxDate || "",
+      filterOptions: filterOptions || {},
+      filters: {},
+      validation: { ...(latestUpload?.validation || {}), masterReviewCount: Number(state?.reviewCount || 0) },
+      dataState: state || {},
+      latestUpload: latestUpload || null,
+      report: null,
+      reportLoaded: false
+    };
+  }
+
   async function getOutreachReviewRows(limit = 100) {
     const client = getClient();
     const { data, error } = await client
@@ -3308,6 +3333,7 @@
     getDashboard,
     getMobilePlanning,
     getOutreachAnalysis,
+    getOutreachFilterBootstrap,
     getOutreachMonthlyTrend,
     getBloodKpiRedCellDependency,
     getTrcRareRegistry,
