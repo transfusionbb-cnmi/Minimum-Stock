@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-36-trc-rare-sdr-ui";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-37-custom-menu-icons";
 const APP_SHELL = [
   "./",
   "./index.html",
