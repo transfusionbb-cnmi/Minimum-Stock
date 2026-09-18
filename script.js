@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260918-v2-9-40-kpi-tree-lazy-routes";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260918-v2-9-41-all-page-hash-routes";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -3030,14 +3030,112 @@ function openKpiRoute(route, btn, event) {
   toggleKpiTreeAndOpen(route, btn);
 }
 
+const APP_PAGE_ROUTES = {
+  upload: '#/upload',
+  minimum: '#/stock',
+  expiry: '#/expiry',
+  mobile: '#/mobile',
+  outreach: '#/outcomes',
+  'trc-rare': '#/trc-required',
+  install: '#/install',
+  admin: '#/users',
+  'admin-add': '#/users/add',
+  audit: '#/audit'
+};
+
+const APP_ROUTE_ALIASES = new Map([
+  ['upload', 'upload'], ['lis', 'upload'],
+  ['stock', 'minimum'], ['minimum', 'minimum'],
+  ['expiry', 'expiry'], ['near-expiry', 'expiry'],
+  ['mobile', 'mobile'], ['mobile-unit', 'mobile'],
+  ['outcomes', 'outreach'], ['outreach', 'outreach'], ['blood-outcomes', 'outreach'],
+  ['trc-required', 'trc-rare'], ['trc-rare', 'trc-rare'],
+  ['install', 'install'],
+  ['users', 'admin'], ['users/add', 'admin-add'], ['add-user', 'admin-add'],
+  ['audit', 'audit'], ['audit-log', 'audit']
+]);
+
+function normalizeAppHashPath() {
+  return String(window.location.hash || '').replace(/^#\/?/, '').replace(/^\/+|\/+$/g, '').toLowerCase();
+}
+
+function getAppPageHash(page) {
+  return APP_PAGE_ROUTES[page] || '#/stock';
+}
+
+function getAppPageFromHash() {
+  const path = normalizeAppHashPath();
+  if (!path) return 'minimum';
+  return APP_ROUTE_ALIASES.get(path) || null;
+}
+
+function getAppPageButton(page) {
+  return document.querySelector(`[data-app-page="${page}"]`) || null;
+}
+
+function navigateToPageRoute(page, btn = null) {
+  if (page === 'blood-kpi') {
+    toggleKpiTreeAndOpen('overview', btn);
+    return;
+  }
+  const target = getAppPageHash(page);
+  if (window.location.hash === target) {
+    handleAppHashRoute(true);
+  } else {
+    window.location.hash = target;
+  }
+}
+
+function isAdminRoutePage(page) {
+  return ['admin', 'admin-add', 'audit'].includes(page);
+}
+
 function handleAppHashRoute(force = false) {
   const raw = String(window.location.hash || '');
-  if (!/^#\/(?:kpi|blood-kpi)(?:\/|$)/i.test(raw)) return false;
-  const route = getKpiRouteFromHash();
-  const parent = document.getElementById('bloodKpiMenuBtn');
-  showDashboardPage('blood-kpi', parent, { skipKpiLoad: true });
-  setKpiTreeState(route);
-  loadBloodKpiPage(null, route, { force });
+
+  if (/^#\/(?:kpi|blood-kpi)(?:\/|$)/i.test(raw)) {
+    if (document.getElementById('installOverlay')?.style.display === 'flex') closeInstallModal();
+    const route = getKpiRouteFromHash();
+    const parent = document.getElementById('bloodKpiMenuBtn');
+    showDashboardPage('blood-kpi', parent, { skipKpiLoad: true, routed: true });
+    setKpiTreeState(route);
+    loadBloodKpiPage(null, route, { force });
+    return true;
+  }
+
+  let page = getAppPageFromHash();
+  if (!page) {
+    history.replaceState(null, document.title, window.location.pathname + window.location.search + '#/stock');
+    page = 'minimum';
+  } else if (!raw) {
+    history.replaceState(null, document.title, window.location.pathname + window.location.search + '#/stock');
+  }
+
+  if (isAdminRoutePage(page)) {
+    const access = window.MinimumStockAuthUI?.getCurrentAccess?.();
+    if (!access?.active || access?.role !== 'admin') {
+      history.replaceState(null, document.title, window.location.pathname + window.location.search + '#/stock');
+      page = 'minimum';
+    }
+  }
+
+  if (page !== 'install' && document.getElementById('installOverlay')?.style.display === 'flex') {
+    closeInstallModal();
+  }
+
+  if (page === 'install') {
+    document.querySelectorAll('.side-btn').forEach(el => el.classList.remove('active'));
+    const installBtn = document.getElementById('installAppBtn');
+    if (installBtn) installBtn.classList.add('active');
+    document.querySelectorAll('.side-tree-child').forEach(el => el.classList.remove('active'));
+    document.getElementById('kpiTree')?.classList.remove('open');
+    toggleSidebar(false);
+    handleInstallAppClick();
+    return true;
+  }
+
+  const btn = getAppPageButton(page);
+  showDashboardPage(page, btn, { routed: true });
   return true;
 }
 
@@ -4134,8 +4232,7 @@ async function removeTrcRareTag(id) {
 }
 
 function scrollToUpload() {
-  const uploadBtn = document.querySelector("[onclick=\"showDashboardPage('upload', this)\"]");
-  showDashboardPage("upload", uploadBtn);
+  navigateToPageRoute('upload', document.getElementById('uploadMenuBtn'));
 }
 
 function formatDisplayDateTime(value) {
@@ -4170,9 +4267,6 @@ function formatDisplayDateTime(value) {
   if (page !== "blood-kpi") {
     document.querySelectorAll(".side-tree-child").forEach(el => el.classList.remove("active"));
     document.getElementById("kpiTree")?.classList.remove("open");
-    if (/^#\/(?:kpi|blood-kpi)(?:\/|$)/i.test(String(window.location.hash || ""))) {
-      history.replaceState(null, document.title, window.location.pathname + window.location.search);
-    }
   }
 
   toggleSidebar(false);
@@ -4321,7 +4415,7 @@ function setupPWAInstall() {
   hideInstallButtonWhenInstalled();
 
   if (button) {
-    button.addEventListener("click", handleInstallAppClick);
+    button.addEventListener("click", () => navigateToPageRoute('install', button));
   }
 
   window.addEventListener("beforeinstallprompt", (event) => {

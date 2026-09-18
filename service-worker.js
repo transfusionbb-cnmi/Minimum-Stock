@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-40-kpi-tree-lazy-routes";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-41-all-page-hash-routes";
 const APP_SHELL = [
   "./",
   "./index.html",
