@@ -3473,3 +3473,15 @@ body {
   .trc-summary-help { font-size:10px; }
   .trc-recent-panel { padding:16px; }
 }
+
+/* v2.9.39 Blood KPI executive page */
+.blood-kpi-main-grid{grid-template-columns:repeat(auto-fit,minmax(220px,1fr));}
+.blood-kpi-mini-grid{grid-template-columns:repeat(auto-fit,minmax(220px,1fr));}
+.kpi-two-chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;}
+.kpi-line-svg,.kpi-bar-svg{width:100%;height:auto;display:block;}
+.kpi-blood-shell .simple-panel{border-radius:22px;overflow:hidden;}
+.kpi-blood-shell .panel-heading-row h3{margin-bottom:2px;}
+.kpi-blood-shell .simple-kpi small{display:block;line-height:1.35;}
+@media (max-width: 768px){
+  .kpi-two-chart-grid{grid-template-columns:1fr;}
+}
