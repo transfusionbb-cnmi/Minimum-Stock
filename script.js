@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260919-v2-9-57-trc-data-labels";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260919-v2-9-58-routine-rare-split";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -3802,14 +3802,15 @@ function renderKpiTrc({ dependency, year }) {
   const months = dependency?.months || [];
   const overall = Number(summary.rate||0), adjusted = Number(summary.adjustedRate ?? overall);
   const rare = Number(summary.rareTrcRbc||0), routine = Number(summary.routineTrcRbc ?? Math.max(0,Number(summary.trcRbc||0)-rare));
-  currentBloodKpiRouteData = { route:'trc', year, overall, adjusted, rare, routine, months };
-  return `${kpiPageHeader('อัตราพึ่งพากาชาด Routine','',year,dependency?.years||[])}
+  const routineBase = Number(summary.adjustedTotalRbc ?? Math.max(0, Number(summary.totalRbc||0)-rare));
+  currentBloodKpiRouteData = { route:'trc', year, overall, adjusted, rare, routine, routineBase, months };
+  return `${kpiPageHeader('อัตราพึ่งพากาชาด Routine','แยกเลือดหายาก / Ag-matched / Rh Negative ออกจาก Routine KPI',year,dependency?.years||[])}
     ${renderKpiQuickCards([
-      { label:'พึ่งพากาชาดรวม', value:`${overall.toFixed(1)}%`, note:`${Number(summary.trcRbc||0).toLocaleString()} ถุง`, tone:'' },
-      { label:'พึ่งพากาชาด Routine', value:`${adjusted.toFixed(1)}%`, note:`${routine.toLocaleString()} ถุง`, tone:'is-good' },
-      { label:'Rare / Ag-matched / Rh Negative', value:`${rare.toLocaleString()} ถุง`, note:'', tone:'' }
+      { label:'พึ่งพากาชาด Routine', value:`${adjusted.toFixed(1)}%`, note:`เบิกกาชาด Routine ${routine.toLocaleString()} จากฐาน Routine ${routineBase.toLocaleString()} ถุง`, tone:'is-good' },
+      { label:'เลือดหายาก / ภาวะจำเป็น', value:`${rare.toLocaleString()} ถุง`, note:'Rare / Ag-matched / Rh Negative · แยกออก ไม่รวม Routine KPI', tone:'' }
     ])}
-    <div class="simple-panel kpi-executive-panel"><div class="panel-heading-row"><div><h3>แนวโน้มตามช่วงที่เลือก</h3></div></div>${renderTrcRangeSvg(months)}</div>`;
+    <div class="simple-panel kpi-executive-panel mb-3"><div class="panel-heading-row"><div><h3>แนวโน้มพึ่งพากาชาด Routine</h3><div class="small-muted">แสดงเฉพาะเลือด Routine หลังตัดรายการเลือดหายาก / ภาวะจำเป็นออกแล้ว</div></div></div>${renderTrcRangeSvg(months)}</div>
+    <div class="simple-panel kpi-executive-panel"><div class="panel-heading-row"><div><h3>เลือดหายาก / ภาวะจำเป็นจากกาชาด</h3><div class="small-muted">รายงานแยกเป็นจำนวนถุง ไม่รวมใน Routine KPI</div></div></div>${renderTrcRareMonthlySvg(months)}</div>`;
 }
 
 function renderKpiTurnaround({ insights, dependency, year }) {
@@ -3975,7 +3976,7 @@ function downloadCurrentKpiPng() {
   if(data.route==='overview'){cards.push(['ใช้ประโยชน์',`${Number(data.utilization||0).toFixed(1)}%`],['หมดอายุ',`${Number(data.expiry||0).toFixed(1)}%`],['พึ่งกาชาด Routine',`${Number(data.routineRate||0).toFixed(1)}%`]);}
   if(data.route==='utilization') cards.push(['ใช้ประโยชน์',`${Number(data.rate||0).toFixed(1)}%`]);
   if(data.route==='expiry') cards.push(['หมดอายุ',`${Number(data.rate||0).toFixed(1)}%`]);
-  if(data.route==='trc') cards.push(['พึ่งพารวม',`${Number(data.overall||0).toFixed(1)}%`],['Routine',`${Number(data.adjusted||0).toFixed(1)}%`],['Rare/Ag',`${Number(data.rare||0).toLocaleString()} ถุง`]);
+  if(data.route==='trc') cards.push(['พึ่งพากาชาด Routine',`${Number(data.adjusted||0).toFixed(1)}%`],['เบิกกาชาด Routine',`${Number(data.routine||0).toLocaleString()} ถุง`],['เลือดหายาก/จำเป็น',`${Number(data.rare||0).toLocaleString()} ถุง`]);
   if(data.route==='turnaround') cards.push(['Median รับเข้า→ใช้',`${Number.isFinite(data.value)?data.value:'—'} วัน`]);
   if(data.route==='aging') cards.push(['คงคลังอายุมากวันนี้',`${Number(data.rate||0).toFixed(1)}%`]);
   if(data.route==='outreach') cards.push(['ประสิทธิผลรวม',`${Number(data.rate||0).toFixed(1)}%`]);
@@ -4327,10 +4328,10 @@ function renderBloodKpiPage(data) {
           ${renderBloodOutcomeMonthlySvg(monthlyOutcomeRows, year)}
         </div>
         <div class="simple-panel">
-          <div class="panel-heading-row"><div><h3>พึ่งพากาชาดรายเดือน</h3><div class="small-muted">ปี ${year+543} เทียบกับ ${comparisonYear+543}</div></div></div>
+          <div class="panel-heading-row"><div><h3>พึ่งพากาชาด Routine รายเดือน</h3><div class="small-muted">แยก Rare / Ag-matched / Rh Negative ออกจาก KPI</div></div></div>
           ${renderBloodKpiLineSvg(months, year, comparisonYear)}
           <div class="small-muted mt-2">${escapeOutreachHtml(changedText)}${previousTotal > 0 ? ` จากปี ${comparisonYear+543}` : ''}</div>
-          ${adjustedReady ? `<div class="kpi-adjusted-box mt-3"><div><span>มุมมองปรับแล้ว · ตัด Rare/Ag-matched/Rh Negative</span><b>${adjustedRate.toFixed(1)}%</b></div><div class="kpi-adjusted-detail">TRC routine ${routineTrcRbc.toLocaleString()} ถุง · Rare/Ag-matched/Rh Negative ${rareTrcRbc.toLocaleString()} ถุง</div></div>` : ''}
+          ${adjustedReady ? `<div class="kpi-adjusted-box mt-3"><div><span>Routine KPI</span><b>${adjustedRate.toFixed(1)}%</b></div><div class="kpi-adjusted-detail">เบิกกาชาด Routine ${routineTrcRbc.toLocaleString()} ถุง · เลือดหายาก/ภาวะจำเป็น ${rareTrcRbc.toLocaleString()} ถุง (รายงานแยก)</div></div>` : ''}
         </div>
       </div>
 
@@ -4481,31 +4482,47 @@ function renderTrcRangeSvg(rows) {
   const y = v => top + chartH - (Math.max(0, Math.min(100, Number(v || 0))) / 100) * chartH;
   const clampLabelY = value => Math.max(top + 13, Math.min(top + chartH + 23, value));
   const grid = [0,25,50,75,100].map(v => `<line x1="${left}" y1="${y(v)}" x2="${w-right}" y2="${y(v)}" stroke="#e8eff5"/><text x="${left-12}" y="${y(v)+4}" text-anchor="end" font-size="12" fill="#8398aa">${v}%</text>`).join('');
-  const overallPath = items.map((r,i)=>`${i===0?'M':'L'}${x(i)},${y(r.rate)}`).join(' ');
   const routinePath = items.map((r,i)=>`${i===0?'M':'L'}${x(i)},${y(r.adjustedRate)}`).join(' ');
   const pointFontSize = items.length > 18 ? 10.5 : 11.5;
+  const halo = 'paint-order:stroke;stroke:#fff;stroke-width:5px;stroke-linejoin:round';
   const pointLabels = items.map((r,i) => {
-    const overall = Number(r?.rate || 0);
     const routine = Number(r?.adjustedRate || 0);
-    const cx = x(i), overallY = y(overall), routineY = y(routine);
-    const sameValue = Math.abs(overall - routine) < 0.05;
-    const halo = 'paint-order:stroke;stroke:#fff;stroke-width:5px;stroke-linejoin:round';
-    if (sameValue) {
-      return `<text x="${cx}" y="${clampLabelY(routineY - 14)}" text-anchor="middle" font-size="${pointFontSize}" font-weight="800" fill="#2f7fc1" style="${halo}">${routine.toFixed(1)}%</text>`;
-    }
-    const closePoints = Math.abs(overallY - routineY) < 34;
-    const overallLabelY = clampLabelY(overallY - 14);
-    const routineLabelY = clampLabelY(routineY + (closePoints ? 22 : -14));
-    return `<text x="${cx}" y="${overallLabelY}" text-anchor="middle" font-size="${pointFontSize}" font-weight="700" fill="#72899c" style="${halo}">${overall.toFixed(1)}%</text><text x="${cx}" y="${routineLabelY}" text-anchor="middle" font-size="${pointFontSize}" font-weight="800" fill="#2f7fc1" style="${halo}">${routine.toFixed(1)}%</text>`;
+    return `<text x="${x(i)}" y="${clampLabelY(y(routine)-14)}" text-anchor="middle" font-size="${pointFontSize}" font-weight="800" fill="#2f7fc1" style="${halo}">${routine.toFixed(1)}%</text>`;
   }).join('');
   const labels = items.map((r,i)=>`<text x="${x(i)}" y="${h - (multiYear ? 56 : 32)}" text-anchor="middle" font-size="${items.length>18?10.5:12.5}" fill="#587184">${escapeOutreachHtml(['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(r.month||0)] || r.periodLabel || '')}</text>`).join('');
   const yearBandsSvg = multiYear ? renderKpiYearBandSvg(yearBands, x, top + chartH) : '';
   const points = items.map((r,i) => {
     const monthLabel = escapeOutreachHtml(['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(r.month||0)] || r.periodLabel || '');
-    const overall = Number(r?.rate || 0), routine = Number(r?.adjustedRate || 0);
-    return `<circle cx="${x(i)}" cy="${y(overall)}" r="4" fill="#fff" stroke="#8aa0b4" stroke-width="2.5"><title>${monthLabel} · รวม ${overall.toFixed(1)}%</title></circle><circle cx="${x(i)}" cy="${y(routine)}" r="5" fill="#fff" stroke="#2f7fc1" stroke-width="3"><title>${monthLabel} · Routine ${routine.toFixed(1)}%</title></circle>`;
+    const routine = Number(r?.adjustedRate || 0);
+    return `<circle cx="${x(i)}" cy="${y(routine)}" r="5" fill="#fff" stroke="#2f7fc1" stroke-width="3"><title>${monthLabel} · Routine ${routine.toFixed(1)}%</title></circle>`;
   }).join('');
-  const svg = `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="แนวโน้มอัตราพึ่งพากาชาดรวมและ Routine พร้อมตัวเลขรายเดือน"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/>${grid}${yearBandsSvg}<path d="${overallPath}" fill="none" stroke="#8aa0b4" stroke-width="3"/><path d="${routinePath}" fill="none" stroke="#2f7fc1" stroke-width="4"/>${points}${pointLabels}${labels}<g transform="translate(${w-right-230},30)"><line x1="0" y1="0" x2="28" y2="0" stroke="#8aa0b4" stroke-width="3"/><text x="36" y="4" font-size="12" fill="#5b7285">รวม</text><line x1="92" y1="0" x2="120" y2="0" stroke="#2f7fc1" stroke-width="4"/><text x="128" y="4" font-size="12" fill="#5b7285">Routine</text></g></svg>`;
+  const svg = `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="แนวโน้มอัตราพึ่งพากาชาด Routine พร้อมตัวเลขรายเดือน"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/>${grid}${yearBandsSvg}<path d="${routinePath}" fill="none" stroke="#2f7fc1" stroke-width="4"/>${points}${pointLabels}${labels}<g transform="translate(${w-right-145},30)"><line x1="0" y1="0" x2="30" y2="0" stroke="#2f7fc1" stroke-width="4"/><text x="38" y="4" font-size="12" fill="#5b7285">Routine KPI</text></g></svg>`;
+  return wrapScrollableKpiSvg(svg, items.length > 10);
+}
+
+function renderTrcRareMonthlySvg(rows) {
+  const { items, multiYear, yearBands } = getKpiContinuousMonthChartMeta(rows);
+  if (!items.length) return `<div class="small-muted py-4">ไม่มีข้อมูลในช่วงที่เลือก</div>`;
+  const left = 72, right = 44, top = 58, bottom = multiYear ? 112 : 88;
+  const groupW = items.length > 18 ? 70 : 82;
+  const chartW = Math.max(720, groupW * items.length);
+  const w = left + right + chartW, h = 390, chartH = h - top - bottom;
+  const maxCount = Math.max(1, ...items.map(r => Number(r?.rareTrcRbc || 0)));
+  const x = i => left + chartW * (i + .5) / items.length;
+  const y = v => top + chartH - (Math.max(0, Number(v || 0)) / maxCount) * chartH;
+  const tickMax = Math.max(1, Math.ceil(maxCount));
+  const tickValues = [...new Set([0, Math.ceil(tickMax/2), tickMax])];
+  const grid = tickValues.map(v => `<line x1="${left}" y1="${y(v)}" x2="${w-right}" y2="${y(v)}" stroke="#e8eff5"/><text x="${left-12}" y="${y(v)+4}" text-anchor="end" font-size="12" fill="#8398aa">${v}</text>`).join('');
+  const barW = Math.min(34, Math.max(16, groupW * .42));
+  const bars = items.map((r,i) => {
+    const value = Number(r?.rareTrcRbc || 0);
+    const cx = x(i), barY = y(value), barH = Math.max(value > 0 ? 4 : 0, top + chartH - barY);
+    const labelY = Math.max(top + 14, barY - 8);
+    return `<rect x="${cx-barW/2}" y="${barY}" width="${barW}" height="${barH}" rx="${Math.min(8,barW/2)}" fill="#d88985" opacity=".88"><title>${value.toLocaleString()} ถุง</title></rect>${value>0?`<text x="${cx}" y="${labelY}" text-anchor="middle" font-size="${items.length>18?10.5:11.5}" font-weight="800" fill="#9a514c">${value.toLocaleString()}</text>`:''}`;
+  }).join('');
+  const labels = items.map((r,i)=>`<text x="${x(i)}" y="${h - (multiYear ? 56 : 32)}" text-anchor="middle" font-size="${items.length>18?10.5:12.5}" fill="#587184">${escapeOutreachHtml(['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(r.month||0)] || r.periodLabel || '')}</text>`).join('');
+  const yearBandsSvg = multiYear ? renderKpiYearBandSvg(yearBands, x, top + chartH) : '';
+  const svg = `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="จำนวนเลือดหายากหรือภาวะจำเป็นจากกาชาดรายเดือน"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/>${grid}${yearBandsSvg}${bars}${labels}</svg>`;
   return wrapScrollableKpiSvg(svg, items.length > 10);
 }
 
@@ -4836,14 +4853,14 @@ function formatTrcRareProduct(value) {
 async function loadTrcRarePage(options = {}) {
   const box = document.getElementById("trcRareDashboard");
   if (!box) return;
-  if (!options.silent) box.innerHTML = `<div class="hero-card mt-4"><div class="fw-bold">กำลังโหลดทะเบียนกาชาดจำเป็น...</div><div class="small-muted">กำลังจับคู่ Bag No. กับข้อมูล LIS</div></div>`;
+  if (!options.silent) box.innerHTML = `<div class="hero-card mt-4"><div class="fw-bold">กำลังโหลดทะเบียนเลือดหายาก / ภาวะจำเป็น...</div><div class="small-muted">กำลังจับคู่ Bag No. กับข้อมูล LIS</div></div>`;
   try {
     const data = await MinimumStockBackend.getTrcRareRegistry(300);
     currentTrcRareData = data;
     renderTrcRarePage(data);
     window.setTimeout(() => document.getElementById("trcRareBagInput")?.focus(), 80);
   } catch (err) {
-    box.innerHTML = `<div class="trc-rare-shell"><div class="simple-page-head mt-2"><div><h1>กาชาดจำเป็น</h1><div class="page-subline">แยกถุง Rare / Ag-matched / Rh Negative ออกจากการพึ่งพากาชาดทั่วไป</div></div></div><div class="simple-panel"><h4 class="fw-bold mb-2">ยังเปิดทะเบียนไม่ได้</h4><div class="small-muted">${escapeOutreachHtml(err.message)}</div></div></div>`;
+    box.innerHTML = `<div class="trc-rare-shell"><div class="simple-page-head mt-2"><div><h1>เลือดหายาก / ภาวะจำเป็น</h1><div class="page-subline">บันทึกรายการที่จำเป็นต้องพึ่งกาชาดเพราะ Rare / Ag-matched / Rh Negative และแยกออกจาก Routine KPI</div></div></div><div class="simple-panel"><h4 class="fw-bold mb-2">ยังเปิดทะเบียนไม่ได้</h4><div class="small-muted">${escapeOutreachHtml(err.message)}</div></div></div>`;
   }
 }
 
@@ -4866,18 +4883,18 @@ function renderTrcRarePage(data) {
     <div class="trc-rare-shell">
       <div class="simple-page-head trc-page-head mt-2">
         <div>
-          <h1>กาชาดจำเป็น</h1>
-          <div class="page-subline">บันทึกถุงที่จำเป็นต้องเบิกจากสภากาชาดไทย เช่น rare / Ag-matched / Rh Negative</div>
+          <h1>เลือดหายาก / ภาวะจำเป็น</h1>
+          <div class="page-subline">บันทึกถุงที่จำเป็นต้องพึ่งสภากาชาดไทยเพราะ Rare / Ag-matched / Rh Negative โดยแยกออกจาก Routine KPI</div>
         </div>
         <div class="trc-head-actions no-print">
-          <span class="trc-scope-chip">เฉพาะเลือดหายาก / Ag-matched / Rh Negative</span>
+          <span class="trc-scope-chip">Rare / Ag-matched / Rh Negative</span>
           <button class="trc-refresh-btn" type="button" onclick="loadTrcRarePage()" aria-label="รีเฟรช">↻</button>
         </div>
       </div>
 
       <div class="trc-compact-notes mb-3">
-        <span class="trc-note-chip is-warning">ไม่ใช้กรณีสต๊อกไม่พอ</span>
-        <span class="trc-note-chip">บันทึกเฉพาะ Bag No. และผลิตภัณฑ์</span>
+        <span class="trc-note-chip is-warning">ใช้เฉพาะกรณีจำเป็นทางคลินิก ไม่ใช่สต๊อก Routine ไม่พอ</span>
+        <span class="trc-note-chip">เมื่อ LIS ยืนยันว่ามาจากกาชาด ระบบจะแยกออกจาก Routine KPI</span>
       </div>
 
       <div class="trc-rare-grid mb-3">
@@ -4937,7 +4954,7 @@ function renderTrcRarePage(data) {
             <span class="trc-summary-label">ต้องตรวจสอบ</span>
             <b>${Number(summary.nonTrc || 0).toLocaleString()}</b>
           </div>
-          <div class="trc-summary-help">นับเฉพาะถุงที่ยืนยันจาก LIS ว่ามาจากกาชาด</div>
+          <div class="trc-summary-help">รายการที่ LIS ยืนยันว่ามาจากกาชาดจะถูกรายงานเป็น “เลือดหายาก / ภาวะจำเป็น” แยกจาก Routine KPI</div>
         </div>
       </div>
 
@@ -5021,7 +5038,7 @@ async function submitTrcRareTag(event) {
 }
 
 async function removeTrcRareTag(id) {
-  const ok = await showConfirmModal("ยกเลิกรายการนี้", "รายการจะไม่ถูกนำไปตัดออกจากอัตราพึ่งพากาชาด แต่ Audit Log ยังเก็บประวัติไว้", { confirmText: "ยืนยันยกเลิก" });
+  const ok = await showConfirmModal("ยกเลิกรายการนี้", "รายการจะกลับไปอยู่ในกลุ่ม Routine KPI หาก LIS ระบุว่ามาจากกาชาด ส่วน Audit Log ยังเก็บประวัติไว้", { confirmText: "ยืนยันยกเลิก" });
   if (!ok) return;
   try {
     await MinimumStockBackend.removeTrcRareTag(id);

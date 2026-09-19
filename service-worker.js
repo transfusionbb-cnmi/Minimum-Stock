@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-57-trc-data-labels";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-58-routine-rare-split";
 const APP_SHELL = [
   "./",
   "./index.html",
