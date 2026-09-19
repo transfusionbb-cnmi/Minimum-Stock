@@ -2212,11 +2212,11 @@ function renderOutreachTrendChart(data) {
   box.innerHTML = `
     <div class="trend-toolbar-row">
       <div class="trend-summary-row">
+        <span><i class="trend-dot trend-received"></i>รับเข้า <b>${totalIn.toLocaleString()}</b></span>
         <span><i class="trend-dot trend-released"></i>ใช้/จ่าย/ส่งต่อ <b>${totalReleased.toLocaleString()}</b></span>
         <span><i class="trend-dot trend-expired"></i>หมดอายุ <b>${totalExpired.toLocaleString()}</b></span>
         <span><i class="trend-dot trend-rejected"></i>ไม่เหมาะสม <b>${totalRejected.toLocaleString()}</b></span>
         <span><i class="trend-dot trend-unresolved"></i>ยังอยู่ในคลัง <b>${totalUnresolved.toLocaleString()}</b></span>
-        <span class="trend-total-chip">รับเข้ารวม <b>${totalIn.toLocaleString()}</b></span>
       </div>
       <button class="btn btn-light btn-sm no-print" type="button" onclick="downloadOutreachTrendChartPng()">ดาวน์โหลดกราฟ PNG</button>
     </div>
@@ -2232,24 +2232,29 @@ function renderOutreachTrendChart(data) {
         const shortYear = String(year + 543).slice(-2);
         const label = multiYear ? `${monthNames[monthIndex]} ${shortYear}` : monthNames[monthIndex];
         const fullLabel = `${monthNamesLong[monthIndex]} ${year + 543}`;
-        const barHeight = Math.max(stockIn ? 10 : 2, Math.round((stockIn / maxReceived) * 100));
-        const pct = value => stockIn > 0 ? (Number(value || 0) / stockIn) * 100 : 0;
+        const receivedHeight = Math.max(stockIn ? 10 : 2, Math.round((stockIn / maxReceived) * 100));
+        const finalOutcomeTotal = released + expired + rejected + unresolved;
+        const outcomeHeight = Math.max(finalOutcomeTotal ? 10 : 2, Math.round((finalOutcomeTotal / maxReceived) * 100));
+        const pct = value => finalOutcomeTotal > 0 ? (Number(value || 0) / finalOutcomeTotal) * 100 : 0;
         return `
           <div class="outcome-month-group">
             <div class="month-top-value">${stockIn.toLocaleString()}</div>
             <div class="outcome-bar-area">
-              <div class="outcome-stack" style="height:${barHeight}%" title="${fullLabel} · รับเข้า ${stockIn.toLocaleString()}">
-                <span class="outcome-segment is-used" style="height:${pct(released)}%" title="ใช้/จ่าย/ส่งต่อ ${released.toLocaleString()}"></span>
-                <span class="outcome-segment is-expired" style="height:${pct(expired)}%" title="หมดอายุ ${expired.toLocaleString()}"></span>
-                <span class="outcome-segment is-rejected" style="height:${pct(rejected)}%" title="ไม่เหมาะสม ${rejected.toLocaleString()}"></span>
-                <span class="outcome-segment is-unresolved" style="height:${pct(unresolved)}%" title="ยังอยู่ในคลัง ${unresolved.toLocaleString()}"></span>
+              <div class="outcome-bar-pair">
+                <div class="outcome-solid-bar is-received" style="height:${receivedHeight}%" title="${fullLabel} · รับเข้า ${stockIn.toLocaleString()}" aria-label="รับเข้า ${stockIn.toLocaleString()}"></div>
+                <div class="outcome-stack" style="height:${outcomeHeight}%" title="${fullLabel} · ใช้/จ่าย/ส่งต่อ ${released.toLocaleString()} · หมดอายุ ${expired.toLocaleString()} · ไม่เหมาะสม ${rejected.toLocaleString()} · ยังอยู่ในคลัง ${unresolved.toLocaleString()}">
+                  <span class="outcome-segment is-used" style="height:${pct(released)}%" title="ใช้/จ่าย/ส่งต่อ ${released.toLocaleString()}"></span>
+                  <span class="outcome-segment is-expired" style="height:${pct(expired)}%" title="หมดอายุ ${expired.toLocaleString()}"></span>
+                  <span class="outcome-segment is-rejected" style="height:${pct(rejected)}%" title="ไม่เหมาะสม ${rejected.toLocaleString()}"></span>
+                  <span class="outcome-segment is-unresolved" style="height:${pct(unresolved)}%" title="ยังอยู่ในคลัง ${unresolved.toLocaleString()}"></span>
+                </div>
               </div>
             </div>
             <div class="month-label">${label}</div>
           </div>`;
       }).join("")}
     </div>
-    <div class="trend-note-row"><div class="small-muted">ความสูงของแท่ง = จำนวนรับเข้า · สีภายในแท่ง = ผลลัพธ์สุดท้ายของถุงในเดือนนั้น</div></div>
+    <div class="trend-note-row"><div class="small-muted">แท่งซ้าย = รับเข้า · แท่งขวา = ใช้/จ่าย/ส่งต่อ + หมดอายุ + ไม่เหมาะสม + ยังอยู่ในคลัง</div></div>
     <div class="trend-table-wrap mt-3">
       <table class="table table-sm trend-data-table align-middle mb-0">
         <thead>
