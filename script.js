@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260919-v2-9-56-stacked-outcomes-kpi-charts";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260919-v2-9-57-trc-data-labels";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -4473,16 +4473,39 @@ function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
 function renderTrcRangeSvg(rows) {
   const { items, multiYear, yearBands } = getKpiContinuousMonthChartMeta(rows);
   if (!items.length) return `<div class="small-muted py-4">ไม่มีข้อมูลในช่วงที่เลือก</div>`;
-  const left = 72, right = 44, top = 46, bottom = multiYear ? 112 : 88;
+  const left = 72, right = 44, top = 58, bottom = multiYear ? 112 : 88;
   const groupW = items.length > 18 ? 70 : 82;
   const chartW = Math.max(720, groupW * items.length);
   const w = left + right + chartW, h = 520, chartH = h - top - bottom;
-  const x = i => left + chartW * (i + .5) / items.length, y = v => top + chartH - (Math.max(0, Math.min(100, Number(v || 0))) / 100) * chartH;
+  const x = i => left + chartW * (i + .5) / items.length;
+  const y = v => top + chartH - (Math.max(0, Math.min(100, Number(v || 0))) / 100) * chartH;
+  const clampLabelY = value => Math.max(top + 13, Math.min(top + chartH + 23, value));
   const grid = [0,25,50,75,100].map(v => `<line x1="${left}" y1="${y(v)}" x2="${w-right}" y2="${y(v)}" stroke="#e8eff5"/><text x="${left-12}" y="${y(v)+4}" text-anchor="end" font-size="12" fill="#8398aa">${v}%</text>`).join('');
-  const overallPath = items.map((r,i)=>`${i===0?'M':'L'}${x(i)},${y(r.rate)}`).join(' '), routinePath = items.map((r,i)=>`${i===0?'M':'L'}${x(i)},${y(r.adjustedRate)}`).join(' ');
+  const overallPath = items.map((r,i)=>`${i===0?'M':'L'}${x(i)},${y(r.rate)}`).join(' ');
+  const routinePath = items.map((r,i)=>`${i===0?'M':'L'}${x(i)},${y(r.adjustedRate)}`).join(' ');
+  const pointFontSize = items.length > 18 ? 10.5 : 11.5;
+  const pointLabels = items.map((r,i) => {
+    const overall = Number(r?.rate || 0);
+    const routine = Number(r?.adjustedRate || 0);
+    const cx = x(i), overallY = y(overall), routineY = y(routine);
+    const sameValue = Math.abs(overall - routine) < 0.05;
+    const halo = 'paint-order:stroke;stroke:#fff;stroke-width:5px;stroke-linejoin:round';
+    if (sameValue) {
+      return `<text x="${cx}" y="${clampLabelY(routineY - 14)}" text-anchor="middle" font-size="${pointFontSize}" font-weight="800" fill="#2f7fc1" style="${halo}">${routine.toFixed(1)}%</text>`;
+    }
+    const closePoints = Math.abs(overallY - routineY) < 34;
+    const overallLabelY = clampLabelY(overallY - 14);
+    const routineLabelY = clampLabelY(routineY + (closePoints ? 22 : -14));
+    return `<text x="${cx}" y="${overallLabelY}" text-anchor="middle" font-size="${pointFontSize}" font-weight="700" fill="#72899c" style="${halo}">${overall.toFixed(1)}%</text><text x="${cx}" y="${routineLabelY}" text-anchor="middle" font-size="${pointFontSize}" font-weight="800" fill="#2f7fc1" style="${halo}">${routine.toFixed(1)}%</text>`;
+  }).join('');
   const labels = items.map((r,i)=>`<text x="${x(i)}" y="${h - (multiYear ? 56 : 32)}" text-anchor="middle" font-size="${items.length>18?10.5:12.5}" fill="#587184">${escapeOutreachHtml(['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(r.month||0)] || r.periodLabel || '')}</text>`).join('');
   const yearBandsSvg = multiYear ? renderKpiYearBandSvg(yearBands, x, top + chartH) : '';
-  const svg = `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/>${grid}${yearBandsSvg}<path d="${overallPath}" fill="none" stroke="#8aa0b4" stroke-width="3"/><path d="${routinePath}" fill="none" stroke="#2f7fc1" stroke-width="4"/>${items.map((r,i)=>`<circle cx="${x(i)}" cy="${y(r.adjustedRate)}" r="5" fill="#fff" stroke="#2f7fc1" stroke-width="3"/>`).join('')}${labels}<g transform="translate(${w-right-230},30)"><line x1="0" y1="0" x2="28" y2="0" stroke="#8aa0b4" stroke-width="3"/><text x="36" y="4" font-size="12" fill="#5b7285">รวม</text><line x1="92" y1="0" x2="120" y2="0" stroke="#2f7fc1" stroke-width="4"/><text x="128" y="4" font-size="12" fill="#5b7285">Routine</text></g></svg>`;
+  const points = items.map((r,i) => {
+    const monthLabel = escapeOutreachHtml(['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(r.month||0)] || r.periodLabel || '');
+    const overall = Number(r?.rate || 0), routine = Number(r?.adjustedRate || 0);
+    return `<circle cx="${x(i)}" cy="${y(overall)}" r="4" fill="#fff" stroke="#8aa0b4" stroke-width="2.5"><title>${monthLabel} · รวม ${overall.toFixed(1)}%</title></circle><circle cx="${x(i)}" cy="${y(routine)}" r="5" fill="#fff" stroke="#2f7fc1" stroke-width="3"><title>${monthLabel} · Routine ${routine.toFixed(1)}%</title></circle>`;
+  }).join('');
+  const svg = `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="แนวโน้มอัตราพึ่งพากาชาดรวมและ Routine พร้อมตัวเลขรายเดือน"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/>${grid}${yearBandsSvg}<path d="${overallPath}" fill="none" stroke="#8aa0b4" stroke-width="3"/><path d="${routinePath}" fill="none" stroke="#2f7fc1" stroke-width="4"/>${points}${pointLabels}${labels}<g transform="translate(${w-right-230},30)"><line x1="0" y1="0" x2="28" y2="0" stroke="#8aa0b4" stroke-width="3"/><text x="36" y="4" font-size="12" fill="#5b7285">รวม</text><line x1="92" y1="0" x2="120" y2="0" stroke="#2f7fc1" stroke-width="4"/><text x="128" y="4" font-size="12" fill="#5b7285">Routine</text></g></svg>`;
   return wrapScrollableKpiSvg(svg, items.length > 10);
 }
 
