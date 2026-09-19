@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260919-v2-9-46-executive-combo-chart-polish";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260919-v2-9-47-responsive-clean-combo";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -3480,10 +3480,10 @@ function trendToOutcomeRows(trend) {
     const used = Number(m.released || 0), expired = Number(m.expired || 0);
     const totalFinal = used + expired;
     return {
-      month: Number(m.month || 0), used, expired,
+      month: Number(m.month || 0), used, expired, totalFinal,
       unresolved: Number(m.unresolved || 0),
-      utilizationRate: totalFinal ? outreachPercent(used,totalFinal) : 0,
-      expiredRate: totalFinal ? outreachPercent(expired,totalFinal) : 0
+      utilizationRate: totalFinal ? outreachPercent(used,totalFinal) : null,
+      expiredRate: totalFinal ? outreachPercent(expired,totalFinal) : null
     };
   });
 }
@@ -3503,6 +3503,28 @@ function getKpiPeakMonth(rows, valueKey) {
   const items = Array.isArray(rows) ? rows.filter(item => Number.isFinite(Number(item?.[valueKey]))) : [];
   if (!items.length) return null;
   return items.slice().sort((a, b) => Number(b?.[valueKey] || 0) - Number(a?.[valueKey] || 0))[0] || null;
+}
+
+
+function getKpiPeakMonthWithBase(rows, valueKey, minBase = 10) {
+  const items = Array.isArray(rows) ? rows.filter(item => Number.isFinite(Number(item?.[valueKey])) && Number(item?.totalFinal || 0) > 0) : [];
+  if (!items.length) return null;
+  const enough = items.filter(item => Number(item?.totalFinal || 0) >= minBase);
+  const pool = enough.length ? enough : items;
+  return pool.slice().sort((a,b)=>Number(b?.[valueKey]||0)-Number(a?.[valueKey]||0))[0] || null;
+}
+
+function renderSingleSourceExecutiveSummary(row, mode = 'utilization') {
+  if (!row) return `<div class="empty-state-card"><h3>ยังไม่มีข้อมูลแหล่งรับเข้า</h3></div>`;
+  const isExpiry = mode === 'expiry';
+  const value = Number(isExpiry ? row.expiredRate : row.utilizationRate || 0);
+  const label = isExpiry ? 'อัตราหมดอายุของแหล่งที่เลือก' : 'อัตราการใช้ประโยชน์ของแหล่งที่เลือก';
+  const tone = isExpiry ? 'single-source-alert' : 'single-source-good';
+  return `<div class="single-source-summary ${tone}">
+    <div><span>${escapeOutreachHtml(label)}</span><strong>${value.toFixed(1)}%</strong><small>${escapeOutreachHtml(row.label || '')}</small></div>
+    <div class="single-source-meter"><div style="width:${Math.max(2,Math.min(100,value))}%"></div></div>
+    <div class="small-muted">ใช้ฐาน ${Number(row.totalFinal||0).toLocaleString()} ถุงที่จบผลลัพธ์แล้ว</div>
+  </div>`;
 }
 
 function renderKpiQuickCards(cards = []) {
@@ -3557,7 +3579,7 @@ function renderKpiUtilization({ analysis, trend, dependency, year }) {
   const groups = groupKpiRatesFromAnalysis(analysis).sort((a,b)=>b.utilizationRate-a.utilizationRate);
   const monthly = trendToOutcomeRows(trend);
   const topGroup = getKpiTopRow(groups, 'utilizationRate');
-  const peakMonth = getKpiPeakMonth(monthly, 'utilizationRate');
+  const peakMonth = getKpiPeakMonthWithBase(monthly, 'utilizationRate', 10);
   currentBloodKpiRouteData = { route:'utilization', year, rate, groups, monthly };
   const monthNames=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
   return `${kpiPageHeader('อัตราการใช้ประโยชน์จากโลหิต','ยิ่งสูงยิ่งดี · ดูทั้งจำนวนถุงที่ใช้จริง และร้อยละการใช้ประโยชน์ในภาพเดียว',year,dependency?.years||trend?.years||[])}
@@ -3565,7 +3587,7 @@ function renderKpiUtilization({ analysis, trend, dependency, year }) {
     ${renderKpiQuickCards([
       { label:'อัตราการใช้ประโยชน์', value:`${rate.toFixed(1)}%`, note:`Used ${Number(summary.used||0).toLocaleString()} จาก ${finalBase.toLocaleString()} ถุงที่จบผลลัพธ์`, tone:'is-good' },
       topGroup ? { label:'แหล่งเลือดที่ใช้ประโยชน์สูงสุด', value:`${topGroup.label}`, note:`${topGroup.utilizationRate.toFixed(1)}% · ${topGroup.totalFinal.toLocaleString()} ถุง`, tone:'' } : null,
-      peakMonth ? { label:'เดือนที่ใช้ประโยชน์สูงสุด', value:monthNames[Number(peakMonth.month||0)] || '-', note:`${Number(peakMonth.utilizationRate||0).toFixed(1)}% · Used ${Number(peakMonth.used||0).toLocaleString()} ถุง`, tone:'' } : null
+      peakMonth ? { label:'เดือนที่ใช้ประโยชน์สูงสุด', value:monthNames[Number(peakMonth.month||0)] || '-', note:`${Number(peakMonth.utilizationRate||0).toFixed(1)}% · Used ${Number(peakMonth.used||0).toLocaleString()} / ${Number(peakMonth.totalFinal||0).toLocaleString()} ถุง`, tone:'' } : null
     ])}
     <div class="simple-panel kpi-executive-panel mb-3">
       <div class="panel-heading-row"><div><h3>แนวโน้มการใช้ประโยชน์รายเดือน</h3><div class="small-muted">กราฟแท่งผสมเส้นสำหรับนำเสนอผู้บริหาร · มีตัวเลขกำกับครบทั้งจำนวนและร้อยละ</div></div></div>
@@ -3573,7 +3595,7 @@ function renderKpiUtilization({ analysis, trend, dependency, year }) {
     </div>
     <div class="simple-panel kpi-executive-panel">
       <div class="panel-heading-row"><div><h3>เปรียบเทียบตามกลุ่มแหล่งรับเข้า</h3><div class="small-muted">เรียงจากอัตราการใช้ประโยชน์สูงสุด เพื่อให้เห็นความแตกต่างระหว่างแหล่งเลือดทันที</div></div></div>
-      ${renderExecutiveHorizontalBars(groups,{valueKey:'utilizationRate',suffix:'%',color:'#53c29d',max:100,countKey:'totalFinal',countLabel:'ถุงจบผลลัพธ์'})}
+      ${groups.length <= 1 ? renderSingleSourceExecutiveSummary(groups[0], 'utilization') : renderExecutiveHorizontalBars(groups,{valueKey:'utilizationRate',suffix:'%',color:'#53c29d',max:100,countKey:'totalFinal',countLabel:'ถุงจบผลลัพธ์'})}
     </div>`;
 }
 
@@ -3584,7 +3606,7 @@ function renderKpiExpiry({ analysis, trend, dependency, year }) {
   const groups = groupKpiRatesFromAnalysis(analysis).sort((a,b)=>b.expiredRate-a.expiredRate);
   const monthly = trendToOutcomeRows(trend);
   const topGroup = getKpiTopRow(groups, 'expiredRate');
-  const peakMonth = getKpiPeakMonth(monthly, 'expiredRate');
+  const peakMonth = getKpiPeakMonthWithBase(monthly, 'expiredRate', 10);
   currentBloodKpiRouteData = { route:'expiry', year, rate, groups, monthly };
   const monthNames=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
   return `${kpiPageHeader('อัตราโลหิตหมดอายุ','ยิ่งต่ำยิ่งดี · ดูทั้งจำนวนถุงที่หมดอายุ และร้อยละที่เสียไปในแต่ละเดือน',year,dependency?.years||trend?.years||[])}
@@ -3592,7 +3614,7 @@ function renderKpiExpiry({ analysis, trend, dependency, year }) {
     ${renderKpiQuickCards([
       { label:'อัตราโลหิตหมดอายุ', value:`${rate.toFixed(1)}%`, note:`Expired ${Number(summary.expired||0).toLocaleString()} จาก ${finalBase.toLocaleString()} ถุงที่จบผลลัพธ์`, tone:'is-alert' },
       topGroup ? { label:'แหล่งเลือดที่หมดอายุสูงสุด', value:`${topGroup.label}`, note:`${topGroup.expiredRate.toFixed(1)}% · ${topGroup.totalFinal.toLocaleString()} ถุง`, tone:'' } : null,
-      peakMonth ? { label:'เดือนที่หมดอายุสูงสุด', value:monthNames[Number(peakMonth.month||0)] || '-', note:`${Number(peakMonth.expiredRate||0).toFixed(1)}% · Expired ${Number(peakMonth.expired||0).toLocaleString()} ถุง`, tone:'' } : null
+      peakMonth ? { label:'เดือนที่หมดอายุสูงสุด', value:monthNames[Number(peakMonth.month||0)] || '-', note:`${Number(peakMonth.expiredRate||0).toFixed(1)}% · Expired ${Number(peakMonth.expired||0).toLocaleString()} / ${Number(peakMonth.totalFinal||0).toLocaleString()} ถุง`, tone:'' } : null
     ])}
     <div class="simple-panel kpi-executive-panel mb-3">
       <div class="panel-heading-row"><div><h3>แนวโน้มอัตราหมดอายุรายเดือน</h3><div class="small-muted">กราฟแท่งผสมเส้นสำหรับนำเสนอผู้บริหาร · มีตัวเลขกำกับครบทั้งจำนวนและร้อยละ</div></div></div>
@@ -3600,7 +3622,7 @@ function renderKpiExpiry({ analysis, trend, dependency, year }) {
     </div>
     <div class="simple-panel kpi-executive-panel">
       <div class="panel-heading-row"><div><h3>แหล่งเลือดใดมี Expired สูงสุด</h3><div class="small-muted">ใช้ชี้จุดที่ควรกลับไปทบทวนการรับเข้า ปริมาณสำรอง และการหมุนเวียน</div></div></div>
-      ${renderExecutiveHorizontalBars(groups,{valueKey:'expiredRate',suffix:'%',color:'#ee8a81',max:100,countKey:'totalFinal',countLabel:'ถุงจบผลลัพธ์'})}
+      ${groups.length <= 1 ? renderSingleSourceExecutiveSummary(groups[0], 'expiry') : renderExecutiveHorizontalBars(groups,{valueKey:'expiredRate',suffix:'%',color:'#ee8a81',max:100,countKey:'totalFinal',countLabel:'ถุงจบผลลัพธ์'})}
     </div>`;
 }
 
@@ -3931,7 +3953,7 @@ function buildBloodKpiInsights({ dependency, analysis, familyRows, dashboard, ye
   });
   const longHeldRate = unresolvedRbc.length ? outreachPercent(agedRbc.length, unresolvedRbc.length) : 0;
 
-  // v2.9.46: ปรับกราฟ KPI แบบแท่งผสมเส้นให้สวยและอ่านง่ายขึ้น
+  // v2.9.47: Responsive desktop + clean combo charts + valid-base rate handling
   // ตัวอย่าง: ถุงรับเข้าเดือน ก.ค. แล้วถูกใช้หลัง 30 วัน -> นับ 30 วันในเดือน ก.ค.
   const monthlyAgeBuckets = new Map(Array.from({ length: 12 }, (_, i) => [i + 1, {
     month: i + 1, days: [], usedCount: 0, within7: 0, day8to14: 0, day15to21: 0, over21: 0
@@ -4186,64 +4208,71 @@ function renderBloodKpiPage(data) {
 function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
   const items = Array.isArray(rows) ? rows : [];
   const isExpiry = mode === 'expiry';
-  const countKey = isExpiry ? 'expired' : 'used';
+  const numeratorKey = isExpiry ? 'expired' : 'used';
   const rateKey = isExpiry ? 'expiredRate' : 'utilizationRate';
   const barColor = isExpiry ? '#ee8a81' : '#53c29d';
-  const barGlow = isExpiry ? '#f8c6bf' : '#bfead9';
+  const totalColor = isExpiry ? '#fde5e2' : '#dcf4eb';
   const lineColor = isExpiry ? '#c9534d' : '#2f7fc1';
-  const lineGlow = isExpiry ? '#f7d4cf' : '#d7ebfb';
+  const lowBaseColor = '#d99a2b';
   const title = isExpiry ? 'จำนวน Expired + อัตราหมดอายุ' : 'จำนวน Used + อัตราการใช้ประโยชน์';
   const monthNames=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
-  const safeItems = Array.from({length:12}, (_, idx) => ({
-    month: idx + 1,
-    [countKey]: Number(items.find(row => Number(row?.month||0) === idx + 1)?.[countKey] || 0),
-    [rateKey]: Number(items.find(row => Number(row?.month||0) === idx + 1)?.[rateKey] || 0)
-  }));
-  const maxCountRaw = Math.max(1, ...safeItems.map(r => Number(r?.[countKey] || 0)));
+  const safeItems = Array.from({length:12}, (_, idx) => {
+    const source = items.find(row => Number(row?.month||0) === idx + 1) || {};
+    const numerator = Number(source?.[numeratorKey] || 0);
+    const totalFinal = Number(source?.totalFinal ?? (Number(source?.used||0)+Number(source?.expired||0)));
+    const rateRaw = source?.[rateKey];
+    const rate = totalFinal > 0 && Number.isFinite(Number(rateRaw)) ? Number(rateRaw) : null;
+    return { month:idx+1, numerator, totalFinal, rate };
+  });
+  const maxCountRaw = Math.max(1, ...safeItems.map(r => r.totalFinal));
   const niceCount = Math.max(5, Math.ceil(maxCountRaw / 5) * 5);
-  const avgRate = safeItems.reduce((sum,row) => sum + Number(row?.[rateKey] || 0), 0) / safeItems.length;
-  const peak = safeItems.slice().sort((a,b)=>Number(b?.[rateKey]||0)-Number(a?.[rateKey]||0))[0] || null;
-  const totalCount = safeItems.reduce((sum,row)=>sum+Number(row?.[countKey]||0),0);
-  const w=1260,h=620,left=92,right=92,top=116,bottom=118;
+  const totalNumerator = safeItems.reduce((sum,row)=>sum+row.numerator,0);
+  const totalBase = safeItems.reduce((sum,row)=>sum+row.totalFinal,0);
+  const overallRate = totalBase ? (totalNumerator / totalBase * 100) : 0;
+  const validForPeak = safeItems.filter(row => row.rate !== null && row.totalFinal >= 10);
+  const fallbackPeak = safeItems.filter(row => row.rate !== null);
+  const peak = (validForPeak.length ? validForPeak : fallbackPeak).slice().sort((a,b)=>(b.rate??-1)-(a.rate??-1))[0] || null;
+  const w=1260,h=560,left=88,right=88,top=82,bottom=100;
   const chartW=w-left-right, chartH=h-top-bottom;
   const x=i=>left+chartW*(i+.5)/12;
   const yCount=v=>top+chartH-(Number(v||0)/niceCount)*chartH;
   const yRate=v=>top+chartH-(Math.max(0,Math.min(100,Number(v||0)))/100)*chartH;
-  const barW=Math.min(52,chartW/18);
-  const grid=[0,.25,.5,.75,1].map(frac=>{const count=Math.round(niceCount*frac),yy=top+chartH-chartH*frac;return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e7eef4" stroke-width="1.5"/><text x="${left-16}" y="${yy+5}" text-anchor="end" font-size="14" fill="#7b92a6">${count.toLocaleString()}</text><text x="${w-right+16}" y="${yy+5}" font-size="14" fill="#7b92a6">${Math.round(100*frac)}%</text>`}).join('');
-  const linePath=safeItems.map((r,i)=>`${i===0?'M':'L'}${x(i).toFixed(1)},${yRate(r?.[rateKey]).toFixed(1)}`).join(' ');
-  const bars=safeItems.map((r,i)=>{
-    const count=Number(r?.[countKey]||0), rate=Number(r?.[rateKey]||0), cx=x(i), bx=cx-barW/2, by=yCount(count), bh=Math.max(0, top+chartH-by), py=yRate(rate);
-    return `<rect x="${bx}" y="${by}" width="${barW}" height="${Math.max(4,bh)}" rx="16" fill="url(#comboBarGradient)" filter="url(#softShadow)"></rect>
-      ${count>0 ? `<g transform="translate(${cx},${Math.max(top+18, by-18)})"><rect x="-24" y="-14" width="48" height="22" rx="11" fill="#ffffff" stroke="#dbe7ef"/><text x="0" y="2" text-anchor="middle" font-size="12" font-weight="700" fill="#35556f">${count.toLocaleString()}</text></g>` : ''}
-      <circle cx="${cx}" cy="${py}" r="7" fill="#ffffff" stroke="${lineColor}" stroke-width="4"></circle>
-      <g transform="translate(${cx},${Math.max(top+20, py-26)})"><rect x="-26" y="-14" width="52" height="22" rx="11" fill="${lineGlow}"/><text x="0" y="2" text-anchor="middle" font-size="12" font-weight="700" fill="${lineColor}">${rate.toFixed(1)}%</text></g>
-      <text x="${cx}" y="${h-48}" text-anchor="middle" font-size="14" font-weight="600" fill="#597288">${monthNames[i]}</text>`;
+  const totalBarW=Math.min(50,chartW/18);
+  const numeratorBarW=Math.max(18,totalBarW*0.58);
+  const grid=[0,.25,.5,.75,1].map(frac=>{const count=Math.round(niceCount*frac),yy=top+chartH-chartH*frac;return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e8eff5" stroke-width="1.4"/><text x="${left-14}" y="${yy+5}" text-anchor="end" font-size="13" fill="#8095a7">${count.toLocaleString()}</text><text x="${w-right+14}" y="${yy+5}" font-size="13" fill="#8095a7">${Math.round(100*frac)}%</text>`}).join('');
+
+  const lineSegments=[];
+  let current=[];
+  safeItems.forEach((row,i)=>{
+    if(row.rate===null){ if(current.length){lineSegments.push(current);current=[];} return; }
+    current.push({i,row});
+  });
+  if(current.length) lineSegments.push(current);
+  const linePaths=lineSegments.map(seg=>`<path d="${seg.map((p,j)=>`${j===0?'M':'L'}${x(p.i).toFixed(1)},${yRate(p.row.rate).toFixed(1)}`).join(' ')}" fill="none" stroke="${lineColor}" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
+
+  const bars=safeItems.map((row,i)=>{
+    const cx=x(i), totalY=yCount(row.totalFinal), totalH=Math.max(0,top+chartH-totalY), numY=yCount(row.numerator), numH=Math.max(0,top+chartH-numY);
+    const pointY=row.rate===null?null:yRate(row.rate), lowBase=row.totalFinal>0 && row.totalFinal<10;
+    return `<rect x="${cx-totalBarW/2}" y="${totalY}" width="${totalBarW}" height="${Math.max(row.totalFinal?4:0,totalH)}" rx="12" fill="${totalColor}"></rect>
+      <rect x="${cx-numeratorBarW/2}" y="${numY}" width="${numeratorBarW}" height="${Math.max(row.numerator?4:0,numH)}" rx="10" fill="${barColor}"></rect>
+      ${row.totalFinal>0 ? `<text x="${cx}" y="${Math.max(top+12,totalY-9)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#47657b">${row.numerator.toLocaleString()}/${row.totalFinal.toLocaleString()}</text>` : ''}
+      ${row.rate!==null ? `<circle cx="${cx}" cy="${pointY}" r="${lowBase?6:5}" fill="#fff" stroke="${lowBase?lowBaseColor:lineColor}" stroke-width="${lowBase?3.5:3}"></circle><text x="${cx}" y="${Math.max(top+14,pointY-12)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="${lowBase?lowBaseColor:lineColor}">${row.rate.toFixed(1)}%</text>${lowBase?`<text x="${cx}" y="${Math.min(top+chartH-10,pointY+22)}" text-anchor="middle" font-size="10.5" fill="${lowBaseColor}">n=${row.totalFinal}</text>`:''}` : ''}
+      <text x="${cx}" y="${h-42}" text-anchor="middle" font-size="13.5" font-weight="600" fill="#5e7589">${monthNames[i]}</text>`;
   }).join('');
-  const avgY=yRate(avgRate);
-  const peakText=peak ? `${monthNames[Math.max(0,Number(peak.month||1)-1)]} ${Number(peak?.[rateKey]||0).toFixed(1)}%` : '-';
+  const avgY=yRate(overallRate);
+  const peakText=peak ? `${monthNames[Math.max(0,peak.month-1)]} ${peak.rate.toFixed(1)}% (n=${peak.totalFinal})` : '—';
   return `<svg class="kpi-exec-chart kpi-combo-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${title} รายเดือน">
-    <defs>
-      <linearGradient id="comboBarGradient" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="${barGlow}"/>
-        <stop offset="100%" stop-color="${barColor}"/>
-      </linearGradient>
-      <filter id="softShadow" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#cddae6" flood-opacity="0.45"/></filter>
-    </defs>
-    <rect x="10" y="10" width="${w-20}" height="${h-20}" rx="28" fill="#ffffff" stroke="#edf3f7"/>
-    <text x="${left}" y="40" font-size="18" font-weight="700" fill="#173b5d">${title}</text>
-    <text x="${left}" y="66" font-size="13" fill="#7890a4">แท่ง = จำนวนถุง · เส้น = ร้อยละ · ปี ${year+543}</text>
-    <g transform="translate(${w-right-380},34)"><rect x="0" y="-14" width="18" height="12" rx="5" fill="url(#comboBarGradient)"/><text x="26" y="-4" font-size="13" fill="#35556f">${isExpiry?'Expired':'Used'}</text><line x1="120" y1="-8" x2="154" y2="-8" stroke="${lineColor}" stroke-width="4"/><circle cx="137" cy="-8" r="4.5" fill="#fff" stroke="${lineColor}" stroke-width="3"/><text x="164" y="-4" font-size="13" fill="#35556f">${isExpiry?'อัตราหมดอายุ':'อัตราใช้ประโยชน์'}</text><line x1="308" y1="-8" x2="340" y2="-8" stroke="#9db3c7" stroke-width="2.5" stroke-dasharray="7 7"/><text x="350" y="-4" font-size="13" fill="#35556f">ค่าเฉลี่ย</text></g>
-    <g transform="translate(${left},78)"><rect x="0" y="0" width="236" height="60" rx="16" fill="#f7fbfe" stroke="#e4edf4"/><text x="18" y="22" font-size="12" fill="#7b92a6">จำนวนทั้งปี</text><text x="18" y="46" font-size="24" font-weight="700" fill="#173b5d">${totalCount.toLocaleString()} ถุง</text></g>
-    <g transform="translate(${left+250},78)"><rect x="0" y="0" width="236" height="60" rx="16" fill="#f7fbfe" stroke="#e4edf4"/><text x="18" y="22" font-size="12" fill="#7b92a6">ค่าเฉลี่ยรายเดือน</text><text x="18" y="46" font-size="24" font-weight="700" fill="#173b5d">${avgRate.toFixed(1)}%</text></g>
-    <g transform="translate(${left+500},78)"><rect x="0" y="0" width="300" height="60" rx="16" fill="#f7fbfe" stroke="#e4edf4"/><text x="18" y="22" font-size="12" fill="#7b92a6">จุดสูงสุดของปี</text><text x="18" y="46" font-size="24" font-weight="700" fill="#173b5d">${peakText}</text></g>
+    <rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#ffffff" stroke="#edf3f7"/>
+    <text x="${left}" y="34" font-size="17" font-weight="700" fill="#173b5d">${title}</text>
+    <text x="${left}" y="58" font-size="12.5" fill="#7890a4">แท่งสีอ่อน = ถุงที่จบผลลัพธ์ · แท่งสีเข้ม = ${isExpiry?'Expired':'Used'} · เส้น = ร้อยละ</text>
+    <g transform="translate(${w-right-430},34)"><rect x="0" y="-12" width="18" height="12" rx="4" fill="${totalColor}"/><text x="25" y="-2" font-size="12" fill="#466277">ฐานทั้งหมด</text><rect x="102" y="-12" width="18" height="12" rx="4" fill="${barColor}"/><text x="127" y="-2" font-size="12" fill="#466277">${isExpiry?'Expired':'Used'}</text><line x1="210" y1="-6" x2="242" y2="-6" stroke="${lineColor}" stroke-width="4"/><circle cx="226" cy="-6" r="4" fill="#fff" stroke="${lineColor}" stroke-width="2.5"/><text x="250" y="-2" font-size="12" fill="#466277">ร้อยละ</text><circle cx="326" cy="-6" r="5" fill="#fff" stroke="${lowBaseColor}" stroke-width="3"/><text x="338" y="-2" font-size="12" fill="#466277">ฐาน &lt;10</text></g>
     ${grid}
-    <line x1="${left}" y1="${avgY}" x2="${w-right}" y2="${avgY}" stroke="#9db3c7" stroke-width="2.5" stroke-dasharray="7 7"/>
-    <text x="${w-right-6}" y="${Math.max(top+16,avgY-8)}" text-anchor="end" font-size="12" fill="#6d8498">เฉลี่ย ${avgRate.toFixed(1)}%</text>
-    <text x="${left}" y="${top-20}" font-size="13" fill="#7890a4">จำนวนถุง</text>
-    <text x="${w-right}" y="${top-20}" text-anchor="end" font-size="13" fill="#7890a4">ร้อยละ (%)</text>
-    ${bars}
-    <path d="${linePath}" fill="none" stroke="${lineColor}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" filter="url(#softShadow)"></path>
+    <line x1="${left}" y1="${avgY}" x2="${w-right}" y2="${avgY}" stroke="#9db3c7" stroke-width="2" stroke-dasharray="7 7"/>
+    <text x="${w-right-4}" y="${Math.max(top+14,avgY-7)}" text-anchor="end" font-size="11.5" fill="#6d8498">รวมทั้งช่วง ${overallRate.toFixed(1)}%</text>
+    <text x="${left}" y="${top-14}" font-size="12.5" fill="#7890a4">จำนวนถุง</text>
+    <text x="${w-right}" y="${top-14}" text-anchor="end" font-size="12.5" fill="#7890a4">ร้อยละ (%)</text>
+    ${linePaths}${bars}
+    <g transform="translate(${left},${h-82})"><text x="0" y="0" font-size="11.5" fill="#8095a7">ตัวเลขบนแท่ง = ${isExpiry?'Expired':'Used'}/ถุงที่จบผลลัพธ์</text><text x="280" y="0" font-size="11.5" fill="#8095a7">เดือนที่สูงสุด (ฐาน ≥10 ก่อน): ${peakText}</text></g>
   </svg>`;
 }
 
