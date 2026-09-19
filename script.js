@@ -3449,7 +3449,7 @@ function renderKpiOverview({ dependency, analysis, year }) {
     <div class="simple-kpi-grid blood-kpi-main-grid mb-3">
       <button class="simple-kpi kpi-click-card" onclick="openKpiRoute('utilization',null,event)"><span>การใช้ประโยชน์จากโลหิต</span><strong>${utilization.toFixed(1)}%</strong><small>Used ÷ (Used + Expired)</small></button>
       <button class="simple-kpi is-alert kpi-click-card" onclick="openKpiRoute('expiry',null,event)"><span>โลหิตหมดอายุ</span><strong>${expiry.toFixed(1)}%</strong><small>Expired ÷ (Used + Expired)</small></button>
-      <button class="simple-kpi is-good kpi-click-card" onclick="openKpiRoute('trc',null,event)"><span>พึ่งพากาชาด Routine</span><strong>${routineRate.toFixed(1)}%</strong><small>ตัด Rare / Ag-matched</small></button>
+      <button class="simple-kpi is-good kpi-click-card" onclick="openKpiRoute('trc',null,event)"><span>พึ่งพากาชาด Routine</span><strong>${routineRate.toFixed(1)}%</strong><small>ตัด Rare / Ag-matched / Rh Negative</small></button>
     </div>
     <div class="kpi-overview-links">
       ${[
@@ -3523,7 +3523,7 @@ function renderSingleSourceExecutiveSummary(row, mode = 'utilization') {
   return `<div class="single-source-summary ${tone}">
     <div><span>${escapeOutreachHtml(label)}</span><strong>${value.toFixed(1)}%</strong><small>${escapeOutreachHtml(row.label || '')}</small></div>
     <div class="single-source-meter"><div style="width:${Math.max(2,Math.min(100,value))}%"></div></div>
-    <div class="small-muted">ใช้ฐาน ${Number(row.totalFinal||0).toLocaleString()} ถุงที่จบผลลัพธ์แล้ว</div>
+    <div class="small-muted">ใช้ฐาน ${Number(row.totalFinal||0).toLocaleString()} ถุงที่พร้อมใช้</div>
   </div>`;
 }
 
@@ -3584,17 +3584,17 @@ function renderKpiUtilization({ analysis, trend, dependency, year }) {
   const monthNames=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
   return `${kpiPageHeader('อัตราการใช้ประโยชน์จากโลหิต','ยิ่งสูงยิ่งดี · ดูทั้งจำนวนถุงที่ใช้จริง และร้อยละการใช้ประโยชน์ในภาพเดียว',year,dependency?.years||trend?.years||[])}
     ${renderKpiQuickCards([
-      { label:'อัตราการใช้ประโยชน์', value:`${rate.toFixed(1)}%`, note:`Used ${Number(summary.used||0).toLocaleString()} จาก ${finalBase.toLocaleString()} ถุงที่จบผลลัพธ์`, tone:'is-good' },
+      { label:'อัตราการใช้ประโยชน์', value:`${rate.toFixed(1)}%`, note:`Used ${Number(summary.used||0).toLocaleString()} จาก ${finalBase.toLocaleString()} ถุงที่พร้อมใช้`, tone:'is-good' },
       topGroup ? { label:'แหล่งเลือดที่ใช้ประโยชน์สูงสุด', value:`${topGroup.label}`, note:`${topGroup.utilizationRate.toFixed(1)}% · ${topGroup.totalFinal.toLocaleString()} ถุง`, tone:'' } : null,
       peakMonth ? { label:'เดือนที่ใช้ประโยชน์สูงสุด', value:monthNames[Number(peakMonth.month||0)] || '-', note:`${Number(peakMonth.utilizationRate||0).toFixed(1)}% · Used ${Number(peakMonth.used||0).toLocaleString()} / ${Number(peakMonth.totalFinal||0).toLocaleString()} ถุง`, tone:'' } : null
     ])}
     <div class="simple-panel kpi-executive-panel mb-3">
-      <div class="panel-heading-row"><div><h3>แนวโน้มการใช้ประโยชน์รายเดือน</h3><div class="small-muted">กราฟแท่งคู่รายเดือน · แท่งซ้าย = ถุงจบผลลัพธ์ · แท่งขวา = Used · ป้ายด้านบน = ร้อยละของเดือนนั้น</div></div></div>
+      <div class="panel-heading-row"><div><h3>แนวโน้มการใช้ประโยชน์รายเดือน</h3><div class="small-muted">กราฟแท่งคู่รายเดือน · แท่งซ้าย = ถุงที่พร้อมใช้ · แท่งขวา = Used · ป้ายด้านบน = ร้อยละของเดือนนั้น</div></div></div>
       ${renderExecutiveMonthlyRateChart(monthly, year, 'utilization')}
     </div>
     <div class="simple-panel kpi-executive-panel">
       <div class="panel-heading-row"><div><h3>เปรียบเทียบตามกลุ่มแหล่งรับเข้า</h3><div class="small-muted">เรียงจากอัตราการใช้ประโยชน์สูงสุด เพื่อให้เห็นความแตกต่างระหว่างแหล่งเลือดทันที</div></div></div>
-      ${groups.length <= 1 ? renderSingleSourceExecutiveSummary(groups[0], 'utilization') : renderExecutiveHorizontalBars(groups,{valueKey:'utilizationRate',suffix:'%',color:'#53c29d',max:100,countKey:'totalFinal',countLabel:'ถุงจบผลลัพธ์'})}
+      ${groups.length <= 1 ? renderSingleSourceExecutiveSummary(groups[0], 'utilization') : renderExecutiveHorizontalBars(groups,{valueKey:'utilizationRate',suffix:'%',color:'#53c29d',max:100,countKey:'totalFinal',countLabel:'ถุงที่พร้อมใช้'})}
     </div>`;
 }
 
@@ -3610,17 +3610,17 @@ function renderKpiExpiry({ analysis, trend, dependency, year }) {
   const monthNames=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
   return `${kpiPageHeader('อัตราโลหิตหมดอายุ','ยิ่งต่ำยิ่งดี · ดูทั้งจำนวนถุงที่หมดอายุ และร้อยละที่เสียไปในแต่ละเดือน',year,dependency?.years||trend?.years||[])}
     ${renderKpiQuickCards([
-      { label:'อัตราโลหิตหมดอายุ', value:`${rate.toFixed(1)}%`, note:`Expired ${Number(summary.expired||0).toLocaleString()} จาก ${finalBase.toLocaleString()} ถุงที่จบผลลัพธ์`, tone:'is-alert' },
+      { label:'อัตราโลหิตหมดอายุ', value:`${rate.toFixed(1)}%`, note:`Expired ${Number(summary.expired||0).toLocaleString()} จาก ${finalBase.toLocaleString()} ถุงที่พร้อมใช้`, tone:'is-alert' },
       topGroup ? { label:'แหล่งเลือดที่หมดอายุสูงสุด', value:`${topGroup.label}`, note:`${topGroup.expiredRate.toFixed(1)}% · ${topGroup.totalFinal.toLocaleString()} ถุง`, tone:'' } : null,
       peakMonth ? { label:'เดือนที่หมดอายุสูงสุด', value:monthNames[Number(peakMonth.month||0)] || '-', note:`${Number(peakMonth.expiredRate||0).toFixed(1)}% · Expired ${Number(peakMonth.expired||0).toLocaleString()} / ${Number(peakMonth.totalFinal||0).toLocaleString()} ถุง`, tone:'' } : null
     ])}
     <div class="simple-panel kpi-executive-panel mb-3">
-      <div class="panel-heading-row"><div><h3>แนวโน้มอัตราหมดอายุรายเดือน</h3><div class="small-muted">กราฟแท่งคู่รายเดือน · แท่งซ้าย = ถุงจบผลลัพธ์ · แท่งขวา = Expired · ป้ายด้านบน = ร้อยละของเดือนนั้น</div></div></div>
+      <div class="panel-heading-row"><div><h3>แนวโน้มอัตราหมดอายุรายเดือน</h3><div class="small-muted">กราฟแท่งคู่รายเดือน · แท่งซ้าย = ถุงที่พร้อมใช้ · แท่งขวา = Expired · ป้ายด้านบน = ร้อยละของเดือนนั้น</div></div></div>
       ${renderExecutiveMonthlyRateChart(monthly, year, 'expiry')}
     </div>
     <div class="simple-panel kpi-executive-panel">
       <div class="panel-heading-row"><div><h3>แหล่งเลือดใดมี Expired สูงสุด</h3><div class="small-muted">ใช้ชี้จุดที่ควรกลับไปทบทวนการรับเข้า ปริมาณสำรอง และการหมุนเวียน</div></div></div>
-      ${groups.length <= 1 ? renderSingleSourceExecutiveSummary(groups[0], 'expiry') : renderExecutiveHorizontalBars(groups,{valueKey:'expiredRate',suffix:'%',color:'#ee8a81',max:100,countKey:'totalFinal',countLabel:'ถุงจบผลลัพธ์'})}
+      ${groups.length <= 1 ? renderSingleSourceExecutiveSummary(groups[0], 'expiry') : renderExecutiveHorizontalBars(groups,{valueKey:'expiredRate',suffix:'%',color:'#ee8a81',max:100,countKey:'totalFinal',countLabel:'ถุงที่พร้อมใช้'})}
     </div>`;
 }
 
@@ -3631,12 +3631,12 @@ function renderKpiTrc({ dependency, year }) {
   const overall = Number(summary.rate||0), adjusted = Number(summary.adjustedRate ?? overall);
   const rare = Number(summary.rareTrcRbc||0), routine = Number(summary.routineTrcRbc ?? Math.max(0,Number(summary.trcRbc||0)-rare));
   currentBloodKpiRouteData = { route:'trc', year, overall, adjusted, rare, routine, months };
-  return `${kpiPageHeader('อัตราพึ่งพากาชาด Routine','ยิ่งต่ำยิ่งดี · แยก Rare / Ag-matched ออกจากความพึ่งพาทั่วไป',year,dependency?.years||[])}
-    ${renderKpiReadStrip('สำหรับผู้บริหารควรดูอะไรเป็นหลัก', 'ดูค่า “พึ่งพากาชาด Routine” เป็นหลัก ส่วน Rare / Ag-matched ให้รายงานเป็นบริบทประกอบ ไม่ควรถูกนับเป็นการพึ่งพาที่หลีกเลี่ยงได้', 'info')}
+  return `${kpiPageHeader('อัตราพึ่งพากาชาด Routine','ยิ่งต่ำยิ่งดี · แยก Rare / Ag-matched / Rh Negative ออกจากความพึ่งพาทั่วไป',year,dependency?.years||[])}
+    ${renderKpiReadStrip('สำหรับผู้บริหารควรดูอะไรเป็นหลัก', 'ดูค่า “พึ่งพากาชาด Routine” เป็นหลัก ส่วน Rare / Ag-matched / Rh Negative ให้รายงานเป็นบริบทประกอบ ไม่ควรถูกนับเป็นการพึ่งพาที่หลีกเลี่ยงได้', 'info')}
     ${renderKpiQuickCards([
       { label:'พึ่งพากาชาดรวม', value:`${overall.toFixed(1)}%`, note:`${Number(summary.trcRbc||0).toLocaleString()} ถุง`, tone:'' },
-      { label:'พึ่งพากาชาด Routine', value:`${adjusted.toFixed(1)}%`, note:`${routine.toLocaleString()} ถุง หลังตัด Rare / Ag-matched`, tone:'is-good' },
-      { label:'Rare / Ag-matched', value:`${rare.toLocaleString()} ถุง`, note:'ใช้เป็นข้อมูลประกอบ ไม่ควรตีความเป็นความพึ่งพาปกติ', tone:'' }
+      { label:'พึ่งพากาชาด Routine', value:`${adjusted.toFixed(1)}%`, note:`${routine.toLocaleString()} ถุง หลังตัด Rare / Ag-matched / Rh Negative`, tone:'is-good' },
+      { label:'Rare / Ag-matched / Rh Negative', value:`${rare.toLocaleString()} ถุง`, note:'ใช้เป็นข้อมูลประกอบ ไม่ควรตีความเป็นความพึ่งพาปกติ', tone:'' }
     ])}
     <div class="simple-panel"><div class="panel-heading-row"><div><h3>แนวโน้มรายเดือน</h3><div class="small-muted">เส้นเขียว = รวมทั้งหมด · เส้นน้ำเงิน = Routine หลังตัด Rare · เส้นเทา = ปีก่อน</div></div></div>${renderBloodKpiLineSvg(months,year,comparisonYear)}</div>`;
 }
@@ -3653,7 +3653,7 @@ function renderKpiTurnaround({ insights, dependency, year }) {
       fastest ? { label:'หมุนเวียนเร็วที่สุด', value: fastest.label, note:`Median ${Number(fastest.medianDaysToUse||0).toFixed(1)} วัน`, tone:'is-good' } : null,
       slowest ? { label:'หมุนเวียนช้าที่สุด', value: slowest.label, note:`Median ${Number(slowest.medianDaysToUse||0).toFixed(1)} วัน`, tone:'is-alert' } : null
     ])}
-    <div class="simple-panel"><div class="panel-heading-row"><div><h3>Median วันแยกตามแหล่งเลือด</h3><div class="small-muted">ช่วยเปรียบเทียบความเร็วในการหมุนเวียนของแต่ละแหล่ง</div></div></div>${renderHorizontalBarChartSvg(rows,{valueKey:'medianDaysToUse',suffix:' วัน',color:'#5aa9e6',sublabelKey:'totalFinal',sublabelSuffix:' ถุงจบผลลัพธ์'})}</div>`;
+    <div class="simple-panel"><div class="panel-heading-row"><div><h3>Median วันแยกตามแหล่งเลือด</h3><div class="small-muted">ช่วยเปรียบเทียบความเร็วในการหมุนเวียนของแต่ละแหล่ง</div></div></div>${renderHorizontalBarChartSvg(rows,{valueKey:'medianDaysToUse',suffix:' วัน',color:'#5aa9e6',sublabelKey:'totalFinal',sublabelSuffix:' ถุงที่พร้อมใช้'})}</div>`;
 }
 
 function renderKpiAging({ insights, dependency, year }) {
@@ -3675,7 +3675,7 @@ function renderKpiAging({ insights, dependency, year }) {
     </div>
     <div class="kpi-two-chart-grid">
       <div class="simple-panel"><div class="panel-heading-row"><div><h3>สัดส่วนช่วงอายุเลือดก่อนใช้</h3><div class="small-muted">ช่วยดูว่าถุงส่วนใหญ่ถูกใช้ภายในกี่วัน</div></div></div>${renderAgeDistributionSvg(insights.ageDistribution||{})}</div>
-      <div class="simple-panel"><div class="panel-heading-row"><div><h3>คงคลังอายุมาก ณ วันนี้</h3><div class="small-muted">เป็น Early Warning ปัจจุบัน ไม่ใช่ผลย้อนหลังรายเดือน</div></div></div><div class="kpi-current-aging-note"><strong>${Number(insights.longHeldCount||0).toLocaleString()} ถุง</strong><span>RBC ที่ยังอยู่ในคลังและมีอายุ ≥ 21 วัน จาก ${Number(insights.longHeldBase||0).toLocaleString()} ถุงที่ยังไม่จบผลลัพธ์</span></div></div>
+      <div class="simple-panel"><div class="panel-heading-row"><div><h3>คงคลังอายุมาก ณ วันนี้</h3><div class="small-muted">เป็น Early Warning ปัจจุบัน ไม่ใช่ผลย้อนหลังรายเดือน</div></div></div><div class="kpi-current-aging-note"><strong>${Number(insights.longHeldCount||0).toLocaleString()} ถุง</strong><span>RBC ที่ยังอยู่ในคลังและมีอายุ ≥ 21 วัน จาก ${Number(insights.longHeldBase||0).toLocaleString()} ถุงที่ยังไม่พร้อมใช้</span></div></div>
     </div>`;
 }
 
@@ -3691,7 +3691,7 @@ function renderKpiOutreach({ insights, dependency, year }) {
       best ? { label:'จุดออกหน่วยที่ใช้ประโยชน์ดีที่สุด', value: best.label, note:`${best.rate.toFixed(1)}% จาก ${best.finalCount.toLocaleString()} ถุง`, tone:'' } : null,
       weakest ? { label:'จุดที่ควรติดตามเพิ่ม', value: weakest.label, note:`${weakest.rate.toFixed(1)}% จาก ${weakest.finalCount.toLocaleString()} ถุง`, tone:'is-alert' } : null
     ])}
-    <div class="simple-panel"><div class="panel-heading-row"><div><h3>Top จุดออกหน่วยตามอัตราการใช้ประโยชน์</h3><div class="small-muted">เรียงจากสูงไปต่ำ เพื่อชี้จุดที่ควรรักษาและจุดที่ควรทบทวน</div></div></div>${renderHorizontalBarChartSvg(rows,{valueKey:'rate',suffix:'%',color:'#68c3a3',max:100,sublabelKey:'finalCount',sublabelSuffix:' ถุงจบผลลัพธ์'})}</div>`;
+    <div class="simple-panel"><div class="panel-heading-row"><div><h3>Top จุดออกหน่วยตามอัตราการใช้ประโยชน์</h3><div class="small-muted">เรียงจากสูงไปต่ำ เพื่อชี้จุดที่ควรรักษาและจุดที่ควรทบทวน</div></div></div>${renderHorizontalBarChartSvg(rows,{valueKey:'rate',suffix:'%',color:'#68c3a3',max:100,sublabelKey:'finalCount',sublabelSuffix:' ถุงที่พร้อมใช้'})}</div>`;
 }
 
 function renderKpiMinimum({ dashboard, year }) {
@@ -4139,7 +4139,7 @@ function renderBloodKpiPage(data) {
       <div class="simple-kpi-grid blood-kpi-main-grid mb-3">
         <div class="simple-kpi"><span>KPI 1 · ใช้ประโยชน์</span><strong>${Number(insights.utilizationRate || 0).toFixed(1)}%</strong><small>Used ÷ (Used + Expired)</small></div>
         <div class="simple-kpi is-alert"><span>KPI 2 · หมดอายุ</span><strong>${Number(insights.expiredRate || 0).toFixed(1)}%</strong><small>Expired ÷ (Used + Expired)</small></div>
-        <div class="simple-kpi is-good"><span>KPI 3 · พึ่งกาชาด Routine</span><strong>${adjustedReady ? adjustedRate.toFixed(1) : rate.toFixed(1)}%</strong><small>${adjustedReady ? 'ตัด Rare/Ag-matched ออกแล้ว' : 'ใช้สูตรรวมชั่วคราว'}</small></div>
+        <div class="simple-kpi is-good"><span>KPI 3 · พึ่งกาชาด Routine</span><strong>${adjustedReady ? adjustedRate.toFixed(1) : rate.toFixed(1)}%</strong><small>${adjustedReady ? 'ตัด Rare/Ag-matched/Rh Negative ออกแล้ว' : 'ใช้สูตรรวมชั่วคราว'}</small></div>
         <div class="simple-kpi"><span>Median วันรับเข้า → ใช้</span><strong>${Number.isFinite(insights.medianDaysToUse) ? insights.medianDaysToUse : '—'}</strong><small>คำนวณจากถุงที่ใช้/จ่ายแล้ว</small></div>
         <div class="simple-kpi"><span>อัตราเลือดค้างนาน</span><strong>${Number(insights.longHeldRate || 0).toFixed(1)}%</strong><small>RBC คงคลัง ≥ 21 วัน · ${Number(insights.longHeldCount || 0).toLocaleString()}/${Number(insights.longHeldBase || 0).toLocaleString()} ถุง</small></div>
         <div class="simple-kpi"><span>ประสิทธิผลออกหน่วย</span><strong>${Number(insights.outreachEffectiveness || 0).toFixed(1)}%</strong><small>Used ÷ (Used + Expired) ของเลือดจากออกหน่วย</small></div>
@@ -4156,7 +4156,7 @@ function renderBloodKpiPage(data) {
           <div class="panel-heading-row"><div><h3>พึ่งพากาชาดรายเดือน</h3><div class="small-muted">ปี ${year+543} เทียบกับ ${comparisonYear+543}</div></div></div>
           ${renderBloodKpiLineSvg(months, year, comparisonYear)}
           <div class="small-muted mt-2">${escapeOutreachHtml(changedText)}${previousTotal > 0 ? ` จากปี ${comparisonYear+543}` : ''}</div>
-          ${adjustedReady ? `<div class="kpi-adjusted-box mt-3"><div><span>มุมมองปรับแล้ว · ตัด Rare/Ag-matched</span><b>${adjustedRate.toFixed(1)}%</b></div><div class="kpi-adjusted-detail">TRC routine ${routineTrcRbc.toLocaleString()} ถุง · Rare/Ag-matched ${rareTrcRbc.toLocaleString()} ถุง</div></div>` : ''}
+          ${adjustedReady ? `<div class="kpi-adjusted-box mt-3"><div><span>มุมมองปรับแล้ว · ตัด Rare/Ag-matched/Rh Negative</span><b>${adjustedRate.toFixed(1)}%</b></div><div class="kpi-adjusted-detail">TRC routine ${routineTrcRbc.toLocaleString()} ถุง · Rare/Ag-matched/Rh Negative ${rareTrcRbc.toLocaleString()} ถุง</div></div>` : ''}
         </div>
       </div>
 
@@ -4209,7 +4209,7 @@ function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
   const numeratorKey = isExpiry ? 'expired' : 'used';
   const rateKey = isExpiry ? 'expiredRate' : 'utilizationRate';
   const numeratorLabel = isExpiry ? 'Expired' : 'Used';
-  const title = isExpiry ? 'จำนวน Expired เทียบถุงจบผลลัพธ์' : 'จำนวน Used เทียบถุงจบผลลัพธ์';
+  const title = isExpiry ? 'จำนวน Expired เทียบถุงที่พร้อมใช้' : 'จำนวน Used เทียบถุงที่พร้อมใช้';
   const totalColor = isExpiry ? '#f8dfdc' : '#d7f0e5';
   const barColor = isExpiry ? '#e48379' : '#56bd9a';
   const lowBaseColor = '#d99a2b';
@@ -4289,7 +4289,7 @@ function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
     <text x="${left}" y="36" font-size="18" font-weight="700" fill="#183b5d">${title}</text>
     <g transform="translate(${w-right-192},34)">
       <rect x="0" y="-11" width="16" height="12" rx="4" fill="${totalColor}"/>
-      <text x="22" y="-1" font-size="12" fill="#587082">จบผลลัพธ์</text>
+      <text x="22" y="-1" font-size="12" fill="#587082">ถุงที่พร้อมใช้</text>
       <rect x="98" y="-11" width="16" height="12" rx="4" fill="${barColor}"/>
       <text x="120" y="-1" font-size="12" fill="#587082">${numeratorLabel}</text>
     </g>
@@ -4297,7 +4297,7 @@ function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
     <text x="${left}" y="${top-16}" font-size="12.5" fill="#7b92a5">จำนวนถุง</text>
     <text x="${w-right+8}" y="${top-16}" font-size="12.5" fill="#7b92a5">ร้อยละ</text>
     ${bars}
-    <text x="${left}" y="${h-12}" font-size="11.5" fill="#8399ab">แท่งซ้าย = จบผลลัพธ์ · แท่งขวา = ${numeratorLabel}${validRows.some(r => r.lowBase) ? ' · * ฐานข้อมูลน้อยกว่า 10 ถุง' : ''}</text>
+    <text x="${left}" y="${h-12}" font-size="11.5" fill="#8399ab">แท่งซ้าย = ถุงที่พร้อมใช้ · แท่งขวา = ${numeratorLabel}${validRows.some(r => r.lowBase) ? ' · * ฐานข้อมูลน้อยกว่า 10 ถุง' : ''}</text>
   </svg>`;
 }
 
@@ -4463,7 +4463,7 @@ function exportBloodKpiExcel() {
   const summaryRows = [
     { KPI: 'อัตราการใช้ประโยชน์จากโลหิต', ค่า: Number(insights.utilizationRate || 0), หน่วย: '%', หมายเหตุ: 'Used ÷ (Used + Expired)' },
     { KPI: 'อัตราโลหิตหมดอายุ', ค่า: Number(insights.expiredRate || 0), หน่วย: '%', หมายเหตุ: 'Expired ÷ (Used + Expired)' },
-    { KPI: 'อัตราพึ่งพากาชาด Routine', ค่า: Number((dependency.summary?.adjustedRate ?? dependency.summary?.rate) || 0), หน่วย: '%', หมายเหตุ: 'ตัด Rare/Ag-matched ออก' },
+    { KPI: 'อัตราพึ่งพากาชาด Routine', ค่า: Number((dependency.summary?.adjustedRate ?? dependency.summary?.rate) || 0), หน่วย: '%', หมายเหตุ: 'ตัด Rare/Ag-matched/Rh Negative ออก' },
     { KPI: 'Median วันรับเข้า → ใช้', ค่า: Number(insights.medianDaysToUse || 0), หน่วย: 'วัน', หมายเหตุ: 'คำนวณจากถุงที่ใช้/จ่ายแล้ว' },
     { KPI: 'อัตราเลือดค้างนาน', ค่า: Number(insights.longHeldRate || 0), หน่วย: '%', หมายเหตุ: 'RBC คงคลัง ≥ 21 วัน' },
     { KPI: 'ประสิทธิผลเลือดจากออกหน่วย', ค่า: Number(insights.outreachEffectiveness || 0), หน่วย: '%', หมายเหตุ: 'Used ÷ (Used + Expired) ของ SELF_OUTREACH' }
@@ -4590,7 +4590,7 @@ function downloadBloodKpiExecutivePng() {
   const cards = [
     ['ใช้ประโยชน์', `${Number(insights.utilizationRate || 0).toFixed(1)}%`, 'Used ÷ (Used + Expired)'],
     ['หมดอายุ', `${Number(insights.expiredRate || 0).toFixed(1)}%`, 'Expired ÷ (Used + Expired)'],
-    ['พึ่งกาชาด Routine', `${Number((dependency.summary?.adjustedRate ?? dependency.summary?.rate) || 0).toFixed(1)}%`, 'ตัด Rare/Ag-matched ออก'],
+    ['พึ่งกาชาด Routine', `${Number((dependency.summary?.adjustedRate ?? dependency.summary?.rate) || 0).toFixed(1)}%`, 'ตัด Rare/Ag-matched/Rh Negative ออก'],
     ['Median รับเข้า→ใช้', `${Number.isFinite(insights.medianDaysToUse) ? insights.medianDaysToUse : '—'} วัน`, 'คำนวณจากถุงที่ใช้/จ่ายแล้ว'],
     ['เลือดค้างนาน', `${Number(insights.longHeldRate || 0).toFixed(1)}%`, 'RBC คงคลัง ≥ 21 วัน'],
     ['ประสิทธิผลออกหน่วย', `${Number(insights.outreachEffectiveness || 0).toFixed(1)}%`, 'Used ÷ (Used + Expired) ของออกหน่วย']
@@ -4654,7 +4654,7 @@ async function loadTrcRarePage(options = {}) {
     renderTrcRarePage(data);
     window.setTimeout(() => document.getElementById("trcRareBagInput")?.focus(), 80);
   } catch (err) {
-    box.innerHTML = `<div class="trc-rare-shell"><div class="simple-page-head mt-2"><div><h1>กาชาดจำเป็น</h1><div class="page-subline">แยกถุง Rare / Ag-matched ออกจากการพึ่งพากาชาดทั่วไป</div></div></div><div class="simple-panel"><h4 class="fw-bold mb-2">ยังเปิดทะเบียนไม่ได้</h4><div class="small-muted">${escapeOutreachHtml(err.message)}</div></div></div>`;
+    box.innerHTML = `<div class="trc-rare-shell"><div class="simple-page-head mt-2"><div><h1>กาชาดจำเป็น</h1><div class="page-subline">แยกถุง Rare / Ag-matched / Rh Negative ออกจากการพึ่งพากาชาดทั่วไป</div></div></div><div class="simple-panel"><h4 class="fw-bold mb-2">ยังเปิดทะเบียนไม่ได้</h4><div class="small-muted">${escapeOutreachHtml(err.message)}</div></div></div>`;
   }
 }
 
@@ -4678,10 +4678,10 @@ function renderTrcRarePage(data) {
       <div class="simple-page-head trc-page-head mt-2">
         <div>
           <h1>กาชาดจำเป็น</h1>
-          <div class="page-subline">บันทึกถุงที่จำเป็นต้องเบิกจากสภากาชาดไทย</div>
+          <div class="page-subline">บันทึกถุงที่จำเป็นต้องเบิกจากสภากาชาดไทย เช่น rare / Ag-matched / Rh Negative</div>
         </div>
         <div class="trc-head-actions no-print">
-          <span class="trc-scope-chip">เฉพาะเลือดหายาก / Ag-matched</span>
+          <span class="trc-scope-chip">เฉพาะเลือดหายาก / Ag-matched / Rh Negative</span>
           <button class="trc-refresh-btn" type="button" onclick="loadTrcRarePage()" aria-label="รีเฟรช">↻</button>
         </div>
       </div>

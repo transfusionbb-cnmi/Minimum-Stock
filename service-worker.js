@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-47-responsive-clean-combo";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-50-readywording-rhnegative";
 const APP_SHELL = [
   "./",
   "./index.html",
