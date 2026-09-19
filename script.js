@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260919-v2-9-51-range-filters-clean-ui";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260919-v2-9-52-outcome-search-semantic-colors";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -2074,30 +2074,65 @@ async function applyOutreachFilters() {
   if (!currentOutreachAnalysisData?.batchId) return;
   const requestId = ++outreachRequestSeq;
   const loading = document.getElementById("outreachFilterLoading");
-  if (loading) loading.style.display = "block";
+  const actionButton = Array.from(document.querySelectorAll('#outreachOutcomeDashboard .btn-main')).find(btn => String(btn.textContent || '').trim() === 'แสดงผล');
+  if (loading) {
+    loading.textContent = "กำลังค้นหา...";
+    loading.style.display = "block";
+  }
+  if (actionButton) {
+    actionButton.disabled = true;
+    actionButton.dataset.originalText = actionButton.textContent;
+    actionButton.textContent = "กำลังแสดงผล...";
+  }
 
   try {
+    // Sync month controls one more time before reading hidden date values.
+    // This also fixes cases where the user selects the month/year and clicks “แสดงผล” immediately.
+    syncOutreachMonthRangeFilter();
     const filters = getOutreachFilterValues();
     if (!filters.dateFrom || !filters.dateTo) {
       throw new Error("กรุณาเลือกช่วงข้อมูลก่อน หรือกดปุ่ม ‘ทั้งหมด’ แล้วจึงกดแสดงผล");
     }
-    const data = await MinimumStockBackend.getOutreachAnalysis({ filters });
-    data.reportLoaded = true;
+
+    const data = await MinimumStockBackend.getOutreachAnalysis({ filters, forceRefresh: true });
     if (requestId !== outreachRequestSeq) return;
 
-    // Preserve review rows from the unfiltered initial load so the validation box remains useful.
+    data.reportLoaded = true;
+    data.filters = { ...(data.filters || {}), ...filters };
     if ((!data.reviewRows || !data.reviewRows.length) && currentOutreachAnalysisData?.reviewRows?.length) {
       data.reviewRows = currentOutreachAnalysisData.reviewRows;
     }
+
     currentOutreachAnalysisData = data;
     currentOutreachSourceSummary = normalizeOutreachSourceSummary(data?.report?.sources || []);
-    renderOutreachFilterSummary(filters);
-    renderOutreachReportSections(data.report || {});
-    loadOutreachTrend();
+    currentOutreachTrendData = null;
+
+    // Rebuild the whole report shell after a successful search.
+    // Previously only inner sections were updated, which could leave the page looking blank.
+    renderOutreachAnalysis();
+
+    requestAnimationFrame(() => {
+      const target = document.getElementById('outreachSummaryCards') || document.getElementById('outreachOutcomeDashboard');
+      if (target && typeof target.scrollIntoView === 'function') target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   } catch (err) {
-    showModal("error", "คำนวณตัวกรองไม่สำเร็จ", err.message);
+    const message = String(err?.message || err || 'ไม่สามารถโหลดผลลัพธ์ได้');
+    const errorBox = document.getElementById('outreachFilterLoading');
+    if (errorBox) {
+      errorBox.textContent = `ไม่สามารถแสดงผล: ${message}`;
+      errorBox.style.display = 'block';
+      errorBox.classList.add('text-danger');
+    }
+    showModal("error", "ค้นหาผลถุงเลือดไม่สำเร็จ", message);
   } finally {
-    if (requestId === outreachRequestSeq && loading) loading.style.display = "none";
+    if (requestId === outreachRequestSeq) {
+      const currentLoading = document.getElementById("outreachFilterLoading");
+      if (currentLoading && !currentLoading.classList.contains('text-danger')) currentLoading.style.display = "none";
+      if (actionButton && document.body.contains(actionButton)) {
+        actionButton.disabled = false;
+        actionButton.textContent = actionButton.dataset.originalText || 'แสดงผล';
+      }
+    }
   }
 }
 
@@ -4324,7 +4359,7 @@ function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
   const rateKey = isExpiry ? 'expiredRate' : 'utilizationRate';
   const numeratorLabel = isExpiry ? 'Expired' : 'Used';
   const title = isExpiry ? 'Expired เทียบถุงที่พร้อมใช้' : 'Used เทียบถุงที่พร้อมใช้';
-  const totalColor = isExpiry ? '#f8dfdc' : '#d7f0e5';
+  const totalColor = '#dceeff';
   const barColor = isExpiry ? '#e48379' : '#56bd9a';
   const lowBaseColor = '#d99a2b';
   const safeItems = items.map((source,idx) => {
@@ -4343,7 +4378,7 @@ function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
   const yCount=v=>top+chartH-(Math.max(0,Number(v||0))/yMax)*chartH;
   const xCenter=i=>left+groupW*i+groupW/2;
   const grid=[0,.25,.5,.75,1].map(frac=>{const yy=top+chartH-chartH*frac;return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e8eff5" stroke-width="1.6"/><text x="${left-14}" y="${yy+5}" text-anchor="end" font-size="13" fill="#8299ac">${Math.round(yMax*frac)}</text>`}).join('');
-  const bars=safeItems.map((row,i)=>{const cx=xCenter(i),totalX=cx-barW,numX=cx,totalY=yCount(row.totalFinal),numY=yCount(row.numerator),totalH=Math.max(row.totalFinal>0?4:0,top+chartH-totalY),numH=Math.max(row.numerator>0?4:0,top+chartH-numY),higherY=Math.min(totalY,numY),badgeY=Math.max(top+18,higherY-38),badgeW=row.lowBase?58:50;return `<g><rect x="${totalX}" y="${totalY}" width="${barW}" height="${totalH}" rx="8" fill="${totalColor}"/><rect x="${numX}" y="${numY}" width="${barW}" height="${numH}" rx="8" fill="${barColor}"/>${row.totalFinal>0?`<text x="${totalX+barW/2}" y="${Math.max(top+14,totalY-8)}" text-anchor="middle" font-size="11" font-weight="700" fill="#7892a5">${row.totalFinal.toLocaleString()}</text>`:''}${row.numerator>0?`<text x="${numX+barW/2}" y="${Math.max(top+14,numY-8)}" text-anchor="middle" font-size="11" font-weight="700" fill="#295b49">${row.numerator.toLocaleString()}</text>`:''}${row.rate!==null?`<line x1="${cx}" y1="${badgeY+24}" x2="${cx}" y2="${higherY-4}" stroke="${row.lowBase?lowBaseColor:'#9ab2c7'}" stroke-width="1.6"/><rect x="${cx-badgeW/2}" y="${badgeY}" width="${badgeW}" height="24" rx="12" fill="${row.lowBase?'#fff7ea':'#fff'}" stroke="${row.lowBase?lowBaseColor:'#b9cfe0'}"/><text x="${cx}" y="${badgeY+16}" text-anchor="middle" font-size="11.5" font-weight="700" fill="${row.lowBase?'#b87813':'#2f5c84'}">${row.rate.toFixed(1)}%${row.lowBase?'*':''}</text>`:''}<text x="${cx}" y="${h-38}" text-anchor="middle" font-size="${safeItems.length>18?11.5:13}" font-weight="600" fill="#5f7689">${escapeOutreachHtml(row.periodLabel)}</text></g>`}).join('');
+  const bars=safeItems.map((row,i)=>{const cx=xCenter(i),totalX=cx-barW,numX=cx,totalY=yCount(row.totalFinal),numY=yCount(row.numerator),totalH=Math.max(row.totalFinal>0?4:0,top+chartH-totalY),numH=Math.max(row.numerator>0?4:0,top+chartH-numY),higherY=Math.min(totalY,numY),badgeY=Math.max(top+18,higherY-38),badgeW=row.lowBase?58:50;return `<g><rect x="${totalX}" y="${totalY}" width="${barW}" height="${totalH}" rx="8" fill="${totalColor}"/><rect x="${numX}" y="${numY}" width="${barW}" height="${numH}" rx="8" fill="${barColor}"/>${row.totalFinal>0?`<text x="${totalX+barW/2}" y="${Math.max(top+14,totalY-8)}" text-anchor="middle" font-size="11" font-weight="700" fill="#4b7da7">${row.totalFinal.toLocaleString()}</text>`:''}${row.numerator>0?`<text x="${numX+barW/2}" y="${Math.max(top+14,numY-8)}" text-anchor="middle" font-size="11" font-weight="700" fill="#295b49">${row.numerator.toLocaleString()}</text>`:''}${row.rate!==null?`<line x1="${cx}" y1="${badgeY+24}" x2="${cx}" y2="${higherY-4}" stroke="${row.lowBase?lowBaseColor:'#9ab2c7'}" stroke-width="1.6"/><rect x="${cx-badgeW/2}" y="${badgeY}" width="${badgeW}" height="24" rx="12" fill="${row.lowBase?'#fff7ea':'#fff'}" stroke="${row.lowBase?lowBaseColor:'#b9cfe0'}"/><text x="${cx}" y="${badgeY+16}" text-anchor="middle" font-size="11.5" font-weight="700" fill="${row.lowBase?'#b87813':'#2f5c84'}">${row.rate.toFixed(1)}%${row.lowBase?'*':''}</text>`:''}<text x="${cx}" y="${h-38}" text-anchor="middle" font-size="${safeItems.length>18?11.5:13}" font-weight="600" fill="#5f7689">${escapeOutreachHtml(row.periodLabel)}</text></g>`}).join('');
   return `<svg class="kpi-exec-chart kpi-grouped-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${title}"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/><text x="${left}" y="36" font-size="18" font-weight="700" fill="#183b5d">${title}</text><g transform="translate(${w-right-192},34)"><rect x="0" y="-11" width="16" height="12" rx="4" fill="${totalColor}"/><text x="22" y="-1" font-size="12" fill="#587082">พร้อมใช้</text><rect x="98" y="-11" width="16" height="12" rx="4" fill="${barColor}"/><text x="120" y="-1" font-size="12" fill="#587082">${numeratorLabel}</text></g>${grid}${bars}</svg>`;
 }
 
