@@ -3589,7 +3589,7 @@ function renderKpiUtilization({ analysis, trend, dependency, year }) {
       peakMonth ? { label:'เดือนที่ใช้ประโยชน์สูงสุด', value:monthNames[Number(peakMonth.month||0)] || '-', note:`${Number(peakMonth.utilizationRate||0).toFixed(1)}% · Used ${Number(peakMonth.used||0).toLocaleString()} / ${Number(peakMonth.totalFinal||0).toLocaleString()} ถุง`, tone:'' } : null
     ])}
     <div class="simple-panel kpi-executive-panel mb-3">
-      <div class="panel-heading-row"><div><h3>แนวโน้มการใช้ประโยชน์รายเดือน</h3><div class="small-muted">กราฟแท่งคู่รายเดือน · แท่งอ่อน = ถุงจบผลลัพธ์ · แท่งเข้ม = Used · ตัวเลขด้านบน = ร้อยละของเดือนนั้น</div></div></div>
+      <div class="panel-heading-row"><div><h3>แนวโน้มการใช้ประโยชน์รายเดือน</h3><div class="small-muted">กราฟแท่งคู่รายเดือน · แท่งซ้าย = ถุงจบผลลัพธ์ · แท่งขวา = Used · ป้ายด้านบน = ร้อยละของเดือนนั้น</div></div></div>
       ${renderExecutiveMonthlyRateChart(monthly, year, 'utilization')}
     </div>
     <div class="simple-panel kpi-executive-panel">
@@ -3615,7 +3615,7 @@ function renderKpiExpiry({ analysis, trend, dependency, year }) {
       peakMonth ? { label:'เดือนที่หมดอายุสูงสุด', value:monthNames[Number(peakMonth.month||0)] || '-', note:`${Number(peakMonth.expiredRate||0).toFixed(1)}% · Expired ${Number(peakMonth.expired||0).toLocaleString()} / ${Number(peakMonth.totalFinal||0).toLocaleString()} ถุง`, tone:'' } : null
     ])}
     <div class="simple-panel kpi-executive-panel mb-3">
-      <div class="panel-heading-row"><div><h3>แนวโน้มอัตราหมดอายุรายเดือน</h3><div class="small-muted">กราฟแท่งคู่รายเดือน · แท่งอ่อน = ถุงจบผลลัพธ์ · แท่งเข้ม = Expired · ตัวเลขด้านบน = ร้อยละของเดือนนั้น</div></div></div>
+      <div class="panel-heading-row"><div><h3>แนวโน้มอัตราหมดอายุรายเดือน</h3><div class="small-muted">กราฟแท่งคู่รายเดือน · แท่งซ้าย = ถุงจบผลลัพธ์ · แท่งขวา = Expired · ป้ายด้านบน = ร้อยละของเดือนนั้น</div></div></div>
       ${renderExecutiveMonthlyRateChart(monthly, year, 'expiry')}
     </div>
     <div class="simple-panel kpi-executive-panel">
@@ -4210,9 +4210,8 @@ function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
   const rateKey = isExpiry ? 'expiredRate' : 'utilizationRate';
   const numeratorLabel = isExpiry ? 'Expired' : 'Used';
   const title = isExpiry ? 'จำนวน Expired เทียบถุงจบผลลัพธ์' : 'จำนวน Used เทียบถุงจบผลลัพธ์';
-  const totalColor = isExpiry ? '#fde7e4' : '#dcf4eb';
-  const barColor = isExpiry ? '#eb8d84' : '#52c39e';
-  const avgColor = isExpiry ? '#c98a83' : '#86a0b8';
+  const totalColor = isExpiry ? '#f8dfdc' : '#d7f0e5';
+  const barColor = isExpiry ? '#e48379' : '#56bd9a';
   const lowBaseColor = '#d99a2b';
   const monthNames = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 
@@ -4234,20 +4233,17 @@ function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
   const validRows = safeItems.filter(row => row.totalFinal > 0);
   const maxCount = Math.max(1, ...safeItems.map(row => Math.max(row.totalFinal, row.numerator)));
   const yMax = Math.max(8, Math.ceil(maxCount / 5) * 5);
-  const sumNumerator = validRows.reduce((sum, row) => sum + row.numerator, 0);
-  const sumTotal = validRows.reduce((sum, row) => sum + row.totalFinal, 0);
-  const overallRate = sumTotal ? (sumNumerator / sumTotal) * 100 : 0;
-  const peak = validRows.filter(row => !row.lowBase).sort((a, b) => (b.rate - a.rate) || (b.totalFinal - a.totalFinal))[0] || validRows[0] || null;
 
   const w = 1260, h = 560, left = 84, right = 60, top = 70, bottom = 94;
   const chartW = w - left - right;
   const chartH = h - top - bottom;
   const groupW = chartW / 12;
-  const gap = 8;
-  const totalBarW = Math.min(30, groupW * 0.28);
-  const numeratorBarW = Math.min(30, groupW * 0.28);
+  const pairGap = 0;
+  const pairW = Math.min(54, groupW * 0.6);
+  const totalBarW = Math.max(18, Math.floor((pairW - pairGap) / 2));
+  const numeratorBarW = totalBarW;
+  const clusterW = totalBarW + numeratorBarW + pairGap;
   const yCount = value => top + chartH - (Math.max(0, Number(value || 0)) / yMax) * chartH;
-  const yRate = value => top + chartH - (Math.max(0, Math.min(100, Number(value || 0))) / 100) * chartH;
   const xCenter = i => left + groupW * i + groupW / 2;
 
   const grid = [0, 0.25, 0.5, 0.75, 1].map(frac => {
@@ -4259,30 +4255,31 @@ function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
       <text x="${w-right+12}" y="${yy+5}" font-size="13" fill="#8299ac">${rateVal}%</text>`;
   }).join('');
 
-  const avgY = yRate(overallRate);
   const bars = safeItems.map((row, i) => {
     const cx = xCenter(i);
-    const totalX = cx - totalBarW - gap/2;
-    const numX = cx + gap/2;
+    const clusterX = cx - clusterW / 2;
+    const totalX = clusterX;
+    const numX = totalX + totalBarW + pairGap;
     const totalY = yCount(row.totalFinal);
     const numY = yCount(row.numerator);
     const totalH = Math.max(row.totalFinal > 0 ? 4 : 0, top + chartH - totalY);
     const numH = Math.max(row.numerator > 0 ? 4 : 0, top + chartH - numY);
     const higherY = Math.min(totalY, numY);
     const badgeY = Math.max(top + 18, higherY - 38);
-    const badgeW = row.lowBase ? 54 : 48;
+    const badgeW = row.lowBase ? 58 : 50;
     const badgeFill = row.lowBase ? '#fff7ea' : '#ffffff';
     const badgeStroke = row.lowBase ? lowBaseColor : '#b9cfe0';
     const badgeText = row.rate !== null ? `${row.rate.toFixed(1)}%${row.lowBase ? '*' : ''}` : '';
+    const lineX = cx;
     return `
       <g>
-        <rect x="${totalX}" y="${totalY}" width="${totalBarW}" height="${totalH}" rx="9" fill="${totalColor}"></rect>
-        <rect x="${numX}" y="${numY}" width="${numeratorBarW}" height="${numH}" rx="9" fill="${barColor}"></rect>
+        <rect x="${totalX}" y="${totalY}" width="${totalBarW}" height="${totalH}" rx="8" fill="${totalColor}"></rect>
+        <rect x="${numX}" y="${numY}" width="${numeratorBarW}" height="${numH}" rx="8" fill="${barColor}"></rect>
         ${row.totalFinal > 0 ? `<text x="${totalX + totalBarW/2}" y="${Math.max(top+14, totalY-8)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#7892a5">${row.totalFinal.toLocaleString()}</text>` : ''}
         ${row.numerator > 0 ? `<text x="${numX + numeratorBarW/2}" y="${Math.max(top+14, numY-8)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#295b49">${row.numerator.toLocaleString()}</text>` : ''}
-        ${row.rate !== null ? `<line x1="${cx}" y1="${badgeY+24}" x2="${cx}" y2="${higherY-4}" stroke="${row.lowBase ? lowBaseColor : '#9ab2c7'}" stroke-width="1.8"></line>
-          <rect x="${cx-badgeW/2}" y="${badgeY}" width="${badgeW}" height="24" rx="12" fill="${badgeFill}" stroke="${badgeStroke}" stroke-width="1.8"></rect>
-          <text x="${cx}" y="${badgeY+16}" text-anchor="middle" font-size="11.5" font-weight="700" fill="${row.lowBase ? '#b87813' : '#2f5c84'}">${badgeText}</text>` : ''}
+        ${row.rate !== null ? `<line x1="${lineX}" y1="${badgeY+24}" x2="${lineX}" y2="${higherY-4}" stroke="${row.lowBase ? lowBaseColor : '#9ab2c7'}" stroke-width="1.8"></line>
+          <rect x="${lineX-badgeW/2}" y="${badgeY}" width="${badgeW}" height="24" rx="12" fill="${badgeFill}" stroke="${badgeStroke}" stroke-width="1.8"></rect>
+          <text x="${lineX}" y="${badgeY+16}" text-anchor="middle" font-size="11.5" font-weight="700" fill="${row.lowBase ? '#b87813' : '#2f5c84'}">${badgeText}</text>` : ''}
         <text x="${cx}" y="${h-38}" text-anchor="middle" font-size="13.5" font-weight="600" fill="#5f7689">${monthNames[i]}</text>
       </g>`;
   }).join('');
@@ -4290,22 +4287,17 @@ function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
   return `<svg class="kpi-exec-chart kpi-grouped-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${title} รายเดือน">
     <rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#ffffff" stroke="#edf3f7"/>
     <text x="${left}" y="36" font-size="18" font-weight="700" fill="#183b5d">${title}</text>
-    <g transform="translate(${w-right-290},34)">
+    <g transform="translate(${w-right-192},34)">
       <rect x="0" y="-11" width="16" height="12" rx="4" fill="${totalColor}"/>
       <text x="22" y="-1" font-size="12" fill="#587082">จบผลลัพธ์</text>
       <rect x="98" y="-11" width="16" height="12" rx="4" fill="${barColor}"/>
       <text x="120" y="-1" font-size="12" fill="#587082">${numeratorLabel}</text>
-      <line x1="184" y1="-5" x2="214" y2="-5" stroke="${avgColor}" stroke-width="3"></line>
-      <text x="220" y="-1" font-size="12" fill="#587082">ค่าเฉลี่ยทั้งช่วง</text>
     </g>
     ${grid}
-    <line x1="${left}" y1="${avgY}" x2="${w-right}" y2="${avgY}" stroke="${avgColor}" stroke-width="2.6"></line>
-    <rect x="${w-right-154}" y="${Math.max(top+8, avgY-30)}" width="142" height="24" rx="12" fill="#f5f8fb" stroke="#d5e0e8"></rect>
-    <text x="${w-right-83}" y="${Math.max(top+24, avgY-14)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#5c7489">เฉลี่ย ${overallRate.toFixed(1)}%</text>
     <text x="${left}" y="${top-16}" font-size="12.5" fill="#7b92a5">จำนวนถุง</text>
     <text x="${w-right+8}" y="${top-16}" font-size="12.5" fill="#7b92a5">ร้อยละ</text>
     ${bars}
-    <text x="${left}" y="${h-12}" font-size="11.5" fill="#8399ab">ตัวเลขบนแท่ง = จำนวนถุง · ตัวเลขด้านบน = ร้อยละรายเดือน${validRows.some(r => r.lowBase) ? ' · * ฐานข้อมูลน้อยกว่า 10 ถุง' : ''}</text>
+    <text x="${left}" y="${h-12}" font-size="11.5" fill="#8399ab">แท่งซ้าย = จบผลลัพธ์ · แท่งขวา = ${numeratorLabel}${validRows.some(r => r.lowBase) ? ' · * ฐานข้อมูลน้อยกว่า 10 ถุง' : ''}</text>
   </svg>`;
 }
 
