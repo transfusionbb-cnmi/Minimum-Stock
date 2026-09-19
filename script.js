@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260919-v2-9-52-outcome-search-semantic-colors";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260919-v2-9-55-outcome-chart-kpi-filters";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -3244,26 +3244,19 @@ async function ensureBloodKpiTrendRange(filters = {}) {
   const years = [];
   for (let y = meta.startYear; y <= meta.endYear; y += 1) years.push(y);
   const yearly = await Promise.all(years.map(y => MinimumStockBackend.getOutreachMonthlyTrend(y, filters || {})));
-  let rows = [];
+  const rows = [];
   yearly.forEach((data, idx) => {
     const year = years[idx];
     trendToOutcomeRows(data).forEach(row => {
       if (!isBloodKpiMonthInRange(year, row.month, filters)) return;
-      rows.push({ ...row, year, periodLabel: `${['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(row.month||0)] || ''}${years.length > 1 ? ` ${String(year+543).slice(-2)}` : ''}` });
+      rows.push({
+        ...row,
+        year,
+        periodLabel: `${['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(row.month||0)] || ''}${years.length > 1 ? ` ${String(year+543).slice(-2)}` : ''}`
+      });
     });
   });
-  if (rows.length > 24) {
-    const yearlyMap = new Map();
-    rows.forEach(row => {
-      if (!yearlyMap.has(row.year)) yearlyMap.set(row.year,{ year:row.year, used:0, expired:0, unresolved:0 });
-      const item=yearlyMap.get(row.year); item.used+=Number(row.used||0); item.expired+=Number(row.expired||0); item.unresolved+=Number(row.unresolved||0);
-    });
-    rows = Array.from(yearlyMap.values()).map(item => {
-      const totalFinal=item.used+item.expired;
-      return { ...item, month:0, totalFinal, utilizationRate: totalFinal ? outreachPercent(item.used,totalFinal) : 0, expiredRate: totalFinal ? outreachPercent(item.expired,totalFinal) : 0, periodLabel:String(item.year+543) };
-    });
-  }
-  const data = { months: rows, rangeLabel: meta.label, groupedBy: rows.length && rows[0].month===0 ? 'year' : 'month' };
+  const data = { months: rows, rangeLabel: meta.label, groupedBy: 'month' };
   bloodKpiLazyCache.trend.set(key,data);
   return data;
 }
@@ -3308,15 +3301,64 @@ async function ensureBloodKpiHeavyInsights(filters = {}) {
   return insights;
 }
 
+function renderKpiInlineFilterPanel(route, bootstrap, preset = {}) {
+  if (route === 'minimum') return '';
+  const options = bootstrap?.filterOptions || {};
+  const showDetailFilters = route !== 'trc';
+  const selectedSourceGroups = route === 'outreach' ? [OUTREACH_GROUP_SELF_OUTREACH] : normalizeKpiSelectedValues(preset.sourceGroups || []);
+  const selectedSources = normalizeKpiSelectedValues(preset.sources || []);
+  const selectedProducts = normalizeKpiSelectedValues(preset.products || []);
+  const selectedBloodGroups = normalizeKpiSelectedValues(preset.bloodGroups || []);
+  const selectedRhs = normalizeKpiSelectedValues(preset.rhs || []);
+  const showSite = ['outreach','overview','utilization','expiry','turnaround','aging'].includes(route);
+  const availableMinDate = options.minDate || bootstrap?.sourceStartDate || '';
+  const availableMaxDate = options.maxDate || bootstrap?.sourceEndDate || '';
+  const fromParts = outreachMonthParts(preset.dateFrom || '', '');
+  const toParts = outreachMonthParts(preset.dateTo || '', '');
+  return `<div class="simple-panel kpi-inline-filter-panel no-print">
+    <div class="panel-heading-row kpi-inline-filter-head"><div><h3>ตัวกรองข้อมูล</h3></div></div>
+    <div class="kpi-filter-grid">
+      <div class="outreach-range-pair kpi-range-pair">
+        <div class="outreach-range-head">
+          <strong>ช่วงข้อมูล</strong>
+          <div class="outreach-range-quick-actions">
+            <button type="button" onclick="setKpiQuickMonthRange('thisYear')">ปีนี้</button>
+            <button type="button" onclick="setKpiQuickMonthRange('last12')">12 เดือนล่าสุด</button>
+            <button type="button" onclick="setKpiQuickMonthRange('all')">ทั้งหมด</button>
+          </div>
+        </div>
+        <div class="outreach-month-year-side"><div class="outreach-month-year-controls">
+          <select id="kpiMonthFromMonth" class="form-select" aria-label="เดือนเริ่มต้น" onchange="syncKpiMonthRange()">${renderOutreachMonthSelectOptions(fromParts.month)}</select>
+          <select id="kpiMonthFromYear" class="form-select" aria-label="ปีเริ่มต้น" onchange="syncKpiMonthRange()">${renderOutreachYearSelectOptions(availableMinDate, availableMaxDate, fromParts.year)}</select>
+        </div></div>
+        <span class="outreach-range-arrow">→</span>
+        <div class="outreach-month-year-side"><div class="outreach-month-year-controls">
+          <select id="kpiMonthToMonth" class="form-select" aria-label="เดือนสิ้นสุด" onchange="syncKpiMonthRange()">${renderOutreachMonthSelectOptions(toParts.month)}</select>
+          <select id="kpiMonthToYear" class="form-select" aria-label="ปีสิ้นสุด" onchange="syncKpiMonthRange()">${renderOutreachYearSelectOptions(availableMinDate, availableMaxDate, toParts.year)}</select>
+        </div></div>
+      </div>
+      ${showDetailFilters && route === 'outreach' ? `<div class="outreach-filter-item kpi-fixed-filter"><span class="product-picker-label">กลุ่มแหล่งรับเข้า</span><strong>${escapeOutreachHtml(OUTREACH_GROUP_SELF_OUTREACH)}</strong></div>` : ''}
+      ${showDetailFilters && route !== 'outreach' ? renderKpiMultiSelect('sourceGroup','กลุ่มแหล่งรับเข้า',options.sourceGroups||[],selectedSourceGroups,'ทุกกลุ่ม') : ''}
+      ${showDetailFilters && showSite ? renderKpiMultiSelect('source','จุดออกหน่วย / แหล่งรับเข้า',options.sources||[],selectedSources,'ทุกจุด') : ''}
+      ${showDetailFilters ? renderKpiMultiSelect('product','ผลิตภัณฑ์',options.products||[],selectedProducts,'ทุกชนิด') : ''}
+      ${showDetailFilters ? renderKpiMultiSelect('bloodGroup','หมู่เลือด',options.bloodGroups||[],selectedBloodGroups,'ทุกหมู่') : ''}
+      ${showDetailFilters ? renderKpiMultiSelect('rh','Rh',options.rhs||[],selectedRhs,'ทุก Rh') : ''}
+    </div>
+    <div class="kpi-filter-gate-footer"><button class="btn btn-main" type="button" onclick="applyBloodKpiFilters('${route}')">แสดงผล</button></div>
+  </div>`;
+}
+
 function kpiPageHeader(title, subtitle, year, years = [], showYearSelect = true) {
+  const bootstrap = bloodKpiLazyCache.bootstrap || {};
+  const preset = bloodKpiFilterSelections.get(currentBloodKpiRoute) || bloodKpiFilterSelections.get('overview') || {};
+  const filterPanel = currentBloodKpiRoute === 'minimum' ? '' : renderKpiInlineFilterPanel(currentBloodKpiRoute, bootstrap, preset);
   return `<div class="simple-page-head mt-2">
     <div><h1>${escapeOutreachHtml(title)}</h1></div>
     <div class="d-flex gap-2 align-items-end flex-wrap no-print">
-      <button class="btn btn-light" type="button" onclick="loadBloodKpiPage(null,currentBloodKpiRoute,{filterOnly:true})">ตัวกรอง</button>
       <button class="btn btn-light" type="button" onclick="downloadCurrentKpiPng()">PNG</button>
       <button class="btn btn-main" type="button" onclick="window.print()">PDF</button>
     </div>
-  </div>`;
+  </div>${filterPanel}`;
 }
 
 function getKpiYearsFromBootstrap(bootstrap) {
@@ -4357,47 +4399,156 @@ function renderBloodKpiPage(data) {
     </div>`;
 }
 
+function getKpiContinuousMonthChartMeta(rows = []) {
+  const items = Array.isArray(rows) ? rows.filter(Boolean) : [];
+  const monthNames = ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const multiYear = new Set(items.map(row => Number(row?.year || 0)).filter(Boolean)).size > 1;
+  const yearBands = [];
+  let start = 0;
+  while (start < items.length) {
+    const year = Number(items[start]?.year || 0);
+    let end = start;
+    while (end + 1 < items.length && Number(items[end + 1]?.year || 0) === year) end += 1;
+    yearBands.push({
+      year,
+      start,
+      end,
+      label: year ? String(year + 543) : ''
+    });
+    start = end + 1;
+  }
+  return { items, monthNames, multiYear, yearBands };
+}
+
+function renderKpiYearBandSvg(yearBands = [], xCenter = () => 0, chartBottom = 0) {
+  if (!Array.isArray(yearBands) || yearBands.length <= 1) return '';
+  return yearBands.map((band, idx) => {
+    const centerX = (xCenter(band.start) + xCenter(band.end)) / 2;
+    const divider = idx < yearBands.length - 1
+      ? `<line x1="${(xCenter(band.end) + xCenter(band.end + 1)) / 2}" y1="68" x2="${(xCenter(band.end) + xCenter(band.end + 1)) / 2}" y2="${chartBottom + 8}" stroke="#dce8f2" stroke-width="1.4" stroke-dasharray="6 8"/>`
+      : '';
+    return `${divider}<text x="${centerX}" y="${chartBottom + 42}" text-anchor="middle" font-size="12.5" font-weight="700" fill="#6c8599">${escapeOutreachHtml(band.label || '')}</text>`;
+  }).join('');
+}
+
+function wrapScrollableKpiSvg(svgMarkup, wide = false) {
+  return `<div class="kpi-chart-scroll${wide ? ' wide' : ''}">${svgMarkup}</div>`;
+}
+
 function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
-  const items = Array.isArray(rows) ? rows : [];
+  const { items, monthNames, multiYear, yearBands } = getKpiContinuousMonthChartMeta(rows);
   const isExpiry = mode === 'expiry';
   const numeratorKey = isExpiry ? 'expired' : 'used';
   const rateKey = isExpiry ? 'expiredRate' : 'utilizationRate';
   const numeratorLabel = isExpiry ? 'Expired' : 'Used';
   const title = isExpiry ? 'Expired เทียบถุงที่พร้อมใช้' : 'Used เทียบถุงที่พร้อมใช้';
-  const totalColor = '#dceeff';
+  const totalColor = '#dbeafb';
   const barColor = isExpiry ? '#e48379' : '#56bd9a';
   const lowBaseColor = '#d99a2b';
-  const safeItems = items.map((source,idx) => {
+  const safeItems = items.map((source, idx) => {
     const numerator = Number(source?.[numeratorKey] || 0);
-    const totalFinal = Number(source?.totalFinal ?? (Number(source?.used || 0)+Number(source?.expired || 0)));
+    const totalFinal = Number(source?.totalFinal ?? (Number(source?.used || 0) + Number(source?.expired || 0)));
     const rawRate = source?.[rateKey];
-    const rate = totalFinal > 0 ? (Number.isFinite(Number(rawRate)) ? Number(rawRate) : (numerator/totalFinal)*100) : null;
-    return { ...source, numerator, totalFinal, rate, lowBase:totalFinal>0&&totalFinal<10, periodLabel:source?.periodLabel || String(idx+1) };
+    const rate = totalFinal > 0 ? (Number.isFinite(Number(rawRate)) ? Number(rawRate) : (numerator / totalFinal) * 100) : null;
+    return {
+      ...source,
+      numerator,
+      totalFinal,
+      rate,
+      lowBase: totalFinal > 0 && totalFinal < 10,
+      periodLabel: monthNames[Number(source?.month || 0)] || source?.periodLabel || String(idx + 1)
+    };
   });
   if (!safeItems.length) return `<div class="small-muted py-4">ไม่มีข้อมูลในช่วงที่เลือก</div>`;
-  const validRows=safeItems.filter(r=>r.totalFinal>0);
-  const maxCount=Math.max(1,...safeItems.map(r=>Math.max(r.totalFinal,r.numerator)));
-  const yMax=Math.max(8,Math.ceil(maxCount/5)*5);
-  const w=1260,h=560,left=84,right=60,top=70,bottom=100,chartW=w-left-right,chartH=h-top-bottom;
-  const groupW=chartW/Math.max(1,safeItems.length), pairW=Math.min(54,groupW*.68), barW=Math.max(12,Math.floor(pairW/2));
-  const yCount=v=>top+chartH-(Math.max(0,Number(v||0))/yMax)*chartH;
-  const xCenter=i=>left+groupW*i+groupW/2;
-  const grid=[0,.25,.5,.75,1].map(frac=>{const yy=top+chartH-chartH*frac;return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e8eff5" stroke-width="1.6"/><text x="${left-14}" y="${yy+5}" text-anchor="end" font-size="13" fill="#8299ac">${Math.round(yMax*frac)}</text>`}).join('');
-  const bars=safeItems.map((row,i)=>{const cx=xCenter(i),totalX=cx-barW,numX=cx,totalY=yCount(row.totalFinal),numY=yCount(row.numerator),totalH=Math.max(row.totalFinal>0?4:0,top+chartH-totalY),numH=Math.max(row.numerator>0?4:0,top+chartH-numY),higherY=Math.min(totalY,numY),badgeY=Math.max(top+18,higherY-38),badgeW=row.lowBase?58:50;return `<g><rect x="${totalX}" y="${totalY}" width="${barW}" height="${totalH}" rx="8" fill="${totalColor}"/><rect x="${numX}" y="${numY}" width="${barW}" height="${numH}" rx="8" fill="${barColor}"/>${row.totalFinal>0?`<text x="${totalX+barW/2}" y="${Math.max(top+14,totalY-8)}" text-anchor="middle" font-size="11" font-weight="700" fill="#4b7da7">${row.totalFinal.toLocaleString()}</text>`:''}${row.numerator>0?`<text x="${numX+barW/2}" y="${Math.max(top+14,numY-8)}" text-anchor="middle" font-size="11" font-weight="700" fill="#295b49">${row.numerator.toLocaleString()}</text>`:''}${row.rate!==null?`<line x1="${cx}" y1="${badgeY+24}" x2="${cx}" y2="${higherY-4}" stroke="${row.lowBase?lowBaseColor:'#9ab2c7'}" stroke-width="1.6"/><rect x="${cx-badgeW/2}" y="${badgeY}" width="${badgeW}" height="24" rx="12" fill="${row.lowBase?'#fff7ea':'#fff'}" stroke="${row.lowBase?lowBaseColor:'#b9cfe0'}"/><text x="${cx}" y="${badgeY+16}" text-anchor="middle" font-size="11.5" font-weight="700" fill="${row.lowBase?'#b87813':'#2f5c84'}">${row.rate.toFixed(1)}%${row.lowBase?'*':''}</text>`:''}<text x="${cx}" y="${h-38}" text-anchor="middle" font-size="${safeItems.length>18?11.5:13}" font-weight="600" fill="#5f7689">${escapeOutreachHtml(row.periodLabel)}</text></g>`}).join('');
-  return `<svg class="kpi-exec-chart kpi-grouped-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${title}"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/><text x="${left}" y="36" font-size="18" font-weight="700" fill="#183b5d">${title}</text><g transform="translate(${w-right-192},34)"><rect x="0" y="-11" width="16" height="12" rx="4" fill="${totalColor}"/><text x="22" y="-1" font-size="12" fill="#587082">พร้อมใช้</text><rect x="98" y="-11" width="16" height="12" rx="4" fill="${barColor}"/><text x="120" y="-1" font-size="12" fill="#587082">${numeratorLabel}</text></g>${grid}${bars}</svg>`;
+  const maxCount = Math.max(1, ...safeItems.map(r => Math.max(r.totalFinal, r.numerator)));
+  const yMax = Math.max(8, Math.ceil(maxCount / 5) * 5);
+  const left = 84, right = 60, top = 72, bottom = multiYear ? 124 : 92;
+  const groupW = safeItems.length > 18 ? 72 : 84;
+  const chartW = Math.max(720, groupW * safeItems.length);
+  const w = left + right + chartW;
+  const h = 580;
+  const chartH = h - top - bottom;
+  const pairGap = Math.min(14, Math.max(8, groupW * 0.16));
+  const barW = Math.max(16, Math.min(26, (groupW - pairGap - 16) / 2));
+  const yCount = v => top + chartH - (Math.max(0, Number(v || 0)) / yMax) * chartH;
+  const xCenter = i => left + groupW * i + groupW / 2;
+  const chartBottom = top + chartH;
+  const grid = [0, .25, .5, .75, 1].map(frac => {
+    const yy = top + chartH - chartH * frac;
+    return `<line x1="${left}" y1="${yy}" x2="${w - right}" y2="${yy}" stroke="#e8eff5" stroke-width="1.6"/><text x="${left - 14}" y="${yy + 5}" text-anchor="end" font-size="13" fill="#8299ac">${Math.round(yMax * frac)}</text>`;
+  }).join('');
+  const bars = safeItems.map((row, i) => {
+    const cx = xCenter(i);
+    const totalX = cx - pairGap / 2 - barW;
+    const numX = cx + pairGap / 2;
+    const totalY = yCount(row.totalFinal);
+    const numY = yCount(row.numerator);
+    const totalH = Math.max(row.totalFinal > 0 ? 4 : 0, chartBottom - totalY);
+    const numH = Math.max(row.numerator > 0 ? 4 : 0, chartBottom - numY);
+    const higherY = Math.min(totalY, numY);
+    const badgeY = Math.max(top + 18, higherY - 40);
+    const badgeW = row.lowBase ? 58 : 50;
+    return `<g>
+      <rect x="${totalX}" y="${totalY}" width="${barW}" height="${totalH}" rx="8" fill="${totalColor}"/>
+      <rect x="${numX}" y="${numY}" width="${barW}" height="${numH}" rx="8" fill="${barColor}"/>
+      ${row.totalFinal > 0 ? `<text x="${totalX + barW / 2}" y="${Math.max(top + 14, totalY - 8)}" text-anchor="middle" font-size="11" font-weight="700" fill="#7892a5">${row.totalFinal.toLocaleString()}</text>` : ''}
+      ${row.numerator > 0 ? `<text x="${numX + barW / 2}" y="${Math.max(top + 14, numY - 8)}" text-anchor="middle" font-size="11" font-weight="700" fill="${isExpiry ? '#8c3f39' : '#295b49'}">${row.numerator.toLocaleString()}</text>` : ''}
+      ${row.rate !== null ? `<line x1="${cx}" y1="${badgeY + 24}" x2="${cx}" y2="${higherY - 4}" stroke="${row.lowBase ? lowBaseColor : '#9ab2c7'}" stroke-width="1.6"/><rect x="${cx - badgeW / 2}" y="${badgeY}" width="${badgeW}" height="24" rx="12" fill="${row.lowBase ? '#fff7ea' : '#fff'}" stroke="${row.lowBase ? lowBaseColor : '#b9cfe0'}"/><text x="${cx}" y="${badgeY + 16}" text-anchor="middle" font-size="11.5" font-weight="700" fill="${row.lowBase ? '#b87813' : '#2f5c84'}">${row.rate.toFixed(1)}%${row.lowBase ? '*' : ''}</text>` : ''}
+      <text x="${cx}" y="${h - (multiYear ? 68 : 38)}" text-anchor="middle" font-size="${safeItems.length > 18 ? 11.5 : 13}" font-weight="600" fill="#5f7689">${escapeOutreachHtml(row.periodLabel)}</text>
+    </g>`;
+  }).join('');
+  const yearBandsSvg = multiYear ? renderKpiYearBandSvg(yearBands, xCenter, chartBottom) : '';
+  const svg = `<svg class="kpi-exec-chart kpi-grouped-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${title}"><rect x="8" y="8" width="${w - 16}" height="${h - 16}" rx="26" fill="#fff" stroke="#edf3f7"/><text x="${left}" y="38" font-size="18" font-weight="700" fill="#183b5d">${title}</text><g transform="translate(${w - right - 192},36)"><rect x="0" y="-11" width="16" height="12" rx="4" fill="${totalColor}"/><text x="22" y="-1" font-size="12" fill="#587082">พร้อมใช้</text><rect x="98" y="-11" width="16" height="12" rx="4" fill="${barColor}"/><text x="120" y="-1" font-size="12" fill="#587082">${numeratorLabel}</text></g>${grid}${yearBandsSvg}${bars}</svg>`;
+  return wrapScrollableKpiSvg(svg, safeItems.length > 10);
 }
+
 
 
 function renderTrcRangeSvg(rows) {
-  const items=Array.isArray(rows)?rows:[];
-  if(!items.length) return `<div class="small-muted py-4">ไม่มีข้อมูลในช่วงที่เลือก</div>`;
-  const w=1240,h=500,left=72,right=44,top=46,bottom=88,chartW=w-left-right,chartH=h-top-bottom;
-  const x=i=>left+chartW*(i+.5)/items.length,y=v=>top+chartH-(Math.max(0,Math.min(100,Number(v||0)))/100)*chartH;
-  const grid=[0,25,50,75,100].map(v=>`<line x1="${left}" y1="${y(v)}" x2="${w-right}" y2="${y(v)}" stroke="#e8eff5"/><text x="${left-12}" y="${y(v)+4}" text-anchor="end" font-size="12" fill="#8398aa">${v}%</text>`).join('');
-  const overallPath=items.map((r,i)=>`${i===0?'M':'L'}${x(i)},${y(r.rate)}`).join(' '),routinePath=items.map((r,i)=>`${i===0?'M':'L'}${x(i)},${y(r.adjustedRate)}`).join(' ');
-  const labels=items.map((r,i)=>`<text x="${x(i)}" y="${h-32}" text-anchor="middle" font-size="${items.length>18?10.5:12.5}" fill="#587184">${escapeOutreachHtml(r.periodLabel||'')}</text>`).join('');
-  return `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/>${grid}<path d="${overallPath}" fill="none" stroke="#8aa0b4" stroke-width="3"/><path d="${routinePath}" fill="none" stroke="#2f7fc1" stroke-width="4"/>${items.map((r,i)=>`<circle cx="${x(i)}" cy="${y(r.adjustedRate)}" r="5" fill="#fff" stroke="#2f7fc1" stroke-width="3"/>`).join('')}${labels}<g transform="translate(${w-right-230},30)"><line x1="0" y1="0" x2="28" y2="0" stroke="#8aa0b4" stroke-width="3"/><text x="36" y="4" font-size="12" fill="#5b7285">รวม</text><line x1="92" y1="0" x2="120" y2="0" stroke="#2f7fc1" stroke-width="4"/><text x="128" y="4" font-size="12" fill="#5b7285">Routine</text></g></svg>`;
+  const { items, multiYear, yearBands } = getKpiContinuousMonthChartMeta(rows);
+  if (!items.length) return `<div class="small-muted py-4">ไม่มีข้อมูลในช่วงที่เลือก</div>`;
+  const left = 72, right = 44, top = 46, bottom = multiYear ? 112 : 88;
+  const groupW = items.length > 18 ? 70 : 82;
+  const chartW = Math.max(720, groupW * items.length);
+  const w = left + right + chartW, h = 520, chartH = h - top - bottom;
+  const x = i => left + chartW * (i + .5) / items.length, y = v => top + chartH - (Math.max(0, Math.min(100, Number(v || 0))) / 100) * chartH;
+  const grid = [0,25,50,75,100].map(v => `<line x1="${left}" y1="${y(v)}" x2="${w-right}" y2="${y(v)}" stroke="#e8eff5"/><text x="${left-12}" y="${y(v)+4}" text-anchor="end" font-size="12" fill="#8398aa">${v}%</text>`).join('');
+  const overallPath = items.map((r,i)=>`${i===0?'M':'L'}${x(i)},${y(r.rate)}`).join(' '), routinePath = items.map((r,i)=>`${i===0?'M':'L'}${x(i)},${y(r.adjustedRate)}`).join(' ');
+  const labels = items.map((r,i)=>`<text x="${x(i)}" y="${h - (multiYear ? 56 : 32)}" text-anchor="middle" font-size="${items.length>18?10.5:12.5}" fill="#587184">${escapeOutreachHtml(['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(r.month||0)] || r.periodLabel || '')}</text>`).join('');
+  const yearBandsSvg = multiYear ? renderKpiYearBandSvg(yearBands, x, top + chartH) : '';
+  const svg = `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/>${grid}${yearBandsSvg}<path d="${overallPath}" fill="none" stroke="#8aa0b4" stroke-width="3"/><path d="${routinePath}" fill="none" stroke="#2f7fc1" stroke-width="4"/>${items.map((r,i)=>`<circle cx="${x(i)}" cy="${y(r.adjustedRate)}" r="5" fill="#fff" stroke="#2f7fc1" stroke-width="3"/>`).join('')}${labels}<g transform="translate(${w-right-230},30)"><line x1="0" y1="0" x2="28" y2="0" stroke="#8aa0b4" stroke-width="3"/><text x="36" y="4" font-size="12" fill="#5b7285">รวม</text><line x1="92" y1="0" x2="120" y2="0" stroke="#2f7fc1" stroke-width="4"/><text x="128" y="4" font-size="12" fill="#5b7285">Routine</text></g></svg>`;
+  return wrapScrollableKpiSvg(svg, items.length > 10);
 }
+
+function renderExecutiveHorizontalBars(rows, options={}) {
+  const items=(Array.isArray(rows)?rows:[]).slice(0,8);
+  if(!items.length) return `<div class="small-muted">ยังไม่มีข้อมูลเพียงพอสำหรับแสดงกราฟ</div>`;
+  const valueKey=options.valueKey||'value', suffix=options.suffix||'', countKey=options.countKey||'', countLabel=options.countLabel||'', color=options.color||'#5aa9e6';
+  const max=Number(options.max)||Math.max(...items.map(r=>Number(r?.[valueKey]||0)),1);
+  const w=1260,rowH=82,left=410,right=120,top=26,bottom=26,h=top+bottom+rowH*items.length,chartW=w-left-right;
+  return `<svg class="kpi-exec-bar-chart" viewBox="0 0 ${w} ${h}" role="img">${items.map((item,i)=>{const v=Number(item?.[valueKey]||0),width=max?Math.max(10,(v/max)*chartW):10,y=top+i*rowH,label=String(item?.label||'');const count=countKey?Number(item?.[countKey]||0):null;return `<text x="${left-18}" y="${y+26}" text-anchor="end" font-size="17" font-weight="700" fill="#284a63">${escapeOutreachHtml(label)}</text>${countKey?`<text x="${left-18}" y="${y+50}" text-anchor="end" font-size="13" fill="#8297a9">${count.toLocaleString()} ${escapeOutreachHtml(countLabel)}</text>`:''}<rect x="${left}" y="${y+16}" width="${chartW}" height="28" rx="14" fill="#edf3f7"/><rect x="${left}" y="${y+16}" width="${width}" height="28" rx="14" fill="${color}" opacity="0.96"/><text x="${left+Math.min(width+14,chartW-8)}" y="${y+35}" font-size="16" font-weight="700" fill="#294d68">${v.toFixed(1)}${suffix}</text>`}).join('')}</svg>`;
+}
+
+function renderMonthlyAgeExecutiveSvg(rows, rangeLabel = '') {
+  const { items, multiYear, yearBands } = getKpiContinuousMonthChartMeta(rows);
+  if(!items.length) return `<div class="small-muted py-4">ไม่มีข้อมูลในช่วงที่เลือก</div>`;
+  const valid=items.filter(r=>Number.isFinite(r.medianDays));
+  const left=84,right=56,top=72,bottom=multiYear ? 120 : 96;
+  const groupW = items.length > 18 ? 70 : 82;
+  const chartW = Math.max(720, groupW * items.length);
+  const w=left+right+chartW,h=540,chartH=h-top-bottom;
+  const maxDays=Math.max(7,...valid.map(r=>Number(r.medianDays||0))),yMax=Math.max(28,Math.ceil(maxDays/7)*7);
+  const x=i=>left+chartW*(i+.5)/items.length,y=v=>top+chartH-(Number(v||0)/yMax)*chartH;
+  const grid=[0,.25,.5,.75,1].map(frac=>{const val=Math.round(yMax*frac),yy=top+chartH-chartH*frac;return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e7eef4"/><text x="${left-14}" y="${yy+5}" text-anchor="end" font-size="13" fill="#7890a4">${val}</text>`}).join('');
+  const points=items.map((r,i)=>Number.isFinite(r.medianDays)?{i,value:Number(r.medianDays)}:null).filter(Boolean);
+  const path=points.map((p,j)=>`${j===0?'M':'L'}${x(p.i)},${y(p.value)}`).join(' ');
+  const dots=items.map((r,i)=>{const m=Number(r.medianDays);return Number.isFinite(m)?`<circle cx="${x(i)}" cy="${y(m)}" r="7" fill="#fff" stroke="#367fb5" stroke-width="4"/><text x="${x(i)}" y="${Math.max(top+14,y(m)-18)}" text-anchor="middle" font-size="12" font-weight="700" fill="#27648f">${m.toFixed(1)}</text>`:''}).join('');
+  const labels=items.map((r,i)=>`<text x="${x(i)}" y="${h-(multiYear?48:46)}" text-anchor="middle" font-size="${items.length>18?11:13}" font-weight="600" fill="#536f84">${escapeOutreachHtml(['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(r.month||0)] || r.periodLabel || '')}</text><text x="${x(i)}" y="${h-(multiYear?28:26)}" text-anchor="middle" font-size="11" fill="#8aa0b1">n=${Number(r.usedCount||0).toLocaleString()}</text>`).join('');
+  const yearBandsSvg = multiYear ? renderKpiYearBandSvg(yearBands, x, top + chartH) : '';
+  const svg = `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img"><rect x="10" y="10" width="${w-20}" height="${h-20}" rx="28" fill="#fff" stroke="#edf3f7"/>${grid}${yearBandsSvg}<line x1="${left}" y1="${y(21)}" x2="${w-right}" y2="${y(21)}" stroke="#e4a74c" stroke-width="2" stroke-dasharray="7 7"/><path d="${path}" fill="none" stroke="#367fb5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>${dots}${labels}</svg>`;
+  return wrapScrollableKpiSvg(svg, items.length > 10);
+}
+
 
 function renderExecutiveHorizontalBars(rows, options={}) {
   const items=(Array.isArray(rows)?rows:[]).slice(0,8);

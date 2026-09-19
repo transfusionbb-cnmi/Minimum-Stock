@@ -3219,8 +3219,8 @@ body {
   padding:14px 8px 0; border-bottom:1px solid #e5edf4; overflow-x:auto;
 }
 .outcome-month-group { height:100%; min-width:72px; display:grid; grid-template-rows:auto 1fr auto; gap:7px; }
-.outcome-bar-area { min-height:245px; display:flex; align-items:flex-end; justify-content:center; border-bottom:1px solid #eef3f7; }
-.outcome-bar-pair { min-height:100%; display:flex; align-items:flex-end; justify-content:center; gap:4px; }
+.outcome-bar-area { height:245px; min-height:245px; display:flex; align-items:flex-end; justify-content:center; border-bottom:1px solid #eef3f7; }
+.outcome-bar-pair { height:100%; min-height:100%; display:flex; align-items:flex-end; justify-content:center; gap:4px; }
 .outcome-solid-bar,
 .outcome-stack { width:28px; min-height:2px; overflow:hidden; border-radius:8px 8px 2px 2px; box-shadow:inset 0 0 0 1px rgba(31,65,91,.04); }
 .outcome-solid-bar { display:block; background:linear-gradient(180deg,#abd5ff 0%, #78b7ff 100%); }
@@ -3259,7 +3259,7 @@ body {
     border-radius:22px 22px 0 0; border-bottom:0; box-shadow:0 -14px 42px rgba(31,59,79,.22); z-index:1101;
   }
   .monthly-outcome-chart { height:285px; }
-  .outcome-bar-area { min-height:190px; }
+  .outcome-bar-area { height:190px; min-height:190px; }
   .kpi-mini-stats { grid-template-columns:1fr; }
 }
 
@@ -3561,6 +3561,11 @@ body {
 /* v2.9.46 Executive KPI charts */
 .kpi-executive-panel{padding:24px 28px 28px; border:1px solid #e4edf4; box-shadow:0 12px 28px rgba(38,88,122,.06);}
 .kpi-exec-chart,.kpi-exec-bar-chart,.kpi-age-dist-chart{width:100%;height:auto;display:block;}
+
+.kpi-chart-scroll{width:100%;overflow-x:auto;overflow-y:hidden;padding-bottom:6px;-webkit-overflow-scrolling:touch;}
+.kpi-chart-scroll svg{display:block;min-width:100%;height:auto;}
+.kpi-chart-scroll.wide svg{min-width:1200px;}
+
 .kpi-combo-chart{background:transparent;}
 .kpi-exec-chart{min-height:500px;}
 .kpi-exec-bar-chart{min-height:380px;}
@@ -3639,3 +3644,9 @@ body {
 .outreach-filter-grid .product-picker-label{margin-bottom:2px;}
 .kpi-filter-gate .outreach-filter-item small,.kpi-fixed-filter small{display:none;}
 @media(max-width:900px){.kpi-range-pair{grid-column:1/-1;}}
+
+.kpi-inline-filter-panel{margin-bottom:14px;padding:16px 18px 18px;}
+.kpi-inline-filter-head{margin-bottom:10px;}
+.kpi-inline-filter-head h3{margin:0;font-size:17px;}
+.kpi-inline-filter-panel .kpi-filter-grid{margin-top:0;}
+.kpi-inline-filter-panel .kpi-filter-gate-footer{padding-top:12px;margin-top:12px;}
