@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260919-v2-9-48-grouped-bar-kpi";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260919-v2-9-51-range-filters-clean-ui";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -1350,7 +1350,6 @@ function renderProductMultiSelect(products, selectedProducts) {
   const selected = Array.isArray(selectedProducts) ? Array.from(new Set(selectedProducts)) : [];
   const selectedSet = new Set(selected);
   const label = selected.length === 0 ? "กรุณาเลือก" : selected.length === 1 ? selected[0] : `เลือกแล้ว ${selected.length} ชนิด`;
-  const helper = selected.length === 0 ? "ไม่เลือก = ไม่จำกัดผลิตภัณฑ์" : selected.length === 1 ? "เลือกอยู่ 1 ชนิด" : `เลือกอยู่ ${selected.length} ชนิด`;
   const preview = selected.length
     ? selected.slice(0, 3).map(product => `<span>${escapeOutreachHtml(product)}</span>`).join("") + (selected.length > 3 ? `<span>+${selected.length - 3}</span>` : "")
     : `<span class="is-placeholder">ยังไม่ได้เลือกเฉพาะชนิด</span>`;
@@ -1359,7 +1358,6 @@ function renderProductMultiSelect(products, selectedProducts) {
       <summary>
         <span class="product-picker-label">ชนิดผลิตภัณฑ์</span>
         <strong id="outreachProductLabel">${escapeOutreachHtml(label)}</strong>
-        <small id="outreachProductHelper">${escapeOutreachHtml(helper)}</small>
         <span class="product-picker-chevron" aria-hidden="true">⌄</span>
       </summary>
       <button class="product-multi-backdrop" type="button" aria-label="ปิดตัวเลือกผลิตภัณฑ์" onclick="cancelOutreachProductSelection()"></button>
@@ -1421,13 +1419,11 @@ function renderOutreachMultiSelect(key, label, options, selectedValues, allLabel
   const selectedSet = new Set(selected);
   const safeKey = String(key || "").replace(/[^a-zA-Z0-9_-]/g, "");
   const summary = selected.length === 0 ? "กรุณาเลือก" : selected.length === 1 ? selected[0] : `เลือกแล้ว ${selected.length} รายการ`;
-  const helper = selected.length === 0 ? `${allLabel}เมื่อไม่เลือก` : selected.length === 1 ? "เลือกได้หลายรายการ" : selected.slice(0, 2).join(" · ") + (selected.length > 2 ? ` · +${selected.length - 2}` : "");
   return `
     <details class="filter-multi-select" id="outreachMultiPicker-${safeKey}" ontoggle="handleOutreachMultiPickerToggle(this,'${safeKey}')">
       <summary>
         <span class="product-picker-label">${escapeOutreachHtml(label)}</span>
         <strong id="outreachMultiLabel-${safeKey}">${escapeOutreachHtml(summary)}</strong>
-        <small id="outreachMultiHelper-${safeKey}">${escapeOutreachHtml(helper)}</small>
         <span class="product-picker-chevron" aria-hidden="true">⌄</span>
       </summary>
       <button class="product-multi-backdrop" type="button" aria-label="ปิดตัวเลือก" onclick="cancelOutreachMultiSelection('${safeKey}')"></button>
@@ -1484,7 +1480,6 @@ function updateOutreachMultiLabel(key) {
   const label = document.getElementById(`outreachMultiLabel-${key}`);
   const helper = document.getElementById(`outreachMultiHelper-${key}`);
   if (label) label.textContent = selected.length === 0 ? "กรุณาเลือก" : selected.length === 1 ? selected[0] : `เลือกแล้ว ${selected.length} รายการ`;
-  if (helper) helper.textContent = selected.length === 0 ? `${config.allLabel}เมื่อไม่เลือก` : selected.length === 1 ? "เลือกได้หลายรายการ" : selected.slice(0, 2).join(" · ") + (selected.length > 2 ? ` · +${selected.length - 2}` : "");
 }
 
 function handleOutreachMultiPickerToggle(details, key) {
@@ -1563,9 +1558,6 @@ function updateOutreachProductLabel() {
   const helper = document.getElementById("outreachProductHelper");
   if (label) {
     label.textContent = selected.length === 0 ? "กรุณาเลือก" : selected.length === 1 ? selected[0] : `เลือกแล้ว ${selected.length} ชนิด`;
-  }
-  if (helper) {
-    helper.textContent = selected.length === 0 ? "แตะเพื่อเลือกหลายชนิด" : selected.length === 1 ? "เลือกอยู่ 1 ชนิด" : `เลือกอยู่ ${selected.length} ชนิด`;
   }
 }
 
@@ -1842,14 +1834,14 @@ function renderOutreachAnalysis() {
   const availableMaxDate = options.maxDate || data.sourceEndDate || "";
 
   container.innerHTML = `
-    <div class="outreach-report-shell">
+    <div class="outreach-report-shell ${data.reportLoaded ? "is-loaded" : "is-waiting"}">
       <div class="simple-page-head">
         <div>
           <h1>ผลถุงเลือด</h1>
-          <div class="page-subline">ดูผลถุงเลือด: ใช้/จ่าย/ส่งต่อ · หมดอายุ · ไม่เหมาะสมต่อการใช้ · ยังอยู่ในคลัง · อัปเดต ${escapeOutreachHtml(formatDisplayDateTime(data.calculatedAt) || "-")}</div>
+          <div class="page-subline">อัปเดต ${escapeOutreachHtml(formatDisplayDateTime(data.calculatedAt) || "-")}</div>
         </div>
         <div class="compact-actions no-print">
-          ${data.reportLoaded ? `<button id="outreachExportCsvBtn" class="btn btn-light" type="button" onclick="exportOutreachCsv()">CSV</button><button id="outreachExportExcelBtn" class="btn btn-light" type="button" onclick="exportOutreachExcel()">Excel</button><button class="btn btn-main" type="button" onclick="printOutreachReport()">PDF</button>` : `<span class="small-muted">เลือกตัวกรองก่อน แล้วค่อย Export</span>`}
+          ${data.reportLoaded ? `<button id="outreachExportCsvBtn" class="btn btn-light" type="button" onclick="exportOutreachCsv()">CSV</button><button id="outreachExportExcelBtn" class="btn btn-light" type="button" onclick="exportOutreachExcel()">Excel</button><button class="btn btn-main" type="button" onclick="printOutreachReport()">PDF</button>` : ``}
         </div>
       </div>
 
@@ -1860,7 +1852,7 @@ function renderOutreachAnalysis() {
             <div class="outreach-range-head">
               <div>
                 <strong>ช่วงข้อมูลรายเดือน</strong>
-                <span>เลือกช่วงที่ต้องการ</span>
+                
               </div>
               <div class="outreach-range-quick-actions" aria-label="ช่วงข้อมูลด่วน">
                 <button type="button" onclick="setOutreachQuickMonthRange('thisYear')">ปีนี้</button>
@@ -1894,13 +1886,7 @@ function renderOutreachAnalysis() {
           ${renderProductMultiSelect(options.products || [], f.productTypes || [])}
           ${renderOutreachMultiSelect("bloodGroup", "หมู่เลือด", options.bloodGroups || [], f.bloodGroups || (f.bloodGroup ? [f.bloodGroup] : []), "ทุกหมู่")}
           ${renderOutreachMultiSelect("rh", "Rh", options.rhs || [], f.rhs || (f.rh ? [f.rh] : []), "ทุก Rh")}
-          <details class="outreach-advanced-date">
-            <summary>วันที่แบบละเอียด</summary>
-            <div class="outreach-exact-date-grid">
-              <label class="outreach-filter-item">วันที่อ้างอิง ตั้งแต่<input id="outreachDateFrom" type="date" class="form-control" min="${escapeOutreachHtml(availableMinDate)}" max="${escapeOutreachHtml(availableMaxDate)}" value="${escapeOutreachHtml(f.dateFrom || "")}" onchange="syncOutreachExactDateFilter()" /></label>
-              <label class="outreach-filter-item">ถึง<input id="outreachDateTo" type="date" class="form-control" min="${escapeOutreachHtml(availableMinDate)}" max="${escapeOutreachHtml(availableMaxDate)}" value="${escapeOutreachHtml(f.dateTo || "")}" onchange="syncOutreachExactDateFilter()" /></label>
-            </div>
-          </details>
+          <input id="outreachDateFrom" type="hidden" value="${escapeOutreachHtml(f.dateFrom || "")}" /><input id="outreachDateTo" type="hidden" value="${escapeOutreachHtml(f.dateTo || "")}" />
         </div>
         <div class="d-flex justify-content-between align-items-center gap-2 mt-3 flex-wrap">
           <div id="outreachFilterLoading" class="small-muted" style="display:none;">กำลังคำนวณ...</div>
@@ -1936,11 +1922,6 @@ function renderOutreachAnalysis() {
         <summary>ตารางรายจุด</summary>
         <div class="pt-3" id="outreachSourceTable"></div>
       </details>
-
-      <details class="simple-details mb-4">
-        <summary>หลักการนับ</summary>
-        <div class="pt-3 small-muted">วันที่อ้างอิง: เลือดที่เก็บเองใช้ CollectDate; กาชาด/รับจาก รพ.อื่นใช้ DateStockIn · นับระดับถุงต้นทาง (ถุงหลัก + .S1/.S2/.S3/... = 1 ถุง) · ถ้ามีสมาชิกใน family ถูก Released/Dedicated แม้เพียง 1 รายการ ให้นับทั้ง family เป็นใช้/จ่าย/ส่งต่อ 1 ถุง และไม่ซ้ำ Expired ของสมาชิกอื่น · Be Transformed เป็นขั้นตอนกลาง · Expired = หมดอายุเท่านั้น · Rejected = ไม่เหมาะสมต่อการใช้</div>
-      </details>
     </div>`;
 
   renderOutreachValidation(validation, data.reviewRows || []);
@@ -1964,7 +1945,7 @@ function renderOutreachValidation(validation, reviewRows) {
   const totalNeedReview = Math.max(masterReviewCount, unknownSource + sourceConflict + outcomeConflict + invalidDate, issueCount);
 
   if (!totalNeedReview) {
-    box.innerHTML = `<div class="data-quality-strip is-ok mb-3"><strong>✓ ข้อมูลพร้อมวิเคราะห์</strong><span> ระบบตัดข้อมูลสอน/ทดสอบออกจาก KPI อัตโนมัติ</span></div>`;
+    box.innerHTML = "";
     return;
   }
 
@@ -2084,16 +2065,9 @@ function resetOutreachFilters() {
 }
 
 function renderOutreachManualPlaceholder() {
-  const summary = document.getElementById("outreachFilterSummary");
-  const cards = document.getElementById("outreachSummaryCards");
-  const trend = document.getElementById("outreachTrendChart");
-  const charts = document.getElementById("outreachCharts");
-  const sourceTable = document.getElementById("outreachSourceTable");
-  if (summary) summary.innerHTML = `<div class="filter-summary-strip is-default"><strong>ยังไม่ได้โหลดรายงาน</strong><span>เลือกช่วงข้อมูลก่อน แล้วกด “แสดงผล”</span></div>`;
-  if (cards) cards.innerHTML = `<div class="outreach-manual-gate"><strong>เลือกก่อน เพื่อให้ระบบโหลดเฉพาะที่ต้องใช้</strong><span>ช่วยลดเวลารอและลดการดึงข้อมูลย้อนหลังทั้งฐานโดยไม่จำเป็น</span></div>`;
-  if (trend) trend.innerHTML = `<div class="small-muted py-4">กราฟจะแสดงหลังจากกด “แสดงผล”</div>`;
-  if (charts) charts.innerHTML = `<div class="small-muted py-3">ยังไม่ได้โหลดข้อมูล</div>`;
-  if (sourceTable) sourceTable.innerHTML = `<div class="small-muted py-3">ยังไม่ได้โหลดข้อมูล</div>`;
+  ['outreachFilterSummary','outreachSummaryCards','outreachTrendChart','outreachCharts','outreachSourceTable','outreachTrendInsight'].forEach(id => {
+    const el=document.getElementById(id); if(el) el.innerHTML='';
+  });
 }
 
 async function applyOutreachFilters() {
@@ -3157,6 +3131,55 @@ async function ensureBloodKpiDependency(year) {
   return data;
 }
 
+function getBloodKpiRangeMeta(filters = {}) {
+  const start = String(filters.dateFrom || '');
+  const end = String(filters.dateTo || '');
+  const startDate = parseBloodKpiDate(start);
+  const endDate = parseBloodKpiDate(end);
+  const startYear = startDate ? startDate.getFullYear() : new Date().getFullYear();
+  const endYear = endDate ? endDate.getFullYear() : startYear;
+  return { start, end, startDate, endDate, startYear, endYear, label: `${formatThaiMonthYear(start) || '-'} – ${formatThaiMonthYear(end) || '-'}` };
+}
+
+function isBloodKpiMonthInRange(year, month, filters = {}) {
+  const key = `${Number(year)}-${String(Number(month)).padStart(2,'0')}`;
+  const from = String(filters.dateFrom || '').slice(0,7);
+  const to = String(filters.dateTo || '').slice(0,7);
+  return (!from || key >= from) && (!to || key <= to);
+}
+
+async function ensureBloodKpiDependencyRange(filters = {}) {
+  const meta = getBloodKpiRangeMeta(filters);
+  const years = [];
+  for (let y = meta.startYear; y <= meta.endYear; y += 1) years.push(y);
+  const yearly = await Promise.all(years.map(y => ensureBloodKpiDependency(y)));
+  const months = [];
+  yearly.forEach((data, idx) => {
+    const year = years[idx];
+    (data?.months || []).forEach(row => {
+      if (!isBloodKpiMonthInRange(year, row?.month, filters)) return;
+      months.push({ ...row, year, periodLabel: `${['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(row?.month||0)] || ''} ${String(year+543).slice(-2)}` });
+    });
+  });
+  const totalRbc = months.reduce((sum,m)=>sum+Number(m.totalRbc||0),0);
+  const trcRbc = months.reduce((sum,m)=>sum+Number(m.trcRbc||0),0);
+  const rareTrcRbc = months.reduce((sum,m)=>sum+Number(m.rareTrcRbc||0),0);
+  const routineTrcRbc = Math.max(0,trcRbc-rareTrcRbc);
+  const adjustedTotalRbc = Math.max(0,totalRbc-rareTrcRbc);
+  return {
+    years,
+    months,
+    rangeLabel: meta.label,
+    specialTrackingReady: yearly.every(d=>d?.specialTrackingReady !== false),
+    sdrTrackingReady: yearly.every(d=>d?.sdrTrackingReady !== false),
+    summary: {
+      totalRbc, trcRbc, rareTrcRbc, routineTrcRbc, adjustedTotalRbc,
+      rate: totalRbc ? Number(((trcRbc/totalRbc)*100).toFixed(2)) : 0,
+      adjustedRate: adjustedTotalRbc ? Number(((routineTrcRbc/adjustedTotalRbc)*100).toFixed(2)) : 0
+    }
+  };
+}
+
 async function ensureBloodKpiAnalysis(filters = {}) {
   const key = JSON.stringify(filters || {});
   if (bloodKpiLazyCache.analysis.has(key)) return bloodKpiLazyCache.analysis.get(key);
@@ -3171,6 +3194,37 @@ async function ensureBloodKpiTrend(year, filters = {}) {
   if (bloodKpiLazyCache.trend.has(key)) return bloodKpiLazyCache.trend.get(key);
   const data = await MinimumStockBackend.getOutreachMonthlyTrend(Number(year), filters || {});
   bloodKpiLazyCache.trend.set(key, data);
+  return data;
+}
+
+async function ensureBloodKpiTrendRange(filters = {}) {
+  const key = `range|${JSON.stringify(filters || {})}`;
+  if (bloodKpiLazyCache.trend.has(key)) return bloodKpiLazyCache.trend.get(key);
+  const meta = getBloodKpiRangeMeta(filters);
+  const years = [];
+  for (let y = meta.startYear; y <= meta.endYear; y += 1) years.push(y);
+  const yearly = await Promise.all(years.map(y => MinimumStockBackend.getOutreachMonthlyTrend(y, filters || {})));
+  let rows = [];
+  yearly.forEach((data, idx) => {
+    const year = years[idx];
+    trendToOutcomeRows(data).forEach(row => {
+      if (!isBloodKpiMonthInRange(year, row.month, filters)) return;
+      rows.push({ ...row, year, periodLabel: `${['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(row.month||0)] || ''}${years.length > 1 ? ` ${String(year+543).slice(-2)}` : ''}` });
+    });
+  });
+  if (rows.length > 24) {
+    const yearlyMap = new Map();
+    rows.forEach(row => {
+      if (!yearlyMap.has(row.year)) yearlyMap.set(row.year,{ year:row.year, used:0, expired:0, unresolved:0 });
+      const item=yearlyMap.get(row.year); item.used+=Number(row.used||0); item.expired+=Number(row.expired||0); item.unresolved+=Number(row.unresolved||0);
+    });
+    rows = Array.from(yearlyMap.values()).map(item => {
+      const totalFinal=item.used+item.expired;
+      return { ...item, month:0, totalFinal, utilizationRate: totalFinal ? outreachPercent(item.used,totalFinal) : 0, expiredRate: totalFinal ? outreachPercent(item.expired,totalFinal) : 0, periodLabel:String(item.year+543) };
+    });
+  }
+  const data = { months: rows, rangeLabel: meta.label, groupedBy: rows.length && rows[0].month===0 ? 'year' : 'month' };
+  bloodKpiLazyCache.trend.set(key,data);
   return data;
 }
 
@@ -3198,8 +3252,8 @@ async function ensureBloodKpiBootstrap() {
   return data;
 }
 
-async function ensureBloodKpiHeavyInsights(year, filters = {}) {
-  const key = `${Number(year || new Date().getFullYear())}|${JSON.stringify(filters || {})}`;
+async function ensureBloodKpiHeavyInsights(filters = {}) {
+  const key = `range|${JSON.stringify(filters || {})}`;
   if (bloodKpiLazyCache.insights.has(key)) return bloodKpiLazyCache.insights.get(key);
   const rows = await ensureBloodKpiFamilyRows(filters || {});
   const insights = buildBloodKpiInsights({
@@ -3207,7 +3261,8 @@ async function ensureBloodKpiHeavyInsights(year, filters = {}) {
     analysis: { report: { summary: {} } },
     familyRows: rows,
     dashboard: { results: [] },
-    year: Number(year)
+    year: null,
+    filters
   });
   bloodKpiLazyCache.insights.set(key, insights);
   return insights;
@@ -3215,7 +3270,7 @@ async function ensureBloodKpiHeavyInsights(year, filters = {}) {
 
 function kpiPageHeader(title, subtitle, year, years = [], showYearSelect = true) {
   return `<div class="simple-page-head mt-2">
-    <div><div class="page-kicker">BLOOD KPI</div><h1>${escapeOutreachHtml(title)}</h1><div class="page-subline">${escapeOutreachHtml(subtitle)}</div></div>
+    <div><h1>${escapeOutreachHtml(title)}</h1></div>
     <div class="d-flex gap-2 align-items-end flex-wrap no-print">
       <button class="btn btn-light" type="button" onclick="loadBloodKpiPage(null,currentBloodKpiRoute,{filterOnly:true})">ตัวกรอง</button>
       <button class="btn btn-light" type="button" onclick="downloadCurrentKpiPng()">PNG</button>
@@ -3253,13 +3308,11 @@ function renderKpiMultiSelect(key, label, options, selectedValues, allLabel) {
   const selectedSet = new Set(selected);
   const safeKey = String(key || '').replace(/[^a-zA-Z0-9_-]/g, '');
   const summary = selected.length === 0 ? 'กรุณาเลือก' : selected.length === 1 ? selected[0] : `เลือกแล้ว ${selected.length} รายการ`;
-  const helper = selected.length === 0 ? `ไม่เลือก = ${allLabel}` : selected.length === 1 ? 'เลือกได้หลายรายการ' : selected.slice(0,2).join(' · ') + (selected.length > 2 ? ` · +${selected.length-2}` : '');
   return `
     <details class="filter-multi-select kpi-multi-select" id="kpiMultiPicker-${safeKey}" ontoggle="handleKpiMultiPickerToggle(this,'${safeKey}')">
       <summary>
         <span class="product-picker-label">${escapeOutreachHtml(label)}</span>
         <strong id="kpiMultiLabel-${safeKey}">${escapeOutreachHtml(summary)}</strong>
-        <small id="kpiMultiHelper-${safeKey}">${escapeOutreachHtml(helper)}</small>
         <span class="product-picker-chevron" aria-hidden="true">⌄</span>
       </summary>
       <button class="product-multi-backdrop" type="button" aria-label="ปิดตัวเลือก" onclick="cancelKpiMultiSelection('${safeKey}')"></button>
@@ -3297,7 +3350,6 @@ function updateKpiMultiLabel(key) {
   const label = document.getElementById(`kpiMultiLabel-${key}`);
   const helper = document.getElementById(`kpiMultiHelper-${key}`);
   if (label) label.textContent = selected.length === 0 ? 'กรุณาเลือก' : selected.length === 1 ? selected[0] : `เลือกแล้ว ${selected.length} รายการ`;
-  if (helper) helper.textContent = selected.length === 0 ? `ไม่เลือก = ${config.allLabel}` : selected.length === 1 ? 'เลือกได้หลายรายการ' : selected.slice(0,2).join(' · ') + (selected.length > 2 ? ` · +${selected.length-2}` : '');
 }
 
 function handleKpiMultiPickerToggle(details, key) {
@@ -3351,58 +3403,122 @@ function commitKpiMultiSelection(key) {
 
 function renderKpiFilterGate(route, bootstrap, preset = {}) {
   const options = bootstrap?.filterOptions || {};
-  const years = getKpiYearsFromBootstrap(bootstrap);
   const config = {
-    overview: ['ภาพรวม KPI เลือด','เลือกช่วงข้อมูลก่อน ระบบจะคำนวณเฉพาะช่วงที่ต้องการ'],
-    utilization: ['อัตราการใช้ประโยชน์จากโลหิต','เลือกปีและตัวกรองก่อน แล้วค่อยคำนวณ KPI'],
-    expiry: ['อัตราโลหิตหมดอายุ','เลือกปีและตัวกรองก่อน แล้วค่อยคำนวณ KPI'],
-    trc: ['อัตราพึ่งพากาชาด Routine','เลือกปีก่อน ระบบจึงคำนวณ TRC / Rare / Routine'],
-    turnaround: ['ระยะเวลาหมุนเวียนเลือด','เลือกช่วงข้อมูลก่อน เพื่อไม่ต้องโหลด Bag family ทั้งฐาน'],
-    aging: ['อายุเลือดก่อนถูกใช้รายเดือน','เลือกปีและตัวกรองก่อน แล้วดูว่าเลือดที่รับเข้าแต่ละเดือนค้างก่อนใช้กี่วัน'],
-    outreach: ['ประสิทธิผลเลือดจากการออกหน่วย','เลือกปีและจุดออกหน่วยก่อน แล้วค่อยคำนวณ'],
-    minimum: ['Minimum Stock','เลือกมุมมองก่อน แล้วค่อยโหลดข้อมูลสต็อกล่าสุด']
-  }[route] || ['KPI เลือด','เลือกตัวกรองก่อนแสดงผล'];
-  const requireYear = route !== 'minimum';
+    overview: 'ภาพรวม KPI เลือด',
+    utilization: 'อัตราการใช้ประโยชน์จากโลหิต',
+    expiry: 'อัตราโลหิตหมดอายุ',
+    trc: 'อัตราพึ่งพากาชาด Routine',
+    turnaround: 'ระยะเวลาหมุนเวียนเลือด',
+    aging: 'อายุเลือดก่อนถูกใช้',
+    outreach: 'ประสิทธิผลเลือดจากการออกหน่วย',
+    minimum: 'Minimum Stock'
+  }[route] || 'KPI เลือด';
   const showDetailFilters = !['trc','minimum'].includes(route);
-  const selectedYear = String(preset.year || '');
-  const yearOptions = `<option value="">กรุณาเลือกปี</option>` + years.map(y => `<option value="${y}" ${String(y)===selectedYear?'selected':''}>${y+543}</option>`).join('');
-  const normalizePreset = (many, one) => normalizeKpiSelectedValues(Array.isArray(many) ? many : (one ? [one] : []));
-  const selectedSourceGroups = route === 'outreach' ? [OUTREACH_GROUP_SELF_OUTREACH] : normalizePreset(preset.sourceGroups, preset.sourceGroup);
-  const selectedSources = normalizePreset(preset.sources, preset.source);
-  const selectedProducts = normalizePreset(preset.products, preset.product);
-  const selectedBloodGroups = normalizePreset(preset.bloodGroups, preset.bloodGroup);
-  const selectedRhs = normalizePreset(preset.rhs, preset.rh);
-  const showSite = route === 'outreach' || route === 'overview' || route === 'utilization' || route === 'expiry' || route === 'turnaround' || route === 'aging';
+  const selectedSourceGroups = route === 'outreach' ? [OUTREACH_GROUP_SELF_OUTREACH] : normalizeKpiSelectedValues(preset.sourceGroups || []);
+  const selectedSources = normalizeKpiSelectedValues(preset.sources || []);
+  const selectedProducts = normalizeKpiSelectedValues(preset.products || []);
+  const selectedBloodGroups = normalizeKpiSelectedValues(preset.bloodGroups || []);
+  const selectedRhs = normalizeKpiSelectedValues(preset.rhs || []);
+  const showSite = ['outreach','overview','utilization','expiry','turnaround','aging'].includes(route);
+  const availableMinDate = options.minDate || bootstrap?.sourceStartDate || '';
+  const availableMaxDate = options.maxDate || bootstrap?.sourceEndDate || '';
+  const fromParts = outreachMonthParts(preset.dateFrom || '', '');
+  const toParts = outreachMonthParts(preset.dateTo || '', '');
 
   return `<div class="kpi-filter-gate-shell">
-    <div class="simple-page-head mt-2"><div><div class="page-kicker">BLOOD KPI</div><h1>${escapeOutreachHtml(config[0])}</h1><div class="page-subline">${escapeOutreachHtml(config[1])}</div></div></div>
+    <div class="simple-page-head mt-2"><div><h1>${escapeOutreachHtml(config)}</h1></div></div>
     <div class="simple-panel kpi-filter-gate">
-      <div class="panel-heading-row"><div><h3>เลือกข้อมูลก่อนแสดงผล</h3><div class="small-muted">ตัวกรองแบบหมวดหมู่เลือกได้หลายรายการ · ไม่เลือก = ไม่จำกัดหมวดนั้น · ระบบยังไม่ Query จนกด “แสดงผล”</div></div></div>
       <div class="kpi-filter-grid">
-        ${requireYear ? `<label class="outreach-filter-item">ปีที่ดู<select id="kpiFilterYear" class="form-select">${yearOptions}</select></label>` : ''}
-        ${route === 'minimum' ? `<label class="outreach-filter-item">มุมมอง<select id="kpiFilterMode" class="form-select"><option value="">กรุณาเลือก</option><option value="today" ${preset.mode==='today'?'selected':''}>สต็อกวันนี้</option></select></label>` : ''}
-        ${showDetailFilters && route === 'outreach' ? `<div class="outreach-filter-item kpi-fixed-filter"><span class="product-picker-label">กลุ่มแหล่งรับเข้า</span><strong>${escapeOutreachHtml(OUTREACH_GROUP_SELF_OUTREACH)}</strong><small>กำหนดตามนิยาม KPI นี้</small></div>` : ''}
+        ${route !== 'minimum' ? `<div class="outreach-range-pair kpi-range-pair">
+          <div class="outreach-range-head">
+            <strong>ช่วงข้อมูล</strong>
+            <div class="outreach-range-quick-actions">
+              <button type="button" onclick="setKpiQuickMonthRange('thisYear')">ปีนี้</button>
+              <button type="button" onclick="setKpiQuickMonthRange('last12')">12 เดือนล่าสุด</button>
+              <button type="button" onclick="setKpiQuickMonthRange('all')">ทั้งหมด</button>
+            </div>
+          </div>
+          <div class="outreach-month-year-side">
+            <div class="outreach-month-year-controls">
+              <select id="kpiMonthFromMonth" class="form-select" aria-label="เดือนเริ่มต้น" onchange="syncKpiMonthRange()">${renderOutreachMonthSelectOptions(fromParts.month)}</select>
+              <select id="kpiMonthFromYear" class="form-select" aria-label="ปีเริ่มต้น" onchange="syncKpiMonthRange()">${renderOutreachYearSelectOptions(availableMinDate, availableMaxDate, fromParts.year)}</select>
+            </div>
+          </div>
+          <span class="outreach-range-arrow">→</span>
+          <div class="outreach-month-year-side">
+            <div class="outreach-month-year-controls">
+              <select id="kpiMonthToMonth" class="form-select" aria-label="เดือนสิ้นสุด" onchange="syncKpiMonthRange()">${renderOutreachMonthSelectOptions(toParts.month)}</select>
+              <select id="kpiMonthToYear" class="form-select" aria-label="ปีสิ้นสุด" onchange="syncKpiMonthRange()">${renderOutreachYearSelectOptions(availableMinDate, availableMaxDate, toParts.year)}</select>
+            </div>
+          </div>
+        </div>` : ''}
+        ${showDetailFilters && route === 'outreach' ? `<div class="outreach-filter-item kpi-fixed-filter"><span class="product-picker-label">กลุ่มแหล่งรับเข้า</span><strong>${escapeOutreachHtml(OUTREACH_GROUP_SELF_OUTREACH)}</strong></div>` : ''}
         ${showDetailFilters && route !== 'outreach' ? renderKpiMultiSelect('sourceGroup','กลุ่มแหล่งรับเข้า',options.sourceGroups||[],selectedSourceGroups,'ทุกกลุ่ม') : ''}
         ${showDetailFilters && showSite ? renderKpiMultiSelect('source','จุดออกหน่วย / แหล่งรับเข้า',options.sources||[],selectedSources,'ทุกจุด') : ''}
         ${showDetailFilters ? renderKpiMultiSelect('product','ผลิตภัณฑ์',options.products||[],selectedProducts,'ทุกชนิด') : ''}
         ${showDetailFilters ? renderKpiMultiSelect('bloodGroup','หมู่เลือด',options.bloodGroups||[],selectedBloodGroups,'ทุกหมู่') : ''}
         ${showDetailFilters ? renderKpiMultiSelect('rh','Rh',options.rhs||[],selectedRhs,'ทุก Rh') : ''}
       </div>
-      <div class="kpi-filter-gate-footer">
-        <div class="small-muted">เลือกได้หลายรายการในแต่ละหมวด แล้วกด “แสดงผล”</div>
-        <button class="btn btn-main" type="button" onclick="applyBloodKpiFilters('${route}')">แสดงผล</button>
-      </div>
+      <div class="kpi-filter-gate-footer"><button class="btn btn-main" type="button" onclick="applyBloodKpiFilters('${route}')">แสดงผล</button></div>
     </div>
   </div>`;
 }
 
+function getKpiMonthRangeControlValues() {
+  const read = id => Number(document.getElementById(id)?.value || 0);
+  return {
+    from: outreachMonthKey(read('kpiMonthFromYear'), read('kpiMonthFromMonth')),
+    to: outreachMonthKey(read('kpiMonthToYear'), read('kpiMonthToMonth'))
+  };
+}
+
+function setKpiMonthRangeControls(monthFrom, monthTo) {
+  const from = outreachMonthParts(monthFrom || '', '');
+  const to = outreachMonthParts(monthTo || '', '');
+  const set = (id, value) => { const el = document.getElementById(id); if (el) el.value = value ? String(value) : ''; };
+  set('kpiMonthFromMonth', from.month); set('kpiMonthFromYear', from.year);
+  set('kpiMonthToMonth', to.month); set('kpiMonthToYear', to.year);
+}
+
+function syncKpiMonthRange() {
+  const bootstrap = bloodKpiLazyCache.bootstrap || {};
+  const minDate = bootstrap?.filterOptions?.minDate || bootstrap?.sourceStartDate || '';
+  const maxDate = bootstrap?.filterOptions?.maxDate || bootstrap?.sourceEndDate || '';
+  let { from, to } = getKpiMonthRangeControlValues();
+  from = clampOutreachMonthKey(from, minDate, maxDate);
+  to = clampOutreachMonthKey(to, minDate, maxDate);
+  if (from && to && from > to) to = from;
+  setKpiMonthRangeControls(from, to);
+}
+
+function setKpiQuickMonthRange(mode) {
+  const bootstrap = bloodKpiLazyCache.bootstrap || {};
+  const minDate = bootstrap?.filterOptions?.minDate || bootstrap?.sourceStartDate || '';
+  const maxDate = bootstrap?.filterOptions?.maxDate || bootstrap?.sourceEndDate || '';
+  const minMonth = outreachMonthValueFromDate(minDate);
+  const maxMonth = outreachMonthValueFromDate(maxDate);
+  if (!minMonth || !maxMonth) return;
+  let monthFrom = minMonth, monthTo = maxMonth;
+  const maxParts = outreachMonthParts(maxMonth);
+  if (mode === 'thisYear') {
+    const currentYear = new Date().getFullYear();
+    const year = Math.min(Math.max(currentYear, Number(minMonth.slice(0,4))), Number(maxMonth.slice(0,4)));
+    monthFrom = clampOutreachMonthKey(outreachMonthKey(year,1), minDate, maxDate);
+    monthTo = clampOutreachMonthKey(outreachMonthKey(year,12), minDate, maxDate);
+  } else if (mode === 'last12') {
+    const end = new Date(maxParts.year, maxParts.month - 1, 1);
+    const start = new Date(end.getFullYear(), end.getMonth() - 11, 1);
+    monthFrom = clampOutreachMonthKey(outreachMonthKey(start.getFullYear(), start.getMonth()+1), minDate, maxDate);
+  }
+  setKpiMonthRangeControls(monthFrom, monthTo);
+}
+
 function readBloodKpiFilterGate(route) {
-  const read = id => String(document.getElementById(id)?.value || '');
-  const year = Number(read('kpiFilterYear') || 0);
+  const range = getKpiMonthRangeControlValues();
   return {
     route,
-    year: Number.isFinite(year) && year > 1900 ? year : null,
-    mode: read('kpiFilterMode'),
+    dateFrom: range.from ? `${range.from}-01` : '',
+    dateTo: range.to ? outreachLastDayOfMonth(range.to) : '',
     sourceGroups: route === 'outreach' ? [OUTREACH_GROUP_SELF_OUTREACH] : getSelectedKpiMulti('sourceGroup'),
     sources: getSelectedKpiMulti('source'),
     products: getSelectedKpiMulti('product'),
@@ -3413,10 +3529,8 @@ function readBloodKpiFilterGate(route) {
 
 function buildBloodKpiBackendFilters(selection = {}) {
   const filters = {};
-  if (selection.year) {
-    filters.dateFrom = `${selection.year}-01-01`;
-    filters.dateTo = `${selection.year}-12-31`;
-  }
+  if (selection.dateFrom) filters.dateFrom = selection.dateFrom;
+  if (selection.dateTo) filters.dateTo = selection.dateTo;
   if (Array.isArray(selection.sourceGroups) && selection.sourceGroups.length) filters.sourceGroups = selection.sourceGroups;
   if (Array.isArray(selection.sources) && selection.sources.length) filters.sources = selection.sources;
   if (Array.isArray(selection.products) && selection.products.length) filters.productTypes = selection.products;
@@ -3427,13 +3541,11 @@ function buildBloodKpiBackendFilters(selection = {}) {
 
 function applyBloodKpiFilters(route) {
   const selection = readBloodKpiFilterGate(route);
-  if (route === 'minimum') {
-    if (selection.mode !== 'today') return showModal('error','กรุณาเลือกข้อมูล','กรุณาเลือก “สต็อกวันนี้” ก่อนกดแสดงผล');
-  } else if (!selection.year) {
-    return showModal('error','กรุณาเลือกปี','เลือกปีที่ต้องการดูก่อน แล้วกดแสดงผล');
+  if (route !== 'minimum' && (!selection.dateFrom || !selection.dateTo)) {
+    return showModal('error','กรุณาเลือกช่วงข้อมูล','เลือกเดือนเริ่มต้นและเดือนสิ้นสุดก่อน');
   }
   bloodKpiFilterSelections.set(route, selection);
-  loadBloodKpiPage(selection.year, route, { apply: true, selection });
+  loadBloodKpiPage(null, route, { apply: true, selection });
 }
 
 function renderKpiOverview({ dependency, analysis, year }) {
@@ -3445,19 +3557,19 @@ function renderKpiOverview({ dependency, analysis, year }) {
   const depSummary = dependency?.summary || {};
   const routineRate = Number((depSummary.adjustedRate ?? depSummary.rate) || 0);
   currentBloodKpiRouteData = { route: 'overview', year, utilization, expiry, routineRate };
-  return `${kpiPageHeader('ภาพรวม KPI เลือด','เปิดเร็ว · กด KPI แต่ละหัวข้อเพื่อดูรายละเอียด โดยไม่โหลดข้อมูลหนักพร้อมกัน',year,dependency?.years||[])}
+  return `${kpiPageHeader('ภาพรวม KPI เลือด','',year,dependency?.years||[])}
     <div class="simple-kpi-grid blood-kpi-main-grid mb-3">
-      <button class="simple-kpi kpi-click-card" onclick="openKpiRoute('utilization',null,event)"><span>การใช้ประโยชน์จากโลหิต</span><strong>${utilization.toFixed(1)}%</strong><small>Used ÷ (Used + Expired)</small></button>
-      <button class="simple-kpi is-alert kpi-click-card" onclick="openKpiRoute('expiry',null,event)"><span>โลหิตหมดอายุ</span><strong>${expiry.toFixed(1)}%</strong><small>Expired ÷ (Used + Expired)</small></button>
-      <button class="simple-kpi is-good kpi-click-card" onclick="openKpiRoute('trc',null,event)"><span>พึ่งพากาชาด Routine</span><strong>${routineRate.toFixed(1)}%</strong><small>ตัด Rare / Ag-matched / Rh Negative</small></button>
+      <button class="simple-kpi kpi-click-card" onclick="openKpiRoute('utilization',null,event)"><span>การใช้ประโยชน์จากโลหิต</span><strong>${utilization.toFixed(1)}%</strong></button>
+      <button class="simple-kpi is-alert kpi-click-card" onclick="openKpiRoute('expiry',null,event)"><span>โลหิตหมดอายุ</span><strong>${expiry.toFixed(1)}%</strong></button>
+      <button class="simple-kpi is-good kpi-click-card" onclick="openKpiRoute('trc',null,event)"><span>พึ่งพากาชาด Routine</span><strong>${routineRate.toFixed(1)}%</strong></button>
     </div>
     <div class="kpi-overview-links">
       ${[
-        ['turnaround','ระยะเวลารับเข้า → ใช้','ดู Median และแยกตามแหล่งเลือด'],
-        ['aging','อายุเลือดก่อนถูกใช้','ดู Median วันค้างก่อนใช้รายเดือน + คงคลังอายุมากวันนี้'],
-        ['outreach','ประสิทธิผลออกหน่วย','ดูภาพรวมและรายจุดออกหน่วย'],
-        ['minimum','Minimum Stock','ดูรายการต่ำกว่า Minimum วันนี้']
-      ].map(([route,title,sub])=>`<button class="kpi-overview-link" onclick="openKpiRoute('${route}',null,event)"><strong>${title}</strong><span>${sub}</span><b>›</b></button>`).join('')}
+        ['turnaround','ระยะเวลารับเข้า → ใช้'],
+        ['aging','อายุเลือดก่อนถูกใช้'],
+        ['outreach','ประสิทธิผลออกหน่วย'],
+        ['minimum','Minimum Stock']
+      ].map(([route,title])=>`<button class="kpi-overview-link" onclick="openKpiRoute('${route}',null,event)"><strong>${title}</strong><b>›</b></button>`).join('')}
     </div>`;
 }
 
@@ -3477,10 +3589,11 @@ function groupKpiRatesFromAnalysis(analysis) {
 
 function trendToOutcomeRows(trend) {
   return (trend?.months || []).map(m => {
-    const used = Number(m.released || 0), expired = Number(m.expired || 0);
-    const totalFinal = used + expired;
+    const used = Number(m.used ?? m.released ?? 0), expired = Number(m.expired || 0);
+    const totalFinal = Number(m.totalFinal ?? (used + expired));
     return {
-      month: Number(m.month || 0), used, expired, totalFinal,
+      month: Number(m.month || 0), year: Number(m.year || 0), periodLabel: m.periodLabel || '',
+      used, expired, totalFinal,
       unresolved: Number(m.unresolved || 0),
       utilizationRate: totalFinal ? outreachPercent(used,totalFinal) : null,
       expiredRate: totalFinal ? outreachPercent(expired,totalFinal) : null
@@ -3530,7 +3643,7 @@ function renderSingleSourceExecutiveSummary(row, mode = 'utilization') {
 function renderKpiQuickCards(cards = []) {
   const usable = Array.isArray(cards) ? cards.filter(Boolean) : [];
   if (!usable.length) return '';
-  return `<div class="simple-kpi-grid blood-kpi-mini-grid mb-3">${usable.map(card => `<div class="simple-kpi ${card.tone || ''}"><span>${escapeOutreachHtml(card.label || '')}</span><strong>${escapeOutreachHtml(card.value || '—')}</strong><small>${escapeOutreachHtml(card.note || '')}</small></div>`).join('')}</div>`;
+  return `<div class="simple-kpi-grid blood-kpi-mini-grid mb-3">${usable.map(card => `<div class="simple-kpi ${card.tone || ''}"><span>${escapeOutreachHtml(card.label || '')}</span><strong>${escapeOutreachHtml(card.value || '—')}</strong>${card.note ? `<small>${escapeOutreachHtml(card.note)}</small>` : ''}</div>`).join('')}</div>`;
 }
 
 function renderDeferredKpiPanel(route, year, dependency) {
@@ -3586,14 +3699,14 @@ function renderKpiUtilization({ analysis, trend, dependency, year }) {
     ${renderKpiQuickCards([
       { label:'อัตราการใช้ประโยชน์', value:`${rate.toFixed(1)}%`, note:`Used ${Number(summary.used||0).toLocaleString()} จาก ${finalBase.toLocaleString()} ถุงที่พร้อมใช้`, tone:'is-good' },
       topGroup ? { label:'แหล่งเลือดที่ใช้ประโยชน์สูงสุด', value:`${topGroup.label}`, note:`${topGroup.utilizationRate.toFixed(1)}% · ${topGroup.totalFinal.toLocaleString()} ถุง`, tone:'' } : null,
-      peakMonth ? { label:'เดือนที่ใช้ประโยชน์สูงสุด', value:monthNames[Number(peakMonth.month||0)] || '-', note:`${Number(peakMonth.utilizationRate||0).toFixed(1)}% · Used ${Number(peakMonth.used||0).toLocaleString()} / ${Number(peakMonth.totalFinal||0).toLocaleString()} ถุง`, tone:'' } : null
+      peakMonth ? { label:'เดือนที่ใช้ประโยชน์สูงสุด', value:peakMonth.periodLabel || monthNames[Number(peakMonth.month||0)] || '-', note:`${Number(peakMonth.utilizationRate||0).toFixed(1)}% · Used ${Number(peakMonth.used||0).toLocaleString()} / ${Number(peakMonth.totalFinal||0).toLocaleString()} ถุง`, tone:'' } : null
     ])}
     <div class="simple-panel kpi-executive-panel mb-3">
-      <div class="panel-heading-row"><div><h3>แนวโน้มการใช้ประโยชน์รายเดือน</h3><div class="small-muted">กราฟแท่งคู่รายเดือน · แท่งซ้าย = ถุงที่พร้อมใช้ · แท่งขวา = Used · ป้ายด้านบน = ร้อยละของเดือนนั้น</div></div></div>
+      <div class="panel-heading-row"><div><h3>แนวโน้มการใช้ประโยชน์</h3></div></div>
       ${renderExecutiveMonthlyRateChart(monthly, year, 'utilization')}
     </div>
     <div class="simple-panel kpi-executive-panel">
-      <div class="panel-heading-row"><div><h3>เปรียบเทียบตามกลุ่มแหล่งรับเข้า</h3><div class="small-muted">เรียงจากอัตราการใช้ประโยชน์สูงสุด เพื่อให้เห็นความแตกต่างระหว่างแหล่งเลือดทันที</div></div></div>
+      <div class="panel-heading-row"><div><h3>เปรียบเทียบตามกลุ่มแหล่งรับเข้า</h3></div></div>
       ${groups.length <= 1 ? renderSingleSourceExecutiveSummary(groups[0], 'utilization') : renderExecutiveHorizontalBars(groups,{valueKey:'utilizationRate',suffix:'%',color:'#53c29d',max:100,countKey:'totalFinal',countLabel:'ถุงที่พร้อมใช้'})}
     </div>`;
 }
@@ -3612,14 +3725,14 @@ function renderKpiExpiry({ analysis, trend, dependency, year }) {
     ${renderKpiQuickCards([
       { label:'อัตราโลหิตหมดอายุ', value:`${rate.toFixed(1)}%`, note:`Expired ${Number(summary.expired||0).toLocaleString()} จาก ${finalBase.toLocaleString()} ถุงที่พร้อมใช้`, tone:'is-alert' },
       topGroup ? { label:'แหล่งเลือดที่หมดอายุสูงสุด', value:`${topGroup.label}`, note:`${topGroup.expiredRate.toFixed(1)}% · ${topGroup.totalFinal.toLocaleString()} ถุง`, tone:'' } : null,
-      peakMonth ? { label:'เดือนที่หมดอายุสูงสุด', value:monthNames[Number(peakMonth.month||0)] || '-', note:`${Number(peakMonth.expiredRate||0).toFixed(1)}% · Expired ${Number(peakMonth.expired||0).toLocaleString()} / ${Number(peakMonth.totalFinal||0).toLocaleString()} ถุง`, tone:'' } : null
+      peakMonth ? { label:'เดือนที่หมดอายุสูงสุด', value:peakMonth.periodLabel || monthNames[Number(peakMonth.month||0)] || '-', note:`${Number(peakMonth.expiredRate||0).toFixed(1)}% · Expired ${Number(peakMonth.expired||0).toLocaleString()} / ${Number(peakMonth.totalFinal||0).toLocaleString()} ถุง`, tone:'' } : null
     ])}
     <div class="simple-panel kpi-executive-panel mb-3">
-      <div class="panel-heading-row"><div><h3>แนวโน้มอัตราหมดอายุรายเดือน</h3><div class="small-muted">กราฟแท่งคู่รายเดือน · แท่งซ้าย = ถุงที่พร้อมใช้ · แท่งขวา = Expired · ป้ายด้านบน = ร้อยละของเดือนนั้น</div></div></div>
+      <div class="panel-heading-row"><div><h3>แนวโน้มอัตราหมดอายุ</h3></div></div>
       ${renderExecutiveMonthlyRateChart(monthly, year, 'expiry')}
     </div>
     <div class="simple-panel kpi-executive-panel">
-      <div class="panel-heading-row"><div><h3>แหล่งเลือดใดมี Expired สูงสุด</h3><div class="small-muted">ใช้ชี้จุดที่ควรกลับไปทบทวนการรับเข้า ปริมาณสำรอง และการหมุนเวียน</div></div></div>
+      <div class="panel-heading-row"><div><h3>แหล่งเลือดใดมี Expired สูงสุด</h3></div></div>
       ${groups.length <= 1 ? renderSingleSourceExecutiveSummary(groups[0], 'expiry') : renderExecutiveHorizontalBars(groups,{valueKey:'expiredRate',suffix:'%',color:'#ee8a81',max:100,countKey:'totalFinal',countLabel:'ถุงที่พร้อมใช้'})}
     </div>`;
 }
@@ -3627,18 +3740,16 @@ function renderKpiExpiry({ analysis, trend, dependency, year }) {
 function renderKpiTrc({ dependency, year }) {
   const summary = dependency?.summary || {};
   const months = dependency?.months || [];
-  const comparisonYear = Number(dependency?.comparisonYear || year-1);
   const overall = Number(summary.rate||0), adjusted = Number(summary.adjustedRate ?? overall);
   const rare = Number(summary.rareTrcRbc||0), routine = Number(summary.routineTrcRbc ?? Math.max(0,Number(summary.trcRbc||0)-rare));
   currentBloodKpiRouteData = { route:'trc', year, overall, adjusted, rare, routine, months };
-  return `${kpiPageHeader('อัตราพึ่งพากาชาด Routine','ยิ่งต่ำยิ่งดี · แยก Rare / Ag-matched / Rh Negative ออกจากความพึ่งพาทั่วไป',year,dependency?.years||[])}
-    ${renderKpiReadStrip('สำหรับผู้บริหารควรดูอะไรเป็นหลัก', 'ดูค่า “พึ่งพากาชาด Routine” เป็นหลัก ส่วน Rare / Ag-matched / Rh Negative ให้รายงานเป็นบริบทประกอบ ไม่ควรถูกนับเป็นการพึ่งพาที่หลีกเลี่ยงได้', 'info')}
+  return `${kpiPageHeader('อัตราพึ่งพากาชาด Routine','',year,dependency?.years||[])}
     ${renderKpiQuickCards([
       { label:'พึ่งพากาชาดรวม', value:`${overall.toFixed(1)}%`, note:`${Number(summary.trcRbc||0).toLocaleString()} ถุง`, tone:'' },
-      { label:'พึ่งพากาชาด Routine', value:`${adjusted.toFixed(1)}%`, note:`${routine.toLocaleString()} ถุง หลังตัด Rare / Ag-matched / Rh Negative`, tone:'is-good' },
-      { label:'Rare / Ag-matched / Rh Negative', value:`${rare.toLocaleString()} ถุง`, note:'ใช้เป็นข้อมูลประกอบ ไม่ควรตีความเป็นความพึ่งพาปกติ', tone:'' }
+      { label:'พึ่งพากาชาด Routine', value:`${adjusted.toFixed(1)}%`, note:`${routine.toLocaleString()} ถุง`, tone:'is-good' },
+      { label:'Rare / Ag-matched / Rh Negative', value:`${rare.toLocaleString()} ถุง`, note:'', tone:'' }
     ])}
-    <div class="simple-panel"><div class="panel-heading-row"><div><h3>แนวโน้มรายเดือน</h3><div class="small-muted">เส้นเขียว = รวมทั้งหมด · เส้นน้ำเงิน = Routine หลังตัด Rare · เส้นเทา = ปีก่อน</div></div></div>${renderBloodKpiLineSvg(months,year,comparisonYear)}</div>`;
+    <div class="simple-panel kpi-executive-panel"><div class="panel-heading-row"><div><h3>แนวโน้มตามช่วงที่เลือก</h3></div></div>${renderTrcRangeSvg(months)}</div>`;
 }
 
 function renderKpiTurnaround({ insights, dependency, year }) {
@@ -3646,14 +3757,13 @@ function renderKpiTurnaround({ insights, dependency, year }) {
   const fastest = rows[0] || null;
   const slowest = rows.length ? rows[rows.length - 1] : null;
   currentBloodKpiRouteData={route:'turnaround',year,value:insights.medianDaysToUse,groups:rows};
-  return `${kpiPageHeader('ระยะเวลาหมุนเวียนเลือด (รับเข้า → ใช้)','ค่ายิ่งน้อยยิ่งดี · ใช้ดูว่าเลือดหมุนเวียนเร็วหรือค้างในระบบนาน',year,dependency?.years||[])}
-    ${renderKpiReadStrip('อ่านค่านี้อย่างไร', 'ใช้ค่า Median จำนวนวันตั้งแต่รับเข้า จนถึงใช้/จ่าย เพื่อลดผลกระทบจากค่าที่ผิดปกติ', 'info')}
+  return `${kpiPageHeader('ระยะเวลาหมุนเวียนเลือด (รับเข้า → ใช้)','',year,dependency?.years||[])}
     ${renderKpiQuickCards([
-      { label:'Median รวม', value:Number.isFinite(insights.medianDaysToUse)? `${insights.medianDaysToUse} วัน` : '—', note:'ทุกแหล่งเลือดรวมกัน', tone:'' },
+      { label:'Median รวม', value:Number.isFinite(insights.medianDaysToUse)? `${insights.medianDaysToUse} วัน` : '—', note:'', tone:'' },
       fastest ? { label:'หมุนเวียนเร็วที่สุด', value: fastest.label, note:`Median ${Number(fastest.medianDaysToUse||0).toFixed(1)} วัน`, tone:'is-good' } : null,
       slowest ? { label:'หมุนเวียนช้าที่สุด', value: slowest.label, note:`Median ${Number(slowest.medianDaysToUse||0).toFixed(1)} วัน`, tone:'is-alert' } : null
     ])}
-    <div class="simple-panel"><div class="panel-heading-row"><div><h3>Median วันแยกตามแหล่งเลือด</h3><div class="small-muted">ช่วยเปรียบเทียบความเร็วในการหมุนเวียนของแต่ละแหล่ง</div></div></div>${renderHorizontalBarChartSvg(rows,{valueKey:'medianDaysToUse',suffix:' วัน',color:'#5aa9e6',sublabelKey:'totalFinal',sublabelSuffix:' ถุงที่พร้อมใช้'})}</div>`;
+    <div class="simple-panel"><div class="panel-heading-row"><div><h3>Median วันแยกตามแหล่งเลือด</h3></div></div>${renderHorizontalBarChartSvg(rows,{valueKey:'medianDaysToUse',suffix:' วัน',color:'#5aa9e6',sublabelKey:'totalFinal',sublabelSuffix:' ถุงที่พร้อมใช้'})}</div>`;
 }
 
 function renderKpiAging({ insights, dependency, year }) {
@@ -3662,20 +3772,19 @@ function renderKpiAging({ insights, dependency, year }) {
   const longest = valid.length ? valid.slice().sort((a,b)=>Number(b.medianDays||0)-Number(a.medianDays||0))[0] : null;
   const monthNames=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
   currentBloodKpiRouteData={route:'aging',year,rate:insights.longHeldRate,count:insights.longHeldCount,base:insights.longHeldBase,monthlyAgeRows:rows,groups:rows};
-  return `${kpiPageHeader('อายุเลือดก่อนถูกใช้รายเดือน','ถุงที่รับเข้าในแต่ละเดือน ค้างอยู่กี่วันก่อนถูกใช้/จ่าย',year,dependency?.years||[])}
-    ${renderKpiReadStrip('ตัวอย่างการอ่าน', 'ถุงที่รับเข้าเดือน ก.ค. แล้วถูกใช้หลัง 30 วัน จะถูกนับเป็น 30 วันในเดือน ก.ค. กราฟใช้ Median ของทุกถุงที่รับเข้าเดือนนั้น', 'info')}
+  return `${kpiPageHeader('อายุเลือดก่อนถูกใช้','',year,dependency?.years||[])}
     ${renderKpiQuickCards([
-      { label:'Median ทั้งปี', value:Number.isFinite(insights.medianDaysToUse)?`${insights.medianDaysToUse} วัน`:'—', note:'รับเข้า → ใช้/จ่าย ของถุงที่ถูกใช้แล้ว', tone:'' },
-      longest ? { label:'เดือนที่ค้างก่อนใช้นานที่สุด', value:monthNames[Number(longest.month||0)] || '-', note:`Median ${Number(longest.medianDays||0).toFixed(1)} วัน · ${Number(longest.usedCount||0).toLocaleString()} ถุง`, tone:'is-alert' } : null,
+      { label:'Median ช่วงที่เลือก', value:Number.isFinite(insights.medianDaysToUse)?`${insights.medianDaysToUse} วัน`:'—', note:'', tone:'' },
+      longest ? { label:'ช่วงที่ค้างก่อนใช้นานที่สุด', value:longest.periodLabel || monthNames[Number(longest.month||0)] || '-', note:`${Number(longest.medianDays||0).toFixed(1)} วัน · ${Number(longest.usedCount||0).toLocaleString()} ถุง`, tone:'is-alert' } : null,
       { label:'คงคลังอายุมาก ณ วันนี้', value:`${Number(insights.longHeldRate||0).toFixed(1)}%`, note:`RBC ≥ 21 วัน ${Number(insights.longHeldCount||0).toLocaleString()} / ${Number(insights.longHeldBase||0).toLocaleString()} ถุง`, tone:'' }
     ])}
     <div class="simple-panel kpi-executive-panel mb-3">
-      <div class="panel-heading-row"><div><h3>Median วันค้างก่อนใช้ แยกตามเดือนที่รับเข้า</h3><div class="small-muted">เส้นและตัวเลขบอกจำนวนวันที่เลือดค้างก่อนถูกใช้ · ใต้เดือนแสดงจำนวนถุงที่นำมาคำนวณ</div></div></div>
-      ${renderMonthlyAgeExecutiveSvg(rows,year)}
+      <div class="panel-heading-row"><div><h3>Median วันค้างก่อนใช้</h3></div></div>
+      ${renderMonthlyAgeExecutiveSvg(rows,insights.rangeLabel || '')}
     </div>
     <div class="kpi-two-chart-grid">
-      <div class="simple-panel"><div class="panel-heading-row"><div><h3>สัดส่วนช่วงอายุเลือดก่อนใช้</h3><div class="small-muted">ช่วยดูว่าถุงส่วนใหญ่ถูกใช้ภายในกี่วัน</div></div></div>${renderAgeDistributionSvg(insights.ageDistribution||{})}</div>
-      <div class="simple-panel"><div class="panel-heading-row"><div><h3>คงคลังอายุมาก ณ วันนี้</h3><div class="small-muted">เป็น Early Warning ปัจจุบัน ไม่ใช่ผลย้อนหลังรายเดือน</div></div></div><div class="kpi-current-aging-note"><strong>${Number(insights.longHeldCount||0).toLocaleString()} ถุง</strong><span>RBC ที่ยังอยู่ในคลังและมีอายุ ≥ 21 วัน จาก ${Number(insights.longHeldBase||0).toLocaleString()} ถุงที่ยังไม่พร้อมใช้</span></div></div>
+      <div class="simple-panel"><div class="panel-heading-row"><div><h3>สัดส่วนช่วงอายุเลือดก่อนใช้</h3></div></div>${renderAgeDistributionSvg(insights.ageDistribution||{})}</div>
+      <div class="simple-panel"><div class="panel-heading-row"><div><h3>คงคลังอายุมาก ณ วันนี้</h3></div></div><div class="kpi-current-aging-note"><strong>${Number(insights.longHeldCount||0).toLocaleString()} ถุง</strong><span>RBC ≥ 21 วัน · ${Number(insights.longHeldBase||0).toLocaleString()} ถุงในฐาน</span></div></div>
     </div>`;
 }
 
@@ -3684,26 +3793,23 @@ function renderKpiOutreach({ insights, dependency, year }) {
   const best = rows[0] || null;
   const weakest = rows.length ? rows[rows.length - 1] : null;
   currentBloodKpiRouteData={route:'outreach',year,rate:insights.outreachEffectiveness,rows};
-  return `${kpiPageHeader('เลือดจากออกหน่วยถูกใช้จริงกี่ %','ค่ายิ่งสูงยิ่งดี · ใช้ประเมินคุณภาพเลือดจากแต่ละจุดออกหน่วย',year,dependency?.years||[])}
-    ${renderKpiReadStrip('อ่านค่านี้อย่างไร', 'คำนวณจาก Used ÷ (Used + Expired) เฉพาะเลือดจากออกหน่วย และควรอ่านควบคู่กับจำนวนถุงที่มีผลลัพธ์แล้ว', 'good')}
+  return `${kpiPageHeader('ประสิทธิผลเลือดจากการออกหน่วย','',year,dependency?.years||[])}
     ${renderKpiQuickCards([
-      { label:'ประสิทธิผลรวม', value:`${Number(insights.outreachEffectiveness||0).toFixed(1)}%`, note:'เฉพาะเลือดจากออกหน่วย', tone:'is-good' },
+      { label:'ประสิทธิผลรวม', value:`${Number(insights.outreachEffectiveness||0).toFixed(1)}%`, note:'', tone:'is-good' },
       best ? { label:'จุดออกหน่วยที่ใช้ประโยชน์ดีที่สุด', value: best.label, note:`${best.rate.toFixed(1)}% จาก ${best.finalCount.toLocaleString()} ถุง`, tone:'' } : null,
       weakest ? { label:'จุดที่ควรติดตามเพิ่ม', value: weakest.label, note:`${weakest.rate.toFixed(1)}% จาก ${weakest.finalCount.toLocaleString()} ถุง`, tone:'is-alert' } : null
     ])}
-    <div class="simple-panel"><div class="panel-heading-row"><div><h3>Top จุดออกหน่วยตามอัตราการใช้ประโยชน์</h3><div class="small-muted">เรียงจากสูงไปต่ำ เพื่อชี้จุดที่ควรรักษาและจุดที่ควรทบทวน</div></div></div>${renderHorizontalBarChartSvg(rows,{valueKey:'rate',suffix:'%',color:'#68c3a3',max:100,sublabelKey:'finalCount',sublabelSuffix:' ถุงที่พร้อมใช้'})}</div>`;
+    <div class="simple-panel"><div class="panel-heading-row"><div><h3>Top จุดออกหน่วยตามอัตราการใช้ประโยชน์</h3></div></div>${renderHorizontalBarChartSvg(rows,{valueKey:'rate',suffix:'%',color:'#68c3a3',max:100,sublabelKey:'finalCount',sublabelSuffix:' ถุงที่พร้อมใช้'})}</div>`;
 }
 
 function renderKpiMinimum({ dashboard, year }) {
   const rows=(dashboard?.results||[]).filter(r=>Number(r?.gap||0)<0).map(r=>({type:r.type||'',bloodGroup:r.bloodGroup||'',minimumStock:Number(r.minimumStock||0),netAvailable:Number(r.netAvailable||0),gap:Number(r.gap||0)}));
   currentBloodKpiRouteData={route:'minimum',year,rows,total:Number(dashboard?.results?.length||0)};
-  return `${kpiPageHeader('สต็อกต่ำกว่าเกณฑ์ขั้นต่ำวันนี้','มุมมองคงคลังวันนี้ · ใช้บอกว่ามีรายการใดต่ำกว่า Minimum อยู่บ้าง',year,[], false)}
-    ${renderKpiReadStrip('อ่านค่านี้อย่างไร', 'ตัวเลขนี้ยังไม่ใช่ KPI เชิงเวลา เพราะการคิดร้อยละของจำนวนวันที่ต่ำกว่า Minimum ต้องมี Daily Snapshot สะสมรายวันก่อน', 'info')}
+  return `${kpiPageHeader('Minimum Stock','',year,[], false)}
     ${renderKpiQuickCards([
-      { label:'ต่ำกว่า Minimum วันนี้', value:`${rows.length} รายการ`, note:`จาก ${Number(dashboard?.results?.length||0)} รายการที่ติดตาม`, tone:'is-alert' },
-      { label:'KPI รายวันย้อนหลัง', value:'เตรียมไว้', note:'จะเริ่มคำนวณได้เมื่อมี Daily Snapshot', tone:'' }
+      { label:'ต่ำกว่า Minimum วันนี้', value:`${rows.length} รายการ`, note:`จาก ${Number(dashboard?.results?.length||0)} รายการ`, tone:'is-alert' }
     ])}
-    <div class="simple-panel"><div class="panel-heading-row"><div><h3>รายการที่ต่ำกว่า Minimum วันนี้</h3><div class="small-muted">ใช้เพื่อติดตามจุดขาดแบบวันต่อวัน</div></div></div><div class="table-responsive"><table class="table simple-table align-middle mb-0"><thead><tr><th>ชนิด</th><th>หมู่เลือด</th><th class="text-end">Minimum</th><th class="text-end">ใช้ได้จริง</th><th class="text-end">ขาด</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${escapeOutreachHtml(r.type)}</td><td><b>${escapeOutreachHtml(r.bloodGroup)}</b></td><td class="text-end">${r.minimumStock}</td><td class="text-end">${r.netAvailable}</td><td class="text-end text-danger">${Math.abs(r.gap)}</td></tr>`).join(''):`<tr><td colspan="5" class="small-muted">ไม่มีรายการต่ำกว่า Minimum วันนี้</td></tr>`}</tbody></table></div></div>`;
+    <div class="simple-panel"><div class="panel-heading-row"><div><h3>รายการที่ต่ำกว่า Minimum วันนี้</h3></div></div><div class="table-responsive"><table class="table simple-table align-middle mb-0"><thead><tr><th>ชนิด</th><th>หมู่เลือด</th><th class="text-end">Minimum</th><th class="text-end">ใช้ได้จริง</th><th class="text-end">ขาด</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${escapeOutreachHtml(r.type)}</td><td><b>${escapeOutreachHtml(r.bloodGroup)}</b></td><td class="text-end">${r.minimumStock}</td><td class="text-end">${r.netAvailable}</td><td class="text-end text-danger">${Math.abs(r.gap)}</td></tr>`).join(''):`<tr><td colspan="5" class="small-muted">ไม่มีรายการต่ำกว่า Minimum วันนี้</td></tr>`}</tbody></table></div></div>`;
 }
 
 async function loadBloodKpiPage(year = null, route = null, options = {}) {
@@ -3712,45 +3818,48 @@ async function loadBloodKpiPage(year = null, route = null, options = {}) {
   const safeRoute = KPI_SUBROUTES.has(route) ? route : (route || getKpiRouteFromHash());
   currentBloodKpiRoute = KPI_SUBROUTES.has(safeRoute) ? safeRoute : 'overview';
   setKpiTreeState(currentBloodKpiRoute);
-
   try {
-    if (!options?.apply || options?.filterOnly) {
-      box.innerHTML = `<div class="hero-card mt-4"><div class="fw-bold">กำลังเตรียมตัวกรอง KPI...</div><div class="small-muted">ยังไม่โหลดรายงานจนกว่าจะกด “แสดงผล”</div></div>`;
+    if ((!options?.apply || options?.filterOnly) && currentBloodKpiRoute !== 'minimum') {
       const bootstrap = await ensureBloodKpiBootstrap();
-      const preset = bloodKpiFilterSelections.get(currentBloodKpiRoute) || {};
+      const preset = bloodKpiFilterSelections.get(currentBloodKpiRoute) || bloodKpiFilterSelections.get('overview') || {};
       box.innerHTML = renderKpiFilterGate(currentBloodKpiRoute, bootstrap, preset);
       return;
     }
-
+    if (currentBloodKpiRoute === 'minimum' && (!options?.apply || options?.filterOnly)) {
+      const dashboard = await ensureBloodKpiDashboard();
+      box.innerHTML = renderKpiMinimum({ dashboard, year:new Date().getFullYear() });
+      return;
+    }
     const selection = options?.selection || bloodKpiFilterSelections.get(currentBloodKpiRoute) || {};
-    const selectedYear = Number(selection.year || year || new Date().getFullYear());
     const filters = buildBloodKpiBackendFilters(selection);
-    box.innerHTML = `<div class="hero-card mt-4"><div class="fw-bold">กำลังคำนวณ KPI ตามตัวกรอง...</div><div class="small-muted">ระบบกำลังโหลดเฉพาะข้อมูลที่เลือก</div></div>`;
-
+    const meta = getBloodKpiRangeMeta(filters);
+    const endYear = meta.endYear;
+    box.innerHTML = `<div class="hero-card mt-4"><div class="fw-bold">กำลังโหลด...</div></div>`;
     let html = '';
     if (currentBloodKpiRoute === 'overview') {
-      const [dependency, analysis] = await Promise.all([ensureBloodKpiDependency(selectedYear), ensureBloodKpiAnalysis(filters)]);
-      html = renderKpiOverview({dependency,analysis,year:selectedYear});
+      const [dependency, analysis] = await Promise.all([ensureBloodKpiDependencyRange(filters), ensureBloodKpiAnalysis(filters)]);
+      html = renderKpiOverview({dependency,analysis,year:endYear});
     } else if (currentBloodKpiRoute === 'utilization') {
-      const [dependency, analysis, trend] = await Promise.all([ensureBloodKpiDependency(selectedYear), ensureBloodKpiAnalysis(filters), ensureBloodKpiTrend(selectedYear, filters)]);
-      html = renderKpiUtilization({dependency,analysis,trend,year:selectedYear});
+      const [dependency, analysis, trend] = await Promise.all([ensureBloodKpiDependencyRange(filters), ensureBloodKpiAnalysis(filters), ensureBloodKpiTrendRange(filters)]);
+      html = renderKpiUtilization({dependency,analysis,trend,year:endYear});
     } else if (currentBloodKpiRoute === 'expiry') {
-      const [dependency, analysis, trend] = await Promise.all([ensureBloodKpiDependency(selectedYear), ensureBloodKpiAnalysis(filters), ensureBloodKpiTrend(selectedYear, filters)]);
-      html = renderKpiExpiry({dependency,analysis,trend,year:selectedYear});
+      const [dependency, analysis, trend] = await Promise.all([ensureBloodKpiDependencyRange(filters), ensureBloodKpiAnalysis(filters), ensureBloodKpiTrendRange(filters)]);
+      html = renderKpiExpiry({dependency,analysis,trend,year:endYear});
     } else if (currentBloodKpiRoute === 'trc') {
-      const dependency = await ensureBloodKpiDependency(selectedYear);
-      html = renderKpiTrc({dependency,year:selectedYear});
+      const dependency = await ensureBloodKpiDependencyRange(filters);
+      html = renderKpiTrc({dependency,year:endYear});
     } else if (['turnaround','aging','outreach'].includes(currentBloodKpiRoute)) {
-      const dependency = currentBloodKpiRoute === 'aging' ? { years: [] } : await ensureBloodKpiDependency(selectedYear);
-      const insights = await ensureBloodKpiHeavyInsights(selectedYear, filters);
-      html = currentBloodKpiRoute === 'turnaround' ? renderKpiTurnaround({insights,dependency,year:selectedYear}) : currentBloodKpiRoute === 'aging' ? renderKpiAging({insights,dependency,year:selectedYear}) : renderKpiOutreach({insights,dependency,year:selectedYear});
+      const insights = await ensureBloodKpiHeavyInsights(filters);
+      insights.rangeLabel = meta.label;
+      const dependency = { years: [] };
+      html = currentBloodKpiRoute === 'turnaround' ? renderKpiTurnaround({insights,dependency,year:endYear}) : currentBloodKpiRoute === 'aging' ? renderKpiAging({insights,dependency,year:endYear}) : renderKpiOutreach({insights,dependency,year:endYear});
     } else if (currentBloodKpiRoute === 'minimum') {
       const dashboard = await ensureBloodKpiDashboard();
-      html = renderKpiMinimum({dashboard,year:selectedYear});
+      html = renderKpiMinimum({dashboard,year:new Date().getFullYear()});
     }
     box.innerHTML = html;
   } catch (err) {
-    box.innerHTML = `<div class="hero-card mt-4"><h4 class="fw-bold mb-2">เปิด KPI นี้ไม่ได้</h4><div class="small-muted mb-3">${escapeOutreachHtml(err.message)}</div><button class="btn btn-main" type="button" onclick="loadBloodKpiPage(null,currentBloodKpiRoute,{filterOnly:true})">กลับไปตัวกรอง</button></div>`;
+    box.innerHTML = `<div class="hero-card mt-4"><h4 class="fw-bold mb-2">เปิด KPI นี้ไม่ได้</h4><div class="small-muted mb-3">${escapeOutreachHtml(err.message)}</div><button class="btn btn-main" type="button" onclick="loadBloodKpiPage(null,currentBloodKpiRoute,{filterOnly:true})">ตัวกรอง</button></div>`;
   }
 }
 
@@ -3859,7 +3968,7 @@ function bloodKpiOutcomePriority(code) {
   return 6;
 }
 
-function buildBloodKpiInsights({ dependency, analysis, familyRows, dashboard, year }) {
+function buildBloodKpiInsights({ dependency, analysis, familyRows, dashboard, year, filters = {} }) {
   const rows = Array.isArray(familyRows) ? familyRows.filter(row => row?.aggregateEligible !== false) : [];
   const families = new Map();
   rows.forEach(row => {
@@ -3929,11 +4038,12 @@ function buildBloodKpiInsights({ dependency, analysis, familyRows, dashboard, ye
   });
 
   const today = new Date();
-  const yearScopedFamilies = aggregated.filter(f => {
+  const useYearScope = Number.isFinite(Number(year)) && Number(year) > 1900 && !(filters?.dateFrom || filters?.dateTo);
+  const yearScopedFamilies = useYearScope ? aggregated.filter(f => {
     const d = parseBloodKpiDate(f.cohortDate || f.stockInDate);
     return d && d.getFullYear() === Number(year);
-  });
-  const analyticFamilies = yearScopedFamilies.length ? yearScopedFamilies : aggregated;
+  }) : [];
+  const analyticFamilies = useYearScope && yearScopedFamilies.length ? yearScopedFamilies : aggregated;
   const finalFamilies = analyticFamilies.filter(f => ['used', 'expired'].includes(f.outcomeCode));
   const usedFamilies = analyticFamilies.filter(f => f.outcomeCode === 'used');
   const expiredFamilies = analyticFamilies.filter(f => f.outcomeCode === 'expired');
@@ -3951,44 +4061,48 @@ function buildBloodKpiInsights({ dependency, analysis, familyRows, dashboard, ye
   });
   const longHeldRate = unresolvedRbc.length ? outreachPercent(agedRbc.length, unresolvedRbc.length) : 0;
 
-  // v2.9.48: Grouped monthly KPI bars + cleaner executive chart labels
-  // ตัวอย่าง: ถุงรับเข้าเดือน ก.ค. แล้วถูกใช้หลัง 30 วัน -> นับ 30 วันในเดือน ก.ค.
-  const monthlyAgeBuckets = new Map(Array.from({ length: 12 }, (_, i) => [i + 1, {
-    month: i + 1, days: [], usedCount: 0, within7: 0, day8to14: 0, day15to21: 0, over21: 0
-  }]));
+  const rangeMeta = getBloodKpiRangeMeta(filters || {});
+  const monthKeys = [];
+  if (filters?.dateFrom && filters?.dateTo && rangeMeta.startDate && rangeMeta.endDate) {
+    const cursor = new Date(rangeMeta.startDate.getFullYear(), rangeMeta.startDate.getMonth(), 1);
+    const endCursor = new Date(rangeMeta.endDate.getFullYear(), rangeMeta.endDate.getMonth(), 1);
+    while (cursor <= endCursor) {
+      monthKeys.push(`${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}`);
+      cursor.setMonth(cursor.getMonth()+1);
+    }
+  } else if (Number.isFinite(Number(year)) && Number(year) > 1900) {
+    for (let m=1;m<=12;m+=1) monthKeys.push(`${Number(year)}-${String(m).padStart(2,'0')}`);
+  }
+  const monthlyAgeBuckets = new Map(monthKeys.map(key => [key,{ key, days:[], usedCount:0, within7:0, day8to14:0, day15to21:0, over21:0 }]));
   usedFamilies.forEach(f => {
     const receivedDate = parseBloodKpiDate(f.cohortDate || f.stockInDate);
-    if (!receivedDate || receivedDate.getFullYear() !== Number(year)) return;
+    if (!receivedDate) return;
+    const key = `${receivedDate.getFullYear()}-${String(receivedDate.getMonth()+1).padStart(2,'0')}`;
+    if (!monthlyAgeBuckets.has(key)) return;
     const days = diffBloodKpiDays(f.cohortDate || f.stockInDate, f.finalDate);
     if (!Number.isFinite(days)) return;
-    const bucket = monthlyAgeBuckets.get(receivedDate.getMonth() + 1);
-    if (!bucket) return;
-    bucket.days.push(days);
-    bucket.usedCount += 1;
-    if (days <= 7) bucket.within7 += 1;
-    else if (days <= 14) bucket.day8to14 += 1;
-    else if (days <= 21) bucket.day15to21 += 1;
-    else bucket.over21 += 1;
+    const bucket = monthlyAgeBuckets.get(key);
+    bucket.days.push(days); bucket.usedCount += 1;
+    if (days <= 7) bucket.within7 += 1; else if (days <= 14) bucket.day8to14 += 1; else if (days <= 21) bucket.day15to21 += 1; else bucket.over21 += 1;
   });
-  const monthlyAgeRows = Array.from(monthlyAgeBuckets.values()).map(bucket => {
-    const avg = bucket.days.length ? bucket.days.reduce((sum, v) => sum + v, 0) / bucket.days.length : null;
-    return {
-      month: bucket.month,
-      usedCount: bucket.usedCount,
-      medianDays: medianBloodKpi(bucket.days),
-      averageDays: Number.isFinite(avg) ? Number(avg.toFixed(1)) : null,
-      within7: bucket.within7,
-      day8to14: bucket.day8to14,
-      day15to21: bucket.day15to21,
-      over21: bucket.over21
-    };
+  let monthlyAgeRows = Array.from(monthlyAgeBuckets.values()).map(bucket => {
+    const [yy,mm] = bucket.key.split('-').map(Number);
+    const avg = bucket.days.length ? bucket.days.reduce((sum,v)=>sum+v,0)/bucket.days.length : null;
+    return { year:yy, month:mm, periodLabel:`${['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][mm]}${monthKeys.length>12?` ${String(yy+543).slice(-2)}`:''}`, usedCount:bucket.usedCount, medianDays:medianBloodKpi(bucket.days), averageDays:Number.isFinite(avg)?Number(avg.toFixed(1)):null, within7:bucket.within7, day8to14:bucket.day8to14, day15to21:bucket.day15to21, over21:bucket.over21 };
   });
-  const ageDistribution = {
-    within7: monthlyAgeRows.reduce((sum, r) => sum + Number(r.within7 || 0), 0),
-    day8to14: monthlyAgeRows.reduce((sum, r) => sum + Number(r.day8to14 || 0), 0),
-    day15to21: monthlyAgeRows.reduce((sum, r) => sum + Number(r.day15to21 || 0), 0),
-    over21: monthlyAgeRows.reduce((sum, r) => sum + Number(r.over21 || 0), 0)
-  };
+  if (monthlyAgeRows.length > 24) {
+    const byYear = new Map();
+    monthlyAgeRows.forEach(r => {
+      if (!byYear.has(r.year)) byYear.set(r.year,{ year:r.year, days:[], usedCount:0, within7:0, day8to14:0, day15to21:0, over21:0 });
+      const y=byYear.get(r.year); y.usedCount+=r.usedCount; y.within7+=r.within7; y.day8to14+=r.day8to14; y.day15to21+=r.day15to21; y.over21+=r.over21;
+    });
+    // keep monthly medians unavailable for yearly aggregation; derive weighted approximation from family rows below
+    monthlyAgeRows = Array.from(byYear.values()).map(y => {
+      const days = usedFamilies.map(f => ({d:parseBloodKpiDate(f.cohortDate||f.stockInDate),v:diffBloodKpiDays(f.cohortDate||f.stockInDate,f.finalDate)})).filter(x=>x.d && x.d.getFullYear()===y.year && Number.isFinite(x.v)).map(x=>x.v);
+      return { ...y, month:0, periodLabel:String(y.year+543), medianDays:medianBloodKpi(days), averageDays:days.length?Number((days.reduce((a,b)=>a+b,0)/days.length).toFixed(1)):null };
+    });
+  }
+  const ageDistribution = { within7:monthlyAgeRows.reduce((s,r)=>s+Number(r.within7||0),0), day8to14:monthlyAgeRows.reduce((s,r)=>s+Number(r.day8to14||0),0), day15to21:monthlyAgeRows.reduce((s,r)=>s+Number(r.day15to21||0),0), over21:monthlyAgeRows.reduce((s,r)=>s+Number(r.over21||0),0) };
 
   const sourceGroupMap = new Map();
   analyticFamilies.forEach(f => {
@@ -4209,96 +4323,40 @@ function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
   const numeratorKey = isExpiry ? 'expired' : 'used';
   const rateKey = isExpiry ? 'expiredRate' : 'utilizationRate';
   const numeratorLabel = isExpiry ? 'Expired' : 'Used';
-  const title = isExpiry ? 'จำนวน Expired เทียบถุงที่พร้อมใช้' : 'จำนวน Used เทียบถุงที่พร้อมใช้';
+  const title = isExpiry ? 'Expired เทียบถุงที่พร้อมใช้' : 'Used เทียบถุงที่พร้อมใช้';
   const totalColor = isExpiry ? '#f8dfdc' : '#d7f0e5';
   const barColor = isExpiry ? '#e48379' : '#56bd9a';
   const lowBaseColor = '#d99a2b';
-  const monthNames = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
-
-  const safeItems = Array.from({ length: 12 }, (_, idx) => {
-    const source = items.find(row => Number(row?.month || 0) === idx + 1) || {};
+  const safeItems = items.map((source,idx) => {
     const numerator = Number(source?.[numeratorKey] || 0);
-    const totalFinal = Number(source?.totalFinal ?? (Number(source?.used || 0) + Number(source?.expired || 0)));
+    const totalFinal = Number(source?.totalFinal ?? (Number(source?.used || 0)+Number(source?.expired || 0)));
     const rawRate = source?.[rateKey];
-    const rate = totalFinal > 0 ? (Number.isFinite(Number(rawRate)) ? Number(rawRate) : ((numerator / totalFinal) * 100)) : null;
-    return {
-      month: idx + 1,
-      numerator,
-      totalFinal,
-      rate,
-      lowBase: totalFinal > 0 && totalFinal < 10
-    };
+    const rate = totalFinal > 0 ? (Number.isFinite(Number(rawRate)) ? Number(rawRate) : (numerator/totalFinal)*100) : null;
+    return { ...source, numerator, totalFinal, rate, lowBase:totalFinal>0&&totalFinal<10, periodLabel:source?.periodLabel || String(idx+1) };
   });
+  if (!safeItems.length) return `<div class="small-muted py-4">ไม่มีข้อมูลในช่วงที่เลือก</div>`;
+  const validRows=safeItems.filter(r=>r.totalFinal>0);
+  const maxCount=Math.max(1,...safeItems.map(r=>Math.max(r.totalFinal,r.numerator)));
+  const yMax=Math.max(8,Math.ceil(maxCount/5)*5);
+  const w=1260,h=560,left=84,right=60,top=70,bottom=100,chartW=w-left-right,chartH=h-top-bottom;
+  const groupW=chartW/Math.max(1,safeItems.length), pairW=Math.min(54,groupW*.68), barW=Math.max(12,Math.floor(pairW/2));
+  const yCount=v=>top+chartH-(Math.max(0,Number(v||0))/yMax)*chartH;
+  const xCenter=i=>left+groupW*i+groupW/2;
+  const grid=[0,.25,.5,.75,1].map(frac=>{const yy=top+chartH-chartH*frac;return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e8eff5" stroke-width="1.6"/><text x="${left-14}" y="${yy+5}" text-anchor="end" font-size="13" fill="#8299ac">${Math.round(yMax*frac)}</text>`}).join('');
+  const bars=safeItems.map((row,i)=>{const cx=xCenter(i),totalX=cx-barW,numX=cx,totalY=yCount(row.totalFinal),numY=yCount(row.numerator),totalH=Math.max(row.totalFinal>0?4:0,top+chartH-totalY),numH=Math.max(row.numerator>0?4:0,top+chartH-numY),higherY=Math.min(totalY,numY),badgeY=Math.max(top+18,higherY-38),badgeW=row.lowBase?58:50;return `<g><rect x="${totalX}" y="${totalY}" width="${barW}" height="${totalH}" rx="8" fill="${totalColor}"/><rect x="${numX}" y="${numY}" width="${barW}" height="${numH}" rx="8" fill="${barColor}"/>${row.totalFinal>0?`<text x="${totalX+barW/2}" y="${Math.max(top+14,totalY-8)}" text-anchor="middle" font-size="11" font-weight="700" fill="#7892a5">${row.totalFinal.toLocaleString()}</text>`:''}${row.numerator>0?`<text x="${numX+barW/2}" y="${Math.max(top+14,numY-8)}" text-anchor="middle" font-size="11" font-weight="700" fill="#295b49">${row.numerator.toLocaleString()}</text>`:''}${row.rate!==null?`<line x1="${cx}" y1="${badgeY+24}" x2="${cx}" y2="${higherY-4}" stroke="${row.lowBase?lowBaseColor:'#9ab2c7'}" stroke-width="1.6"/><rect x="${cx-badgeW/2}" y="${badgeY}" width="${badgeW}" height="24" rx="12" fill="${row.lowBase?'#fff7ea':'#fff'}" stroke="${row.lowBase?lowBaseColor:'#b9cfe0'}"/><text x="${cx}" y="${badgeY+16}" text-anchor="middle" font-size="11.5" font-weight="700" fill="${row.lowBase?'#b87813':'#2f5c84'}">${row.rate.toFixed(1)}%${row.lowBase?'*':''}</text>`:''}<text x="${cx}" y="${h-38}" text-anchor="middle" font-size="${safeItems.length>18?11.5:13}" font-weight="600" fill="#5f7689">${escapeOutreachHtml(row.periodLabel)}</text></g>`}).join('');
+  return `<svg class="kpi-exec-chart kpi-grouped-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${title}"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/><text x="${left}" y="36" font-size="18" font-weight="700" fill="#183b5d">${title}</text><g transform="translate(${w-right-192},34)"><rect x="0" y="-11" width="16" height="12" rx="4" fill="${totalColor}"/><text x="22" y="-1" font-size="12" fill="#587082">พร้อมใช้</text><rect x="98" y="-11" width="16" height="12" rx="4" fill="${barColor}"/><text x="120" y="-1" font-size="12" fill="#587082">${numeratorLabel}</text></g>${grid}${bars}</svg>`;
+}
 
-  const validRows = safeItems.filter(row => row.totalFinal > 0);
-  const maxCount = Math.max(1, ...safeItems.map(row => Math.max(row.totalFinal, row.numerator)));
-  const yMax = Math.max(8, Math.ceil(maxCount / 5) * 5);
 
-  const w = 1260, h = 560, left = 84, right = 60, top = 70, bottom = 94;
-  const chartW = w - left - right;
-  const chartH = h - top - bottom;
-  const groupW = chartW / 12;
-  const pairGap = 0;
-  const pairW = Math.min(54, groupW * 0.6);
-  const totalBarW = Math.max(18, Math.floor((pairW - pairGap) / 2));
-  const numeratorBarW = totalBarW;
-  const clusterW = totalBarW + numeratorBarW + pairGap;
-  const yCount = value => top + chartH - (Math.max(0, Number(value || 0)) / yMax) * chartH;
-  const xCenter = i => left + groupW * i + groupW / 2;
-
-  const grid = [0, 0.25, 0.5, 0.75, 1].map(frac => {
-    const yy = top + chartH - chartH * frac;
-    const countVal = Math.round(yMax * frac);
-    const rateVal = Math.round(100 * frac);
-    return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e8eff5" stroke-width="1.6"></line>
-      <text x="${left-14}" y="${yy+5}" text-anchor="end" font-size="13" fill="#8299ac">${countVal}</text>
-      <text x="${w-right+12}" y="${yy+5}" font-size="13" fill="#8299ac">${rateVal}%</text>`;
-  }).join('');
-
-  const bars = safeItems.map((row, i) => {
-    const cx = xCenter(i);
-    const clusterX = cx - clusterW / 2;
-    const totalX = clusterX;
-    const numX = totalX + totalBarW + pairGap;
-    const totalY = yCount(row.totalFinal);
-    const numY = yCount(row.numerator);
-    const totalH = Math.max(row.totalFinal > 0 ? 4 : 0, top + chartH - totalY);
-    const numH = Math.max(row.numerator > 0 ? 4 : 0, top + chartH - numY);
-    const higherY = Math.min(totalY, numY);
-    const badgeY = Math.max(top + 18, higherY - 38);
-    const badgeW = row.lowBase ? 58 : 50;
-    const badgeFill = row.lowBase ? '#fff7ea' : '#ffffff';
-    const badgeStroke = row.lowBase ? lowBaseColor : '#b9cfe0';
-    const badgeText = row.rate !== null ? `${row.rate.toFixed(1)}%${row.lowBase ? '*' : ''}` : '';
-    const lineX = cx;
-    return `
-      <g>
-        <rect x="${totalX}" y="${totalY}" width="${totalBarW}" height="${totalH}" rx="8" fill="${totalColor}"></rect>
-        <rect x="${numX}" y="${numY}" width="${numeratorBarW}" height="${numH}" rx="8" fill="${barColor}"></rect>
-        ${row.totalFinal > 0 ? `<text x="${totalX + totalBarW/2}" y="${Math.max(top+14, totalY-8)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#7892a5">${row.totalFinal.toLocaleString()}</text>` : ''}
-        ${row.numerator > 0 ? `<text x="${numX + numeratorBarW/2}" y="${Math.max(top+14, numY-8)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#295b49">${row.numerator.toLocaleString()}</text>` : ''}
-        ${row.rate !== null ? `<line x1="${lineX}" y1="${badgeY+24}" x2="${lineX}" y2="${higherY-4}" stroke="${row.lowBase ? lowBaseColor : '#9ab2c7'}" stroke-width="1.8"></line>
-          <rect x="${lineX-badgeW/2}" y="${badgeY}" width="${badgeW}" height="24" rx="12" fill="${badgeFill}" stroke="${badgeStroke}" stroke-width="1.8"></rect>
-          <text x="${lineX}" y="${badgeY+16}" text-anchor="middle" font-size="11.5" font-weight="700" fill="${row.lowBase ? '#b87813' : '#2f5c84'}">${badgeText}</text>` : ''}
-        <text x="${cx}" y="${h-38}" text-anchor="middle" font-size="13.5" font-weight="600" fill="#5f7689">${monthNames[i]}</text>
-      </g>`;
-  }).join('');
-
-  return `<svg class="kpi-exec-chart kpi-grouped-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${title} รายเดือน">
-    <rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#ffffff" stroke="#edf3f7"/>
-    <text x="${left}" y="36" font-size="18" font-weight="700" fill="#183b5d">${title}</text>
-    <g transform="translate(${w-right-192},34)">
-      <rect x="0" y="-11" width="16" height="12" rx="4" fill="${totalColor}"/>
-      <text x="22" y="-1" font-size="12" fill="#587082">ถุงที่พร้อมใช้</text>
-      <rect x="98" y="-11" width="16" height="12" rx="4" fill="${barColor}"/>
-      <text x="120" y="-1" font-size="12" fill="#587082">${numeratorLabel}</text>
-    </g>
-    ${grid}
-    <text x="${left}" y="${top-16}" font-size="12.5" fill="#7b92a5">จำนวนถุง</text>
-    <text x="${w-right+8}" y="${top-16}" font-size="12.5" fill="#7b92a5">ร้อยละ</text>
-    ${bars}
-    <text x="${left}" y="${h-12}" font-size="11.5" fill="#8399ab">แท่งซ้าย = ถุงที่พร้อมใช้ · แท่งขวา = ${numeratorLabel}${validRows.some(r => r.lowBase) ? ' · * ฐานข้อมูลน้อยกว่า 10 ถุง' : ''}</text>
-  </svg>`;
+function renderTrcRangeSvg(rows) {
+  const items=Array.isArray(rows)?rows:[];
+  if(!items.length) return `<div class="small-muted py-4">ไม่มีข้อมูลในช่วงที่เลือก</div>`;
+  const w=1240,h=500,left=72,right=44,top=46,bottom=88,chartW=w-left-right,chartH=h-top-bottom;
+  const x=i=>left+chartW*(i+.5)/items.length,y=v=>top+chartH-(Math.max(0,Math.min(100,Number(v||0)))/100)*chartH;
+  const grid=[0,25,50,75,100].map(v=>`<line x1="${left}" y1="${y(v)}" x2="${w-right}" y2="${y(v)}" stroke="#e8eff5"/><text x="${left-12}" y="${y(v)+4}" text-anchor="end" font-size="12" fill="#8398aa">${v}%</text>`).join('');
+  const overallPath=items.map((r,i)=>`${i===0?'M':'L'}${x(i)},${y(r.rate)}`).join(' '),routinePath=items.map((r,i)=>`${i===0?'M':'L'}${x(i)},${y(r.adjustedRate)}`).join(' ');
+  const labels=items.map((r,i)=>`<text x="${x(i)}" y="${h-32}" text-anchor="middle" font-size="${items.length>18?10.5:12.5}" fill="#587184">${escapeOutreachHtml(r.periodLabel||'')}</text>`).join('');
+  return `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/>${grid}<path d="${overallPath}" fill="none" stroke="#8aa0b4" stroke-width="3"/><path d="${routinePath}" fill="none" stroke="#2f7fc1" stroke-width="4"/>${items.map((r,i)=>`<circle cx="${x(i)}" cy="${y(r.adjustedRate)}" r="5" fill="#fff" stroke="#2f7fc1" stroke-width="3"/>`).join('')}${labels}<g transform="translate(${w-right-230},30)"><line x1="0" y1="0" x2="28" y2="0" stroke="#8aa0b4" stroke-width="3"/><text x="36" y="4" font-size="12" fill="#5b7285">รวม</text><line x1="92" y1="0" x2="120" y2="0" stroke="#2f7fc1" stroke-width="4"/><text x="128" y="4" font-size="12" fill="#5b7285">Routine</text></g></svg>`;
 }
 
 function renderExecutiveHorizontalBars(rows, options={}) {
@@ -4310,21 +4368,19 @@ function renderExecutiveHorizontalBars(rows, options={}) {
   return `<svg class="kpi-exec-bar-chart" viewBox="0 0 ${w} ${h}" role="img">${items.map((item,i)=>{const v=Number(item?.[valueKey]||0),width=max?Math.max(10,(v/max)*chartW):10,y=top+i*rowH,label=String(item?.label||'');const count=countKey?Number(item?.[countKey]||0):null;return `<text x="${left-18}" y="${y+26}" text-anchor="end" font-size="17" font-weight="700" fill="#284a63">${escapeOutreachHtml(label)}</text>${countKey?`<text x="${left-18}" y="${y+50}" text-anchor="end" font-size="13" fill="#8297a9">${count.toLocaleString()} ${escapeOutreachHtml(countLabel)}</text>`:''}<rect x="${left}" y="${y+16}" width="${chartW}" height="28" rx="14" fill="#edf3f7"/><rect x="${left}" y="${y+16}" width="${width}" height="28" rx="14" fill="${color}" opacity="0.96"/><text x="${left+Math.min(width+14,chartW-8)}" y="${y+35}" font-size="16" font-weight="700" fill="#294d68">${v.toFixed(1)}${suffix}</text>`}).join('')}</svg>`;
 }
 
-function renderMonthlyAgeExecutiveSvg(rows, year) {
-  const items=Array.isArray(rows)?rows:[...Array(12)].map((_,idx)=>({month:idx+1,medianDays:null,usedCount:0}));
+function renderMonthlyAgeExecutiveSvg(rows, rangeLabel = '') {
+  const items=Array.isArray(rows)?rows:[];
+  if(!items.length) return `<div class="small-muted py-4">ไม่มีข้อมูลในช่วงที่เลือก</div>`;
   const valid=items.filter(r=>Number.isFinite(r.medianDays));
   const w=1240,h=520,left=84,right=56,top=72,bottom=96,chartW=w-left-right,chartH=h-top-bottom;
-  const names=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
-  const maxDays=Math.max(7,...valid.map(r=>Number(r.medianDays||0)));
-  const yMax=Math.max(28,Math.ceil(maxDays/7)*7);
-  const x=i=>left+chartW*(i+.5)/12;
-  const y=v=>top+chartH-(Number(v||0)/yMax)*chartH;
-  const grid=[0,.25,.5,.75,1].map(frac=>{const val=Math.round(yMax*frac),yy=top+chartH-chartH*frac;return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e7eef4" stroke-width="1.5"/><text x="${left-14}" y="${yy+5}" text-anchor="end" font-size="13" fill="#7890a4">${val} วัน</text>`}).join('');
-  const validPoints=items.map((r,i)=>({i,value:Number(r.medianDays)})).filter(p=>Number.isFinite(p.value));
-  const path=validPoints.map((p,j)=>`${j===0?'M':'L'}${x(p.i)},${y(p.value)}`).join(' ');
-  const points=items.map((r,i)=>{const m=Number(r.medianDays);return Number.isFinite(m)?`<circle cx="${x(i)}" cy="${y(m)}" r="8" fill="#ffffff" stroke="#367fb5" stroke-width="4"/><g transform="translate(${x(i)},${Math.max(top+22,y(m)-24)})"><rect x="-24" y="-14" width="48" height="22" rx="11" fill="#dff1ff"/><text x="0" y="2" text-anchor="middle" font-size="12" font-weight="700" fill="#27648f">${m.toFixed(1)}</text></g>`:''}).join('');
-  const labels=items.map((r,i)=>`<text x="${x(i)}" y="${h-50}" text-anchor="middle" font-size="14" font-weight="600" fill="#536f84">${names[i]}</text><text x="${x(i)}" y="${h-28}" text-anchor="middle" font-size="12" fill="#8aa0b1">n=${Number(r.usedCount||0).toLocaleString()}</text>`).join('');
-  return `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Median วันค้างก่อนใช้รายเดือน"><rect x="10" y="10" width="${w-20}" height="${h-20}" rx="28" fill="#ffffff" stroke="#edf3f7"/>${grid}<line x1="${left}" y1="${y(21)}" x2="${w-right}" y2="${y(21)}" stroke="#e4a74c" stroke-width="2.5" stroke-dasharray="8 7"/><text x="${w-right-6}" y="${Math.max(top+14,y(21)-10)}" text-anchor="end" font-size="12" fill="#a36b1d">เส้นเฝ้าระวัง 21 วัน</text><path d="${path}" fill="none" stroke="#367fb5" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>${points}${labels}<text x="${left}" y="36" font-size="18" font-weight="700" fill="#173b5d">Median วันรับเข้า → ใช้</text><text x="${left}" y="60" font-size="13" fill="#7890a4">ดูตามเดือนที่รับเข้า · ปี ${year+543}</text></svg>`;
+  const maxDays=Math.max(7,...valid.map(r=>Number(r.medianDays||0))),yMax=Math.max(28,Math.ceil(maxDays/7)*7);
+  const x=i=>left+chartW*(i+.5)/items.length,y=v=>top+chartH-(Number(v||0)/yMax)*chartH;
+  const grid=[0,.25,.5,.75,1].map(frac=>{const val=Math.round(yMax*frac),yy=top+chartH-chartH*frac;return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e7eef4"/><text x="${left-14}" y="${yy+5}" text-anchor="end" font-size="13" fill="#7890a4">${val}</text>`}).join('');
+  const points=items.map((r,i)=>Number.isFinite(r.medianDays)?{i,value:Number(r.medianDays)}:null).filter(Boolean);
+  const path=points.map((p,j)=>`${j===0?'M':'L'}${x(p.i)},${y(p.value)}`).join(' ');
+  const dots=items.map((r,i)=>{const m=Number(r.medianDays);return Number.isFinite(m)?`<circle cx="${x(i)}" cy="${y(m)}" r="7" fill="#fff" stroke="#367fb5" stroke-width="4"/><text x="${x(i)}" y="${Math.max(top+14,y(m)-18)}" text-anchor="middle" font-size="12" font-weight="700" fill="#27648f">${m.toFixed(1)}</text>`:''}).join('');
+  const labels=items.map((r,i)=>`<text x="${x(i)}" y="${h-46}" text-anchor="middle" font-size="${items.length>18?11:13}" font-weight="600" fill="#536f84">${escapeOutreachHtml(r.periodLabel||'')}</text><text x="${x(i)}" y="${h-26}" text-anchor="middle" font-size="11" fill="#8aa0b1">n=${Number(r.usedCount||0).toLocaleString()}</text>`).join('');
+  return `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img"><rect x="10" y="10" width="${w-20}" height="${h-20}" rx="28" fill="#fff" stroke="#edf3f7"/>${grid}<line x1="${left}" y1="${y(21)}" x2="${w-right}" y2="${y(21)}" stroke="#e4a74c" stroke-width="2" stroke-dasharray="7 7"/><path d="${path}" fill="none" stroke="#367fb5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>${dots}${labels}</svg>`;
 }
 
 function renderAgeDistributionSvg(dist={}) {

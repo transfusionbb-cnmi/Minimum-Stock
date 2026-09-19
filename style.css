@@ -3624,3 +3624,13 @@ body {
   .single-source-summary{grid-template-columns:1fr;}
   .single-source-summary .small-muted{grid-column:auto;}
 }
+
+/* v2.9.51 range filters + clean UI */
+.kpi-range-pair{grid-column:span 2;}
+.kpi-filter-gate .panel-heading-row{display:none;}
+.kpi-filter-gate-footer{justify-content:flex-end;}
+.filter-multi-select summary small,.product-multi-select summary small{display:none!important;}
+.outreach-report-shell.is-waiting #outreachValidationBox,.outreach-report-shell.is-waiting #outreachFilterSummary,.outreach-report-shell.is-waiting #outreachSummaryCards,.outreach-report-shell.is-waiting .trend-panel,.outreach-report-shell.is-waiting .simple-details:not(.filter-details){display:none!important;}
+.outreach-filter-grid .product-picker-label{margin-bottom:2px;}
+.kpi-filter-gate .outreach-filter-item small,.kpi-fixed-filter small{display:none;}
+@media(max-width:900px){.kpi-range-pair{grid-column:1/-1;}}
