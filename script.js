@@ -3443,8 +3443,8 @@ function kpiPageHeader(title, subtitle, year, years = [], showYearSelect = true)
   return `<div class="simple-page-head mt-2">
     <div><h1>${escapeOutreachHtml(title)}</h1></div>
     <div class="d-flex gap-2 align-items-end flex-wrap no-print">
-      <button class="btn btn-light" type="button" onclick="downloadCurrentKpiPng()">PNG</button>
-      <button class="btn btn-main" type="button" onclick="window.print()">PDF</button>
+      ${currentBloodKpiRoute === 'trc' ? '' : `<button class="btn btn-light" type="button" onclick="downloadCurrentKpiPng()">PNG</button>`}
+      <button class="btn btn-main" type="button" onclick="window.print()">${currentBloodKpiRoute === 'trc' ? 'PDF ทั้งหน้า' : 'PDF'}</button>
     </div>
   </div>${filterPanel}`;
 }
@@ -3927,10 +3927,22 @@ function renderKpiTrc({ dependency, sourceRange, year }) {
       { label:`เฉลี่ย ${planning.avg3Months || 0} เดือนล่าสุด`, value:`${planning.avg3.toLocaleString(undefined,{maximumFractionDigits:1})} ถุง/เดือน`, note:'ใช้ดูแนวโน้มประกอบการวางแผนออกหน่วย', tone:'' },
       { label:'เลือดหายาก / ภาวะจำเป็น', value:`${rare.toLocaleString()} ถุง`, note:'Rare / Ag-matched / Rh Negative · แยกออก ไม่รวม Routine KPI', tone:'' }
     ])}
-    <div class="simple-panel kpi-executive-panel mb-3"><div class="panel-heading-row"><div><h3>จำนวนรับเข้า RBC / SDR รายเดือน แยกตามแหล่งเลือด</h3><div class="small-muted">ดูจำนวนถุงจริงว่าแต่ละเดือนได้จากในโรงพยาบาล ออกหน่วย กาชาด Routine และโรงพยาบาลอื่นเท่าไร</div></div></div>${renderRbcSourceIntakeMonthlySvg(planningMonths)}</div>
-    <div class="simple-panel kpi-executive-panel mb-3"><div class="panel-heading-row"><div><h3>กาชาด Routine เทียบเลือดจากการออกหน่วย</h3><div class="small-muted">ใช้ดูทิศทางประกอบกับ Minimum Stock และ Forecast ก่อนวางรอบออกหน่วย · ไม่ควรใช้จำนวนรับกาชาดเพียงอย่างเดียว</div></div></div>${renderRoutineTrcVsOutreachMonthlySvg(planningMonths)}</div>
-    <div class="simple-panel kpi-executive-panel mb-3"><div class="panel-heading-row"><div><h3>แนวโน้มพึ่งพากาชาด Routine</h3><div class="small-muted">แสดงเฉพาะเลือด Routine หลังตัดรายการเลือดหายาก / ภาวะจำเป็นออกแล้ว</div></div></div>${renderTrcRangeSvg(months)}</div>
-    <div class="simple-panel kpi-executive-panel"><div class="panel-heading-row"><div><h3>เลือดหายาก / ภาวะจำเป็นจากกาชาด</h3><div class="small-muted">รายงานแยกเป็นจำนวนถุง ไม่รวมใน Routine KPI</div></div></div>${renderTrcRareMonthlySvg(months)}</div>`;
+    <div class="simple-panel kpi-executive-panel mb-3" id="trc-outreach-panel">
+      <div class="panel-heading-row"><div><h3>กาชาด Routine เทียบเลือดจากการออกหน่วย</h3><div class="small-muted">กราฟหลักสำหรับวางแผน · ดูจำนวนถุงกาชาด Routine เทียบกับเลือดจากการออกหน่วยในแต่ละเดือน</div></div><button class="btn btn-light btn-sm no-print" type="button" onclick="downloadTrcChartPng('outreach')">PNG</button></div>
+      <div id="trc-outreach-chart">${renderRoutineTrcVsOutreachMonthlySvg(planningMonths)}</div>
+    </div>
+    <div class="simple-panel kpi-executive-panel mb-3" id="trc-source-panel">
+      <div class="panel-heading-row"><div><h3>ภาพรวมจำนวนรับเข้า RBC / SDR รายเดือน</h3><div class="small-muted">เปลี่ยนเป็นแท่งซ้อนเพื่อลดความแน่นของกราฟ · ตัวเลขบนยอดแท่งคือจำนวนรับเข้ารวม ส่วนกาชาด Routine ดูรายละเอียดรายเดือนได้จากกราฟด้านบน</div></div><button class="btn btn-light btn-sm no-print" type="button" onclick="downloadTrcChartPng('source')">PNG</button></div>
+      <div id="trc-source-chart">${renderRbcSourceIntakeMonthlySvg(planningMonths)}</div>
+    </div>
+    <div class="simple-panel kpi-executive-panel mb-3" id="trc-rate-panel">
+      <div class="panel-heading-row"><div><h3>แนวโน้มพึ่งพากาชาด Routine</h3><div class="small-muted">แสดงเฉพาะเลือด Routine หลังตัดรายการเลือดหายาก / ภาวะจำเป็นออกแล้ว</div></div><button class="btn btn-light btn-sm no-print" type="button" onclick="downloadTrcChartPng('rate')">PNG</button></div>
+      <div id="trc-rate-chart">${renderTrcRangeSvg(months)}</div>
+    </div>
+    <div class="simple-panel kpi-executive-panel" id="trc-rare-panel">
+      <div class="panel-heading-row"><div><h3>เลือดหายาก / ภาวะจำเป็นจากกาชาด</h3><div class="small-muted">รายงานแยกเป็นจำนวนถุง ไม่รวมใน Routine KPI</div></div><button class="btn btn-light btn-sm no-print" type="button" onclick="downloadTrcChartPng('rare')">PNG</button></div>
+      <div id="trc-rare-chart">${renderTrcRareMonthlySvg(months)}</div>
+    </div>`;
 }
 
 function renderKpiTurnaround({ insights, dependency, year }) {
@@ -4658,36 +4670,43 @@ function renderRbcSourceIntakeMonthlySvg(rows) {
     { key:'routineTrc', label:'กาชาด Routine', color:'#4b83c3' },
     { key:'otherHospital', label:'รพ.อื่น', color:'#a7b5c2' }
   ];
-  const allValues = items.flatMap(row => series.map(item => Number(row?.[item.key] || 0)));
-  const maxValue = Math.max(1, ...allValues);
+  const totals = items.map(row => series.reduce((sum,item)=>sum+Number(row?.[item.key]||0),0));
+  const maxValue = Math.max(1, ...totals);
   const step = maxValue <= 20 ? 5 : maxValue <= 100 ? 20 : maxValue <= 300 ? 50 : maxValue <= 800 ? 100 : 200;
   const yMax = Math.max(step, Math.ceil(maxValue / step) * step);
   const left = 82, right = 46, top = 98, bottom = multiYear ? 122 : 92;
-  const groupW = items.length > 18 ? 108 : 122;
+  const groupW = items.length > 18 ? 72 : 86;
   const chartW = Math.max(840, groupW * items.length);
   const w = left + right + chartW, h = 560, chartH = h - top - bottom;
   const xCenter = i => left + groupW * i + groupW / 2;
   const y = value => top + chartH - (Math.max(0, Number(value || 0)) / yMax) * chartH;
   const chartBottom = top + chartH;
-  const barW = Math.max(13, Math.min(19, (groupW - 18) / series.length));
-  const gap = Math.max(2, Math.min(5, barW * .22));
-  const clusterW = series.length * barW + (series.length - 1) * gap;
+  const barW = Math.max(34, Math.min(48, groupW * .58));
   const grid = [0,.25,.5,.75,1].map(frac => {
     const value = Math.round(yMax * frac);
     const yy = top + chartH - chartH * frac;
     return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e8eff5"/><text x="${left-12}" y="${yy+4}" text-anchor="end" font-size="12" fill="#8398aa">${value.toLocaleString()}</text>`;
   }).join('');
   const bars = items.map((row,i) => {
-    const center = xCenter(i);
-    const startX = center - clusterW / 2;
-    return series.map((item,j) => {
+    const cx = xCenter(i), x = cx - barW/2;
+    let running = 0;
+    const parts = series.map(item => {
       const value = Number(row?.[item.key] || 0);
-      const x = startX + j * (barW + gap);
-      const yy = y(value);
-      const hh = value > 0 ? Math.max(3, chartBottom - yy) : 0;
-      const labelY = Math.max(top + 13, yy - 7);
-      return `<rect x="${x}" y="${yy}" width="${barW}" height="${hh}" rx="${Math.min(5,barW/2)}" fill="${item.color}" opacity=".94"><title>${escapeOutreachHtml(row.periodLabel || '')} · ${item.label} ${value.toLocaleString()} ถุง</title></rect>${value>0?`<text x="${x+barW/2}" y="${labelY}" text-anchor="middle" font-size="${items.length>18?9.5:10.5}" font-weight="800" fill="#36556f" style="paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round">${value.toLocaleString()}</text>`:''}`;
+      if (value <= 0) return '';
+      const yTop = y(running + value);
+      const yBottom = y(running);
+      const hh = Math.max(2, yBottom - yTop);
+      const isTrc = item.key === 'routineTrc';
+      const innerLabel = isTrc && hh >= 22
+        ? `<text x="${cx}" y="${yTop + hh/2 + 4}" text-anchor="middle" font-size="${items.length>18?9.5:10.5}" font-weight="800" fill="#fff" style="paint-order:stroke;stroke:${item.color};stroke-width:2px">${value.toLocaleString()}</text>`
+        : '';
+      running += value;
+      return `<rect x="${x}" y="${yTop}" width="${barW}" height="${hh}" fill="${item.color}" opacity=".95"><title>${escapeOutreachHtml(row.periodLabel || '')} · ${item.label} ${value.toLocaleString()} ถุง</title></rect>${innerLabel}`;
     }).join('');
+    const total = totals[i] || 0;
+    const totalY = Math.max(top + 13, y(total) - 8);
+    const totalLabel = total > 0 ? `<text x="${cx}" y="${totalY}" text-anchor="middle" font-size="${items.length>18?10:11}" font-weight="800" fill="#36556f" style="paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round">${total.toLocaleString()}</text>` : '';
+    return `${parts}${totalLabel}`;
   }).join('');
   const labels = items.map((row,i) => `<text x="${xCenter(i)}" y="${h-(multiYear?56:32)}" text-anchor="middle" font-size="${items.length>18?10.5:12.5}" fill="#587184">${escapeOutreachHtml(['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(row.month||0)] || row.periodLabel || '')}</text>`).join('');
   const yearBandsSvg = multiYear ? renderKpiYearBandSvg(yearBands, xCenter, chartBottom) : '';
@@ -4698,8 +4717,8 @@ function renderRbcSourceIntakeMonthlySvg(rows) {
     legendX += width;
     return out;
   }).join('');
-  const svg = `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="จำนวนรับเข้า RBC และ SDR รายเดือนแยกตามแหล่งเลือด"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/>${legend}${grid}${yearBandsSvg}${bars}${labels}</svg>`;
-  return wrapScrollableKpiSvg(svg, items.length > 8);
+  const svg = `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="ภาพรวมจำนวนรับเข้า RBC และ SDR รายเดือนแบบแท่งซ้อนแยกตามแหล่งเลือด"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/>${legend}${grid}${yearBandsSvg}${bars}${labels}</svg>`;
+  return wrapScrollableKpiSvg(svg, items.length > 10);
 }
 
 function renderRoutineTrcVsOutreachMonthlySvg(rows) {
@@ -4850,6 +4869,104 @@ function renderHorizontalBarChartSvg(rows, options = {}) {
       <rect x="${left}" y="${y + 8}" width="${Math.max(width, 3)}" height="18" rx="9" fill="${color}"></rect>
       <text x="${left + chartW + 10}" y="${y + 22}" font-size="13" fill="#35556f">${value.toFixed(1)}${suffix}</text>`;
   }).join('')}</svg>`;
+}
+
+function getTrcChartExportConfig(kind) {
+  const configs = {
+    outreach: {
+      panelId:'trc-outreach-chart',
+      title:'กาชาด Routine เทียบเลือดจากการออกหน่วย',
+      subtitle:'จำนวนถุงรายเดือนเพื่อใช้ประกอบการวางแผนออกหน่วย',
+      note:'ใช้ร่วมกับ Minimum Stock และ Forecast ก่อนกำหนดรอบออกหน่วย · กาชาด Routine ไม่รวม Rare / Ag-matched / Rh Negative'
+    },
+    source: {
+      panelId:'trc-source-chart',
+      title:'ภาพรวมจำนวนรับเข้า RBC / SDR รายเดือน',
+      subtitle:'แท่งซ้อนแสดงจำนวนรับเข้าจากแต่ละแหล่งในเดือนเดียวกัน',
+      note:'ตัวเลขบนยอดแท่ง = จำนวนรับเข้ารวม · ตัวเลขสีขาวในช่วงสีน้ำเงิน (เมื่อพื้นที่พอ) = กาชาด Routine · รายละเอียดทุกแหล่งดูได้จากสี/คำอธิบายกราฟ'
+    },
+    rate: {
+      panelId:'trc-rate-chart',
+      title:'แนวโน้มพึ่งพากาชาด Routine',
+      subtitle:'อัตราพึ่งพากาชาดของเลือด Routine ในแต่ละเดือน',
+      note:'Routine KPI แยก Rare / Ag-matched / Rh Negative ออกแล้ว เพื่อไม่ให้ภาวะจำเป็นทางคลินิกปนกับการบริหาร Stock Routine'
+    },
+    rare: {
+      panelId:'trc-rare-chart',
+      title:'เลือดหายาก / ภาวะจำเป็นจากกาชาด',
+      subtitle:'จำนวนถุง Rare / Ag-matched / Rh Negative รายเดือน',
+      note:'รายงานแยกเพื่อแสดงการพึ่งพาที่เกิดจากความจำเป็นทางคลินิก และไม่รวมใน Routine KPI'
+    }
+  };
+  return configs[kind] || null;
+}
+
+function getTrcChartExportSummary(kind) {
+  const data = currentBloodKpiRouteData || {};
+  const rows = Array.isArray(data.planningMonths) && data.planningMonths.length ? data.planningMonths : (Array.isArray(data.months) ? data.months : []);
+  const first = rows[0] || null, last = rows[rows.length - 1] || null;
+  const range = first && last ? `${first.periodLabel || ''} – ${last.periodLabel || ''}` : 'ช่วงที่เลือก';
+  const planning = summarizeBloodKpiTrcPlanning(Array.isArray(data.planningMonths) ? data.planningMonths : []);
+  if (kind === 'outreach') return `ช่วง ${range} · กาชาด Routine เดือนล่าสุด ${Number(planning.latest?.routineTrc || 0).toLocaleString()} ถุง · เฉลี่ย ${planning.avg3Months || 0} เดือนล่าสุด ${Number(planning.avg3 || 0).toLocaleString(undefined,{maximumFractionDigits:1})} ถุง/เดือน`;
+  if (kind === 'source') return `ช่วง ${range} · ใช้ดูโครงสร้างแหล่งรับเข้าและการเปลี่ยนแปลงของจำนวนถุงรายเดือน`;
+  if (kind === 'rate') return `ช่วง ${range} · Routine KPI ${Number(data.adjusted || 0).toFixed(1)}% · กาชาด Routine ${Number(data.routine || 0).toLocaleString()} ถุง`;
+  if (kind === 'rare') return `ช่วง ${range} · เลือดหายาก / ภาวะจำเป็น ${Number(data.rare || 0).toLocaleString()} ถุง`;
+  return `ช่วง ${range}`;
+}
+
+function downloadTrcChartPng(kind) {
+  const config = getTrcChartExportConfig(kind);
+  const host = config ? document.getElementById(config.panelId) : null;
+  const svg = host?.querySelector('svg');
+  if (!config || !svg) {
+    showStatus('ไม่พบกราฟสำหรับส่งออก', false);
+    return;
+  }
+  try {
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+    const viewBox = svg.viewBox?.baseVal;
+    const rawW = Number(viewBox?.width || svg.getAttribute('width') || 1600);
+    const rawH = Number(viewBox?.height || svg.getAttribute('height') || 560);
+    const svgText = new XMLSerializer().serializeToString(clone);
+    const blob = new Blob([svgText], { type:'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      const canvasW = Math.min(3600, Math.max(2200, Math.round(rawW * 1.05)));
+      const padX = 90, headerH = 310, footerH = 125;
+      const maxChartW = canvasW - padX * 2;
+      const scale = Math.min(maxChartW / rawW, 1.45);
+      const drawW = rawW * scale, drawH = rawH * scale;
+      canvas.width = canvasW;
+      canvas.height = Math.ceil(headerH + drawH + footerH);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle = '#173b5d'; ctx.font = '700 44px sans-serif'; ctx.fillText(config.title, padX, 68);
+      ctx.fillStyle = '#60788d'; ctx.font = '400 22px sans-serif'; wrapCanvasText(ctx, config.subtitle, padX, 108, canvasW-padX*2, 30);
+      ctx.fillStyle = '#31556f'; ctx.font = '700 20px sans-serif'; wrapCanvasText(ctx, getTrcChartExportSummary(kind), padX, 166, canvasW-padX*2, 28);
+      ctx.fillStyle = '#71889b'; ctx.font = '400 18px sans-serif'; wrapCanvasText(ctx, config.note, padX, 216, canvasW-padX*2, 26);
+      const drawX = Math.max(padX, (canvasW-drawW)/2);
+      ctx.drawImage(image, drawX, headerH, drawW, drawH);
+      const footerY = headerH + drawH + 48;
+      ctx.fillStyle = '#8ca0b2'; ctx.font = '400 16px sans-serif';
+      ctx.fillText(`Blood Stock CNMI · Export ${new Date().toLocaleDateString('th-TH')} · ภาพนี้รวมชื่อกราฟ คำอธิบาย และช่วงข้อมูลไว้แล้ว`, padX, footerY);
+      const a = document.createElement('a');
+      a.download = `blood-kpi-trc-${kind}-${new Date().toISOString().slice(0,10)}.png`;
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      showStatus('ส่งออกกราฟไม่สำเร็จ', false);
+    };
+    image.src = url;
+  } catch (error) {
+    console.error('TRC chart export failed', error);
+    showStatus('ส่งออกกราฟไม่สำเร็จ', false);
+  }
 }
 
 function downloadBloodKpiChartPng() {
