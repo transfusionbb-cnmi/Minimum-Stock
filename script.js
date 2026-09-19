@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260919-v2-9-47-responsive-clean-combo";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260919-v2-9-48-grouped-bar-kpi";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -3583,14 +3583,13 @@ function renderKpiUtilization({ analysis, trend, dependency, year }) {
   currentBloodKpiRouteData = { route:'utilization', year, rate, groups, monthly };
   const monthNames=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
   return `${kpiPageHeader('อัตราการใช้ประโยชน์จากโลหิต','ยิ่งสูงยิ่งดี · ดูทั้งจำนวนถุงที่ใช้จริง และร้อยละการใช้ประโยชน์ในภาพเดียว',year,dependency?.years||trend?.years||[])}
-    ${renderKpiReadStrip('อ่านค่านี้อย่างไร', 'กราฟหลักใช้ “แท่ง + เส้น” โดยแท่งคือจำนวน Used ส่วนเส้นคือ % Utilization ช่วยให้เห็นพร้อมกันว่าเดือนใดใช้มาก และเดือนใดใช้ได้คุ้มค่าที่สุด', 'good')}
     ${renderKpiQuickCards([
       { label:'อัตราการใช้ประโยชน์', value:`${rate.toFixed(1)}%`, note:`Used ${Number(summary.used||0).toLocaleString()} จาก ${finalBase.toLocaleString()} ถุงที่จบผลลัพธ์`, tone:'is-good' },
       topGroup ? { label:'แหล่งเลือดที่ใช้ประโยชน์สูงสุด', value:`${topGroup.label}`, note:`${topGroup.utilizationRate.toFixed(1)}% · ${topGroup.totalFinal.toLocaleString()} ถุง`, tone:'' } : null,
       peakMonth ? { label:'เดือนที่ใช้ประโยชน์สูงสุด', value:monthNames[Number(peakMonth.month||0)] || '-', note:`${Number(peakMonth.utilizationRate||0).toFixed(1)}% · Used ${Number(peakMonth.used||0).toLocaleString()} / ${Number(peakMonth.totalFinal||0).toLocaleString()} ถุง`, tone:'' } : null
     ])}
     <div class="simple-panel kpi-executive-panel mb-3">
-      <div class="panel-heading-row"><div><h3>แนวโน้มการใช้ประโยชน์รายเดือน</h3><div class="small-muted">กราฟแท่งผสมเส้นสำหรับนำเสนอผู้บริหาร · มีตัวเลขกำกับครบทั้งจำนวนและร้อยละ</div></div></div>
+      <div class="panel-heading-row"><div><h3>แนวโน้มการใช้ประโยชน์รายเดือน</h3><div class="small-muted">กราฟแท่งคู่รายเดือน · แท่งอ่อน = ถุงจบผลลัพธ์ · แท่งเข้ม = Used · ตัวเลขด้านบน = ร้อยละของเดือนนั้น</div></div></div>
       ${renderExecutiveMonthlyRateChart(monthly, year, 'utilization')}
     </div>
     <div class="simple-panel kpi-executive-panel">
@@ -3610,14 +3609,13 @@ function renderKpiExpiry({ analysis, trend, dependency, year }) {
   currentBloodKpiRouteData = { route:'expiry', year, rate, groups, monthly };
   const monthNames=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
   return `${kpiPageHeader('อัตราโลหิตหมดอายุ','ยิ่งต่ำยิ่งดี · ดูทั้งจำนวนถุงที่หมดอายุ และร้อยละที่เสียไปในแต่ละเดือน',year,dependency?.years||trend?.years||[])}
-    ${renderKpiReadStrip('อ่านค่านี้อย่างไร', 'กราฟหลักใช้ “แท่ง + เส้น” โดยแท่งคือจำนวน Expired ส่วนเส้นคือ % Expired ทำให้เห็นได้ชัดว่าเดือนไหนหมดอายุเยอะ และเดือนไหนมีความเสี่ยงสูงกว่าปกติ', 'alert')}
     ${renderKpiQuickCards([
       { label:'อัตราโลหิตหมดอายุ', value:`${rate.toFixed(1)}%`, note:`Expired ${Number(summary.expired||0).toLocaleString()} จาก ${finalBase.toLocaleString()} ถุงที่จบผลลัพธ์`, tone:'is-alert' },
       topGroup ? { label:'แหล่งเลือดที่หมดอายุสูงสุด', value:`${topGroup.label}`, note:`${topGroup.expiredRate.toFixed(1)}% · ${topGroup.totalFinal.toLocaleString()} ถุง`, tone:'' } : null,
       peakMonth ? { label:'เดือนที่หมดอายุสูงสุด', value:monthNames[Number(peakMonth.month||0)] || '-', note:`${Number(peakMonth.expiredRate||0).toFixed(1)}% · Expired ${Number(peakMonth.expired||0).toLocaleString()} / ${Number(peakMonth.totalFinal||0).toLocaleString()} ถุง`, tone:'' } : null
     ])}
     <div class="simple-panel kpi-executive-panel mb-3">
-      <div class="panel-heading-row"><div><h3>แนวโน้มอัตราหมดอายุรายเดือน</h3><div class="small-muted">กราฟแท่งผสมเส้นสำหรับนำเสนอผู้บริหาร · มีตัวเลขกำกับครบทั้งจำนวนและร้อยละ</div></div></div>
+      <div class="panel-heading-row"><div><h3>แนวโน้มอัตราหมดอายุรายเดือน</h3><div class="small-muted">กราฟแท่งคู่รายเดือน · แท่งอ่อน = ถุงจบผลลัพธ์ · แท่งเข้ม = Expired · ตัวเลขด้านบน = ร้อยละของเดือนนั้น</div></div></div>
       ${renderExecutiveMonthlyRateChart(monthly, year, 'expiry')}
     </div>
     <div class="simple-panel kpi-executive-panel">
@@ -3953,7 +3951,7 @@ function buildBloodKpiInsights({ dependency, analysis, familyRows, dashboard, ye
   });
   const longHeldRate = unresolvedRbc.length ? outreachPercent(agedRbc.length, unresolvedRbc.length) : 0;
 
-  // v2.9.47: Responsive desktop + clean combo charts + valid-base rate handling
+  // v2.9.48: Grouped monthly KPI bars + cleaner executive chart labels
   // ตัวอย่าง: ถุงรับเข้าเดือน ก.ค. แล้วถูกใช้หลัง 30 วัน -> นับ 30 วันในเดือน ก.ค.
   const monthlyAgeBuckets = new Map(Array.from({ length: 12 }, (_, i) => [i + 1, {
     month: i + 1, days: [], usedCount: 0, within7: 0, day8to14: 0, day15to21: 0, over21: 0
@@ -4210,69 +4208,104 @@ function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
   const isExpiry = mode === 'expiry';
   const numeratorKey = isExpiry ? 'expired' : 'used';
   const rateKey = isExpiry ? 'expiredRate' : 'utilizationRate';
-  const barColor = isExpiry ? '#ee8a81' : '#53c29d';
-  const totalColor = isExpiry ? '#fde5e2' : '#dcf4eb';
-  const lineColor = isExpiry ? '#c9534d' : '#2f7fc1';
+  const numeratorLabel = isExpiry ? 'Expired' : 'Used';
+  const title = isExpiry ? 'จำนวน Expired เทียบถุงจบผลลัพธ์' : 'จำนวน Used เทียบถุงจบผลลัพธ์';
+  const totalColor = isExpiry ? '#fde7e4' : '#dcf4eb';
+  const barColor = isExpiry ? '#eb8d84' : '#52c39e';
+  const avgColor = isExpiry ? '#c98a83' : '#86a0b8';
   const lowBaseColor = '#d99a2b';
-  const title = isExpiry ? 'จำนวน Expired + อัตราหมดอายุ' : 'จำนวน Used + อัตราการใช้ประโยชน์';
-  const monthNames=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
-  const safeItems = Array.from({length:12}, (_, idx) => {
-    const source = items.find(row => Number(row?.month||0) === idx + 1) || {};
+  const monthNames = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+  const safeItems = Array.from({ length: 12 }, (_, idx) => {
+    const source = items.find(row => Number(row?.month || 0) === idx + 1) || {};
     const numerator = Number(source?.[numeratorKey] || 0);
-    const totalFinal = Number(source?.totalFinal ?? (Number(source?.used||0)+Number(source?.expired||0)));
-    const rateRaw = source?.[rateKey];
-    const rate = totalFinal > 0 && Number.isFinite(Number(rateRaw)) ? Number(rateRaw) : null;
-    return { month:idx+1, numerator, totalFinal, rate };
+    const totalFinal = Number(source?.totalFinal ?? (Number(source?.used || 0) + Number(source?.expired || 0)));
+    const rawRate = source?.[rateKey];
+    const rate = totalFinal > 0 ? (Number.isFinite(Number(rawRate)) ? Number(rawRate) : ((numerator / totalFinal) * 100)) : null;
+    return {
+      month: idx + 1,
+      numerator,
+      totalFinal,
+      rate,
+      lowBase: totalFinal > 0 && totalFinal < 10
+    };
   });
-  const maxCountRaw = Math.max(1, ...safeItems.map(r => r.totalFinal));
-  const niceCount = Math.max(5, Math.ceil(maxCountRaw / 5) * 5);
-  const totalNumerator = safeItems.reduce((sum,row)=>sum+row.numerator,0);
-  const totalBase = safeItems.reduce((sum,row)=>sum+row.totalFinal,0);
-  const overallRate = totalBase ? (totalNumerator / totalBase * 100) : 0;
-  const validForPeak = safeItems.filter(row => row.rate !== null && row.totalFinal >= 10);
-  const fallbackPeak = safeItems.filter(row => row.rate !== null);
-  const peak = (validForPeak.length ? validForPeak : fallbackPeak).slice().sort((a,b)=>(b.rate??-1)-(a.rate??-1))[0] || null;
-  const w=1260,h=560,left=88,right=88,top=82,bottom=100;
-  const chartW=w-left-right, chartH=h-top-bottom;
-  const x=i=>left+chartW*(i+.5)/12;
-  const yCount=v=>top+chartH-(Number(v||0)/niceCount)*chartH;
-  const yRate=v=>top+chartH-(Math.max(0,Math.min(100,Number(v||0)))/100)*chartH;
-  const totalBarW=Math.min(50,chartW/18);
-  const numeratorBarW=Math.max(18,totalBarW*0.58);
-  const grid=[0,.25,.5,.75,1].map(frac=>{const count=Math.round(niceCount*frac),yy=top+chartH-chartH*frac;return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e8eff5" stroke-width="1.4"/><text x="${left-14}" y="${yy+5}" text-anchor="end" font-size="13" fill="#8095a7">${count.toLocaleString()}</text><text x="${w-right+14}" y="${yy+5}" font-size="13" fill="#8095a7">${Math.round(100*frac)}%</text>`}).join('');
 
-  const lineSegments=[];
-  let current=[];
-  safeItems.forEach((row,i)=>{
-    if(row.rate===null){ if(current.length){lineSegments.push(current);current=[];} return; }
-    current.push({i,row});
-  });
-  if(current.length) lineSegments.push(current);
-  const linePaths=lineSegments.map(seg=>`<path d="${seg.map((p,j)=>`${j===0?'M':'L'}${x(p.i).toFixed(1)},${yRate(p.row.rate).toFixed(1)}`).join(' ')}" fill="none" stroke="${lineColor}" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
+  const validRows = safeItems.filter(row => row.totalFinal > 0);
+  const maxCount = Math.max(1, ...safeItems.map(row => Math.max(row.totalFinal, row.numerator)));
+  const yMax = Math.max(8, Math.ceil(maxCount / 5) * 5);
+  const sumNumerator = validRows.reduce((sum, row) => sum + row.numerator, 0);
+  const sumTotal = validRows.reduce((sum, row) => sum + row.totalFinal, 0);
+  const overallRate = sumTotal ? (sumNumerator / sumTotal) * 100 : 0;
+  const peak = validRows.filter(row => !row.lowBase).sort((a, b) => (b.rate - a.rate) || (b.totalFinal - a.totalFinal))[0] || validRows[0] || null;
 
-  const bars=safeItems.map((row,i)=>{
-    const cx=x(i), totalY=yCount(row.totalFinal), totalH=Math.max(0,top+chartH-totalY), numY=yCount(row.numerator), numH=Math.max(0,top+chartH-numY);
-    const pointY=row.rate===null?null:yRate(row.rate), lowBase=row.totalFinal>0 && row.totalFinal<10;
-    return `<rect x="${cx-totalBarW/2}" y="${totalY}" width="${totalBarW}" height="${Math.max(row.totalFinal?4:0,totalH)}" rx="12" fill="${totalColor}"></rect>
-      <rect x="${cx-numeratorBarW/2}" y="${numY}" width="${numeratorBarW}" height="${Math.max(row.numerator?4:0,numH)}" rx="10" fill="${barColor}"></rect>
-      ${row.totalFinal>0 ? `<text x="${cx}" y="${Math.max(top+12,totalY-9)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#47657b">${row.numerator.toLocaleString()}/${row.totalFinal.toLocaleString()}</text>` : ''}
-      ${row.rate!==null ? `<circle cx="${cx}" cy="${pointY}" r="${lowBase?6:5}" fill="#fff" stroke="${lowBase?lowBaseColor:lineColor}" stroke-width="${lowBase?3.5:3}"></circle><text x="${cx}" y="${Math.max(top+14,pointY-12)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="${lowBase?lowBaseColor:lineColor}">${row.rate.toFixed(1)}%</text>${lowBase?`<text x="${cx}" y="${Math.min(top+chartH-10,pointY+22)}" text-anchor="middle" font-size="10.5" fill="${lowBaseColor}">n=${row.totalFinal}</text>`:''}` : ''}
-      <text x="${cx}" y="${h-42}" text-anchor="middle" font-size="13.5" font-weight="600" fill="#5e7589">${monthNames[i]}</text>`;
+  const w = 1260, h = 560, left = 84, right = 60, top = 70, bottom = 94;
+  const chartW = w - left - right;
+  const chartH = h - top - bottom;
+  const groupW = chartW / 12;
+  const gap = 8;
+  const totalBarW = Math.min(30, groupW * 0.28);
+  const numeratorBarW = Math.min(30, groupW * 0.28);
+  const yCount = value => top + chartH - (Math.max(0, Number(value || 0)) / yMax) * chartH;
+  const yRate = value => top + chartH - (Math.max(0, Math.min(100, Number(value || 0))) / 100) * chartH;
+  const xCenter = i => left + groupW * i + groupW / 2;
+
+  const grid = [0, 0.25, 0.5, 0.75, 1].map(frac => {
+    const yy = top + chartH - chartH * frac;
+    const countVal = Math.round(yMax * frac);
+    const rateVal = Math.round(100 * frac);
+    return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e8eff5" stroke-width="1.6"></line>
+      <text x="${left-14}" y="${yy+5}" text-anchor="end" font-size="13" fill="#8299ac">${countVal}</text>
+      <text x="${w-right+12}" y="${yy+5}" font-size="13" fill="#8299ac">${rateVal}%</text>`;
   }).join('');
-  const avgY=yRate(overallRate);
-  const peakText=peak ? `${monthNames[Math.max(0,peak.month-1)]} ${peak.rate.toFixed(1)}% (n=${peak.totalFinal})` : '—';
-  return `<svg class="kpi-exec-chart kpi-combo-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${title} รายเดือน">
+
+  const avgY = yRate(overallRate);
+  const bars = safeItems.map((row, i) => {
+    const cx = xCenter(i);
+    const totalX = cx - totalBarW - gap/2;
+    const numX = cx + gap/2;
+    const totalY = yCount(row.totalFinal);
+    const numY = yCount(row.numerator);
+    const totalH = Math.max(row.totalFinal > 0 ? 4 : 0, top + chartH - totalY);
+    const numH = Math.max(row.numerator > 0 ? 4 : 0, top + chartH - numY);
+    const higherY = Math.min(totalY, numY);
+    const badgeY = Math.max(top + 18, higherY - 38);
+    const badgeW = row.lowBase ? 54 : 48;
+    const badgeFill = row.lowBase ? '#fff7ea' : '#ffffff';
+    const badgeStroke = row.lowBase ? lowBaseColor : '#b9cfe0';
+    const badgeText = row.rate !== null ? `${row.rate.toFixed(1)}%${row.lowBase ? '*' : ''}` : '';
+    return `
+      <g>
+        <rect x="${totalX}" y="${totalY}" width="${totalBarW}" height="${totalH}" rx="9" fill="${totalColor}"></rect>
+        <rect x="${numX}" y="${numY}" width="${numeratorBarW}" height="${numH}" rx="9" fill="${barColor}"></rect>
+        ${row.totalFinal > 0 ? `<text x="${totalX + totalBarW/2}" y="${Math.max(top+14, totalY-8)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#7892a5">${row.totalFinal.toLocaleString()}</text>` : ''}
+        ${row.numerator > 0 ? `<text x="${numX + numeratorBarW/2}" y="${Math.max(top+14, numY-8)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#295b49">${row.numerator.toLocaleString()}</text>` : ''}
+        ${row.rate !== null ? `<line x1="${cx}" y1="${badgeY+24}" x2="${cx}" y2="${higherY-4}" stroke="${row.lowBase ? lowBaseColor : '#9ab2c7'}" stroke-width="1.8"></line>
+          <rect x="${cx-badgeW/2}" y="${badgeY}" width="${badgeW}" height="24" rx="12" fill="${badgeFill}" stroke="${badgeStroke}" stroke-width="1.8"></rect>
+          <text x="${cx}" y="${badgeY+16}" text-anchor="middle" font-size="11.5" font-weight="700" fill="${row.lowBase ? '#b87813' : '#2f5c84'}">${badgeText}</text>` : ''}
+        <text x="${cx}" y="${h-38}" text-anchor="middle" font-size="13.5" font-weight="600" fill="#5f7689">${monthNames[i]}</text>
+      </g>`;
+  }).join('');
+
+  return `<svg class="kpi-exec-chart kpi-grouped-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${title} รายเดือน">
     <rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#ffffff" stroke="#edf3f7"/>
-    <text x="${left}" y="34" font-size="17" font-weight="700" fill="#173b5d">${title}</text>
-    <text x="${left}" y="58" font-size="12.5" fill="#7890a4">แท่งสีอ่อน = ถุงที่จบผลลัพธ์ · แท่งสีเข้ม = ${isExpiry?'Expired':'Used'} · เส้น = ร้อยละ</text>
-    <g transform="translate(${w-right-430},34)"><rect x="0" y="-12" width="18" height="12" rx="4" fill="${totalColor}"/><text x="25" y="-2" font-size="12" fill="#466277">ฐานทั้งหมด</text><rect x="102" y="-12" width="18" height="12" rx="4" fill="${barColor}"/><text x="127" y="-2" font-size="12" fill="#466277">${isExpiry?'Expired':'Used'}</text><line x1="210" y1="-6" x2="242" y2="-6" stroke="${lineColor}" stroke-width="4"/><circle cx="226" cy="-6" r="4" fill="#fff" stroke="${lineColor}" stroke-width="2.5"/><text x="250" y="-2" font-size="12" fill="#466277">ร้อยละ</text><circle cx="326" cy="-6" r="5" fill="#fff" stroke="${lowBaseColor}" stroke-width="3"/><text x="338" y="-2" font-size="12" fill="#466277">ฐาน &lt;10</text></g>
+    <text x="${left}" y="36" font-size="18" font-weight="700" fill="#183b5d">${title}</text>
+    <g transform="translate(${w-right-290},34)">
+      <rect x="0" y="-11" width="16" height="12" rx="4" fill="${totalColor}"/>
+      <text x="22" y="-1" font-size="12" fill="#587082">จบผลลัพธ์</text>
+      <rect x="98" y="-11" width="16" height="12" rx="4" fill="${barColor}"/>
+      <text x="120" y="-1" font-size="12" fill="#587082">${numeratorLabel}</text>
+      <line x1="184" y1="-5" x2="214" y2="-5" stroke="${avgColor}" stroke-width="3"></line>
+      <text x="220" y="-1" font-size="12" fill="#587082">ค่าเฉลี่ยทั้งช่วง</text>
+    </g>
     ${grid}
-    <line x1="${left}" y1="${avgY}" x2="${w-right}" y2="${avgY}" stroke="#9db3c7" stroke-width="2" stroke-dasharray="7 7"/>
-    <text x="${w-right-4}" y="${Math.max(top+14,avgY-7)}" text-anchor="end" font-size="11.5" fill="#6d8498">รวมทั้งช่วง ${overallRate.toFixed(1)}%</text>
-    <text x="${left}" y="${top-14}" font-size="12.5" fill="#7890a4">จำนวนถุง</text>
-    <text x="${w-right}" y="${top-14}" text-anchor="end" font-size="12.5" fill="#7890a4">ร้อยละ (%)</text>
-    ${linePaths}${bars}
-    <g transform="translate(${left},${h-82})"><text x="0" y="0" font-size="11.5" fill="#8095a7">ตัวเลขบนแท่ง = ${isExpiry?'Expired':'Used'}/ถุงที่จบผลลัพธ์</text><text x="280" y="0" font-size="11.5" fill="#8095a7">เดือนที่สูงสุด (ฐาน ≥10 ก่อน): ${peakText}</text></g>
+    <line x1="${left}" y1="${avgY}" x2="${w-right}" y2="${avgY}" stroke="${avgColor}" stroke-width="2.6"></line>
+    <rect x="${w-right-154}" y="${Math.max(top+8, avgY-30)}" width="142" height="24" rx="12" fill="#f5f8fb" stroke="#d5e0e8"></rect>
+    <text x="${w-right-83}" y="${Math.max(top+24, avgY-14)}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#5c7489">เฉลี่ย ${overallRate.toFixed(1)}%</text>
+    <text x="${left}" y="${top-16}" font-size="12.5" fill="#7b92a5">จำนวนถุง</text>
+    <text x="${w-right+8}" y="${top-16}" font-size="12.5" fill="#7b92a5">ร้อยละ</text>
+    ${bars}
+    <text x="${left}" y="${h-12}" font-size="11.5" fill="#8399ab">ตัวเลขบนแท่ง = จำนวนถุง · ตัวเลขด้านบน = ร้อยละรายเดือน${validRows.some(r => r.lowBase) ? ' · * ฐานข้อมูลน้อยกว่า 10 ถุง' : ''}</text>
   </svg>`;
 }
 
