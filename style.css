@@ -3552,3 +3552,18 @@ body {
 .kpi-fixed-filter strong{color:#214c70;line-height:1.35;}
 .kpi-fixed-filter small{color:#7a91a4;}
 .kpi-multi-select{min-height:92px;}
+
+/* v2.9.46 Executive KPI charts */
+.kpi-executive-panel{padding:24px 28px 28px; border:1px solid #e4edf4; box-shadow:0 12px 28px rgba(38,88,122,.06);}
+.kpi-exec-chart,.kpi-exec-bar-chart,.kpi-age-dist-chart{width:100%;height:auto;display:block;}
+.kpi-combo-chart{background:transparent;}
+.kpi-exec-chart{min-height:500px;}
+.kpi-exec-bar-chart{min-height:380px;}
+.kpi-current-aging-note{display:flex;flex-direction:column;gap:8px;justify-content:center;min-height:240px;padding:28px;border-radius:20px;background:#f7fbfe;border:1px solid #e0ebf3; box-shadow: inset 0 1px 0 rgba(255,255,255,.8);}
+.kpi-current-aging-note strong{font-size:2.8rem;line-height:1;color:#295d7e;}
+.kpi-current-aging-note span{color:#678095;line-height:1.6;}
+@media (max-width: 900px){
+  .kpi-executive-panel{padding:16px;}
+  .kpi-exec-chart{min-height:340px;}
+  .kpi-exec-bar-chart{min-height:280px;}
+}

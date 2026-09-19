@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260918-v2-9-44-multi-select-filters";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260919-v2-9-46-executive-combo-chart-polish";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -3358,11 +3358,11 @@ function renderKpiFilterGate(route, bootstrap, preset = {}) {
     expiry: ['อัตราโลหิตหมดอายุ','เลือกปีและตัวกรองก่อน แล้วค่อยคำนวณ KPI'],
     trc: ['อัตราพึ่งพากาชาด Routine','เลือกปีก่อน ระบบจึงคำนวณ TRC / Rare / Routine'],
     turnaround: ['ระยะเวลาหมุนเวียนเลือด','เลือกช่วงข้อมูลก่อน เพื่อไม่ต้องโหลด Bag family ทั้งฐาน'],
-    aging: ['เลือดคงคลังอายุมาก','เลือกขอบเขตข้อมูลก่อน แล้วค่อยโหลดรายละเอียดคงคลัง'],
+    aging: ['อายุเลือดก่อนถูกใช้รายเดือน','เลือกปีและตัวกรองก่อน แล้วดูว่าเลือดที่รับเข้าแต่ละเดือนค้างก่อนใช้กี่วัน'],
     outreach: ['ประสิทธิผลเลือดจากการออกหน่วย','เลือกปีและจุดออกหน่วยก่อน แล้วค่อยคำนวณ'],
     minimum: ['Minimum Stock','เลือกมุมมองก่อน แล้วค่อยโหลดข้อมูลสต็อกล่าสุด']
   }[route] || ['KPI เลือด','เลือกตัวกรองก่อนแสดงผล'];
-  const requireYear = !['aging','minimum'].includes(route);
+  const requireYear = route !== 'minimum';
   const showDetailFilters = !['trc','minimum'].includes(route);
   const selectedYear = String(preset.year || '');
   const yearOptions = `<option value="">กรุณาเลือกปี</option>` + years.map(y => `<option value="${y}" ${String(y)===selectedYear?'selected':''}>${y+543}</option>`).join('');
@@ -3429,7 +3429,7 @@ function applyBloodKpiFilters(route) {
   const selection = readBloodKpiFilterGate(route);
   if (route === 'minimum') {
     if (selection.mode !== 'today') return showModal('error','กรุณาเลือกข้อมูล','กรุณาเลือก “สต็อกวันนี้” ก่อนกดแสดงผล');
-  } else if (route !== 'aging' && !selection.year) {
+  } else if (!selection.year) {
     return showModal('error','กรุณาเลือกปี','เลือกปีที่ต้องการดูก่อน แล้วกดแสดงผล');
   }
   bloodKpiFilterSelections.set(route, selection);
@@ -3454,7 +3454,7 @@ function renderKpiOverview({ dependency, analysis, year }) {
     <div class="kpi-overview-links">
       ${[
         ['turnaround','ระยะเวลารับเข้า → ใช้','ดู Median และแยกตามแหล่งเลือด'],
-        ['aging','เลือดค้างนาน','ดู RBC ที่ค้างในคลังตามเกณฑ์'],
+        ['aging','อายุเลือดก่อนถูกใช้','ดู Median วันค้างก่อนใช้รายเดือน + คงคลังอายุมากวันนี้'],
         ['outreach','ประสิทธิผลออกหน่วย','ดูภาพรวมและรายจุดออกหน่วย'],
         ['minimum','Minimum Stock','ดูรายการต่ำกว่า Minimum วันนี้']
       ].map(([route,title,sub])=>`<button class="kpi-overview-link" onclick="openKpiRoute('${route}',null,event)"><strong>${title}</strong><span>${sub}</span><b>›</b></button>`).join('')}
@@ -3521,11 +3521,11 @@ function renderDeferredKpiPanel(route, year, dependency) {
       bullets: ['ใช้ค่า Median เพื่อลดผลกระทบจากค่าผิดปกติ', 'เหมาะดูร่วมกับ KPI หมดอายุ', 'เปิดโหลดเมื่อพร้อมดูรายละเอียด']
     },
     aging: {
-      title: 'เลือดคงคลังอายุมาก (RBC ≥ 21 วัน)',
-      subtitle: 'ใช้เป็นสัญญาณเตือนล่วงหน้าก่อนจะเกิด Expired จริง',
+      title: 'อายุเลือดก่อนถูกใช้รายเดือน',
+      subtitle: 'ดูถุงที่รับเข้าในแต่ละเดือนว่าค้างอยู่กี่วันก่อนถูกใช้/จ่าย',
       hintTitle: 'อ่านค่านี้อย่างไร',
-      hintText: 'ค่ายิ่งต่ำยิ่งดี เพราะหมายถึงเลือดคงคลังอายุมากมีสัดส่วนน้อย',
-      bullets: ['เป็นมุมมองคงคลังปัจจุบัน', 'ช่วยจัดลำดับการใช้ก่อนหมดอายุ', 'ไม่ควรตีความแทน KPI หมดอายุ']
+      hintText: 'ใช้ Median วันรับเข้า → ใช้ แยกรายเดือน ค่ายิ่งต่ำหมายถึงเลือดหมุนเวียนเร็วกว่า',
+      bullets: ['แสดงเดือนที่รับเข้าเป็นแกนหลัก', 'ดู Median เพื่อลดผลของค่าผิดปกติ', 'คงคลังอายุมาก ณ วันนี้จะแสดงเป็นข้อมูลรอง']
     },
     outreach: {
       title: 'ประสิทธิผลเลือดจากการออกหน่วย',
@@ -3557,18 +3557,23 @@ function renderKpiUtilization({ analysis, trend, dependency, year }) {
   const groups = groupKpiRatesFromAnalysis(analysis).sort((a,b)=>b.utilizationRate-a.utilizationRate);
   const monthly = trendToOutcomeRows(trend);
   const topGroup = getKpiTopRow(groups, 'utilizationRate');
-  const peakMonth = getKpiPeakMonth(monthly, 'used');
+  const peakMonth = getKpiPeakMonth(monthly, 'utilizationRate');
   currentBloodKpiRouteData = { route:'utilization', year, rate, groups, monthly };
-  return `${kpiPageHeader('อัตราการใช้ประโยชน์จากโลหิต','ยิ่งสูงยิ่งดี · ดูว่าเลือดที่รับเข้ามา ถูกใช้จริงมากน้อยเพียงใด',year,dependency?.years||trend?.years||[])}
-    ${renderKpiReadStrip('อ่านค่านี้อย่างไร', 'คำนวณจาก Used ÷ (Used + Expired) โดยตัด Rejected และการทำลายด้วยเหตุอื่นออก เพื่อให้เปรียบเทียบได้ตรง', 'good')}
+  const monthNames=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  return `${kpiPageHeader('อัตราการใช้ประโยชน์จากโลหิต','ยิ่งสูงยิ่งดี · ดูทั้งจำนวนถุงที่ใช้จริง และร้อยละการใช้ประโยชน์ในภาพเดียว',year,dependency?.years||trend?.years||[])}
+    ${renderKpiReadStrip('อ่านค่านี้อย่างไร', 'กราฟหลักใช้ “แท่ง + เส้น” โดยแท่งคือจำนวน Used ส่วนเส้นคือ % Utilization ช่วยให้เห็นพร้อมกันว่าเดือนใดใช้มาก และเดือนใดใช้ได้คุ้มค่าที่สุด', 'good')}
     ${renderKpiQuickCards([
-      { label:'อัตราการใช้ประโยชน์', value:`${rate.toFixed(1)}%`, note:`${Number(summary.used||0).toLocaleString()} / ${finalBase.toLocaleString()} ถุงที่จบผลลัพธ์แล้ว`, tone:'is-good' },
-      topGroup ? { label:'แหล่งเลือดที่ใช้ประโยชน์ดีที่สุด', value:`${topGroup.label}`, note:`${topGroup.utilizationRate.toFixed(1)}% จาก ${topGroup.totalFinal.toLocaleString()} ถุง`, tone:'' } : null,
-      peakMonth ? { label:'เดือนที่ใช้เลือดมากที่สุด', value:`${['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(peakMonth.month||0)] || '-'}`, note:`Used ${Number(peakMonth.used||0).toLocaleString()} ถุง`, tone:'' } : null
+      { label:'อัตราการใช้ประโยชน์', value:`${rate.toFixed(1)}%`, note:`Used ${Number(summary.used||0).toLocaleString()} จาก ${finalBase.toLocaleString()} ถุงที่จบผลลัพธ์`, tone:'is-good' },
+      topGroup ? { label:'แหล่งเลือดที่ใช้ประโยชน์สูงสุด', value:`${topGroup.label}`, note:`${topGroup.utilizationRate.toFixed(1)}% · ${topGroup.totalFinal.toLocaleString()} ถุง`, tone:'' } : null,
+      peakMonth ? { label:'เดือนที่ใช้ประโยชน์สูงสุด', value:monthNames[Number(peakMonth.month||0)] || '-', note:`${Number(peakMonth.utilizationRate||0).toFixed(1)}% · Used ${Number(peakMonth.used||0).toLocaleString()} ถุง`, tone:'' } : null
     ])}
-    <div class="kpi-two-chart-grid">
-      <div class="simple-panel"><div class="panel-heading-row"><div><h3>แนวโน้มรายเดือน</h3><div class="small-muted">ดูจำนวน Used / Expired / ยังอยู่ในคลัง เพื่อเห็นภาพรวมทั้งปี</div></div></div>${renderBloodOutcomeMonthlySvg(monthly,year)}</div>
-      <div class="simple-panel"><div class="panel-heading-row"><div><h3>แหล่งเลือดใดถูกใช้จริงมากที่สุด</h3><div class="small-muted">เรียงจากอัตราการใช้ประโยชน์สูงสุด</div></div></div>${renderHorizontalBarChartSvg(groups,{valueKey:'utilizationRate',suffix:'%',color:'#68c3a3',max:100,sublabelKey:'totalFinal',sublabelSuffix:' ถุงจบผลลัพธ์'})}</div>
+    <div class="simple-panel kpi-executive-panel mb-3">
+      <div class="panel-heading-row"><div><h3>แนวโน้มการใช้ประโยชน์รายเดือน</h3><div class="small-muted">กราฟแท่งผสมเส้นสำหรับนำเสนอผู้บริหาร · มีตัวเลขกำกับครบทั้งจำนวนและร้อยละ</div></div></div>
+      ${renderExecutiveMonthlyRateChart(monthly, year, 'utilization')}
+    </div>
+    <div class="simple-panel kpi-executive-panel">
+      <div class="panel-heading-row"><div><h3>เปรียบเทียบตามกลุ่มแหล่งรับเข้า</h3><div class="small-muted">เรียงจากอัตราการใช้ประโยชน์สูงสุด เพื่อให้เห็นความแตกต่างระหว่างแหล่งเลือดทันที</div></div></div>
+      ${renderExecutiveHorizontalBars(groups,{valueKey:'utilizationRate',suffix:'%',color:'#53c29d',max:100,countKey:'totalFinal',countLabel:'ถุงจบผลลัพธ์'})}
     </div>`;
 }
 
@@ -3579,18 +3584,23 @@ function renderKpiExpiry({ analysis, trend, dependency, year }) {
   const groups = groupKpiRatesFromAnalysis(analysis).sort((a,b)=>b.expiredRate-a.expiredRate);
   const monthly = trendToOutcomeRows(trend);
   const topGroup = getKpiTopRow(groups, 'expiredRate');
-  const peakMonth = getKpiPeakMonth(monthly, 'expired');
+  const peakMonth = getKpiPeakMonth(monthly, 'expiredRate');
   currentBloodKpiRouteData = { route:'expiry', year, rate, groups, monthly };
-  return `${kpiPageHeader('อัตราโลหิตหมดอายุ','ยิ่งต่ำยิ่งดี · ใช้ดูว่ามีเลือดกี่ส่วนที่หมดอายุก่อนนำไปใช้',year,dependency?.years||trend?.years||[])}
-    ${renderKpiReadStrip('อ่านค่านี้อย่างไร', 'คำนวณจาก Expired ÷ (Used + Expired) เพื่อโฟกัสเฉพาะถุงที่จบผลลัพธ์แล้ว', 'alert')}
+  const monthNames=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  return `${kpiPageHeader('อัตราโลหิตหมดอายุ','ยิ่งต่ำยิ่งดี · ดูทั้งจำนวนถุงที่หมดอายุ และร้อยละที่เสียไปในแต่ละเดือน',year,dependency?.years||trend?.years||[])}
+    ${renderKpiReadStrip('อ่านค่านี้อย่างไร', 'กราฟหลักใช้ “แท่ง + เส้น” โดยแท่งคือจำนวน Expired ส่วนเส้นคือ % Expired ทำให้เห็นได้ชัดว่าเดือนไหนหมดอายุเยอะ และเดือนไหนมีความเสี่ยงสูงกว่าปกติ', 'alert')}
     ${renderKpiQuickCards([
-      { label:'อัตราโลหิตหมดอายุ', value:`${rate.toFixed(1)}%`, note:`${Number(summary.expired||0).toLocaleString()} / ${finalBase.toLocaleString()} ถุงที่จบผลลัพธ์แล้ว`, tone:'is-alert' },
-      topGroup ? { label:'แหล่งเลือดที่หมดอายุสูงสุด', value:`${topGroup.label}`, note:`${topGroup.expiredRate.toFixed(1)}% จาก ${topGroup.totalFinal.toLocaleString()} ถุง`, tone:'' } : null,
-      peakMonth ? { label:'เดือนที่ Expired สูงสุด', value:`${['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(peakMonth.month||0)] || '-'}`, note:`Expired ${Number(peakMonth.expired||0).toLocaleString()} ถุง`, tone:'' } : null
+      { label:'อัตราโลหิตหมดอายุ', value:`${rate.toFixed(1)}%`, note:`Expired ${Number(summary.expired||0).toLocaleString()} จาก ${finalBase.toLocaleString()} ถุงที่จบผลลัพธ์`, tone:'is-alert' },
+      topGroup ? { label:'แหล่งเลือดที่หมดอายุสูงสุด', value:`${topGroup.label}`, note:`${topGroup.expiredRate.toFixed(1)}% · ${topGroup.totalFinal.toLocaleString()} ถุง`, tone:'' } : null,
+      peakMonth ? { label:'เดือนที่หมดอายุสูงสุด', value:monthNames[Number(peakMonth.month||0)] || '-', note:`${Number(peakMonth.expiredRate||0).toFixed(1)}% · Expired ${Number(peakMonth.expired||0).toLocaleString()} ถุง`, tone:'' } : null
     ])}
-    <div class="kpi-two-chart-grid">
-      <div class="simple-panel"><div class="panel-heading-row"><div><h3>แหล่งเลือดใดมี Expired สูงสุด</h3><div class="small-muted">ช่วยชี้ว่าควรกลับไปดูการรับเข้าและการหมุนเวียนที่จุดใด</div></div></div>${renderHorizontalBarChartSvg(groups,{valueKey:'expiredRate',suffix:'%',color:'#f28b82',max:100,sublabelKey:'totalFinal',sublabelSuffix:' ถุงจบผลลัพธ์'})}</div>
-      <div class="simple-panel"><div class="panel-heading-row"><div><h3>แนวโน้มรายเดือน</h3><div class="small-muted">ดูเดือนที่ Expired สูงผิดปกติ แล้วค่อยไล่สาเหตุต่อ</div></div></div>${renderBloodOutcomeMonthlySvg(monthly,year)}</div>
+    <div class="simple-panel kpi-executive-panel mb-3">
+      <div class="panel-heading-row"><div><h3>แนวโน้มอัตราหมดอายุรายเดือน</h3><div class="small-muted">กราฟแท่งผสมเส้นสำหรับนำเสนอผู้บริหาร · มีตัวเลขกำกับครบทั้งจำนวนและร้อยละ</div></div></div>
+      ${renderExecutiveMonthlyRateChart(monthly, year, 'expiry')}
+    </div>
+    <div class="simple-panel kpi-executive-panel">
+      <div class="panel-heading-row"><div><h3>แหล่งเลือดใดมี Expired สูงสุด</h3><div class="small-muted">ใช้ชี้จุดที่ควรกลับไปทบทวนการรับเข้า ปริมาณสำรอง และการหมุนเวียน</div></div></div>
+      ${renderExecutiveHorizontalBars(groups,{valueKey:'expiredRate',suffix:'%',color:'#ee8a81',max:100,countKey:'totalFinal',countLabel:'ถุงจบผลลัพธ์'})}
     </div>`;
 }
 
@@ -3627,14 +3637,26 @@ function renderKpiTurnaround({ insights, dependency, year }) {
 }
 
 function renderKpiAging({ insights, dependency, year }) {
-  currentBloodKpiRouteData={route:'aging',year,rate:insights.longHeldRate,count:insights.longHeldCount,base:insights.longHeldBase};
-  return `${kpiPageHeader('เลือดคงคลังอายุมาก (RBC ≥ 21 วัน)','มุมมองคงคลังปัจจุบัน · ใช้เป็นสัญญาณเตือนล่วงหน้าก่อน Expired',year,dependency?.years||[], false)}
-    ${renderKpiReadStrip('อ่านค่านี้อย่างไร', 'ค่ายิ่งต่ำยิ่งดี เพราะหมายถึงสัดส่วนเลือดคงคลังอายุมากมีน้อย และยังหมุนเวียนได้ทัน', 'alert')}
+  const rows = Array.isArray(insights.monthlyAgeRows) ? insights.monthlyAgeRows : [];
+  const valid = rows.filter(r => Number.isFinite(r.medianDays) && Number(r.usedCount||0) > 0);
+  const longest = valid.length ? valid.slice().sort((a,b)=>Number(b.medianDays||0)-Number(a.medianDays||0))[0] : null;
+  const monthNames=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  currentBloodKpiRouteData={route:'aging',year,rate:insights.longHeldRate,count:insights.longHeldCount,base:insights.longHeldBase,monthlyAgeRows:rows,groups:rows};
+  return `${kpiPageHeader('อายุเลือดก่อนถูกใช้รายเดือน','ถุงที่รับเข้าในแต่ละเดือน ค้างอยู่กี่วันก่อนถูกใช้/จ่าย',year,dependency?.years||[])}
+    ${renderKpiReadStrip('ตัวอย่างการอ่าน', 'ถุงที่รับเข้าเดือน ก.ค. แล้วถูกใช้หลัง 30 วัน จะถูกนับเป็น 30 วันในเดือน ก.ค. กราฟใช้ Median ของทุกถุงที่รับเข้าเดือนนั้น', 'info')}
     ${renderKpiQuickCards([
-      { label:'RBC ค้างนาน ≥ 21 วัน', value:`${Number(insights.longHeldRate||0).toFixed(1)}%`, note:`${Number(insights.longHeldCount||0).toLocaleString()} / ${Number(insights.longHeldBase||0).toLocaleString()} ถุงที่ยังไม่จบผลลัพธ์`, tone:'is-alert' },
-      { label:'สิ่งที่ควรทำต่อ', value:'เร่งใช้ก่อน', note:'ใช้ร่วมกับหน้าใกล้หมดอายุ เพื่อจัดลำดับถุงที่จะใช้ก่อน', tone:'' }
+      { label:'Median ทั้งปี', value:Number.isFinite(insights.medianDaysToUse)?`${insights.medianDaysToUse} วัน`:'—', note:'รับเข้า → ใช้/จ่าย ของถุงที่ถูกใช้แล้ว', tone:'' },
+      longest ? { label:'เดือนที่ค้างก่อนใช้นานที่สุด', value:monthNames[Number(longest.month||0)] || '-', note:`Median ${Number(longest.medianDays||0).toFixed(1)} วัน · ${Number(longest.usedCount||0).toLocaleString()} ถุง`, tone:'is-alert' } : null,
+      { label:'คงคลังอายุมาก ณ วันนี้', value:`${Number(insights.longHeldRate||0).toFixed(1)}%`, note:`RBC ≥ 21 วัน ${Number(insights.longHeldCount||0).toLocaleString()} / ${Number(insights.longHeldBase||0).toLocaleString()} ถุง`, tone:'' }
     ])}
-    <div class="attention-strip"><div><strong>หมายเหตุสำคัญ</strong><span> KPI นี้ไม่ใช่ Expired โดยตรง แต่เป็น Early Warning เพื่อป้องกันการหมดอายุในอนาคต</span></div></div>`;
+    <div class="simple-panel kpi-executive-panel mb-3">
+      <div class="panel-heading-row"><div><h3>Median วันค้างก่อนใช้ แยกตามเดือนที่รับเข้า</h3><div class="small-muted">เส้นและตัวเลขบอกจำนวนวันที่เลือดค้างก่อนถูกใช้ · ใต้เดือนแสดงจำนวนถุงที่นำมาคำนวณ</div></div></div>
+      ${renderMonthlyAgeExecutiveSvg(rows,year)}
+    </div>
+    <div class="kpi-two-chart-grid">
+      <div class="simple-panel"><div class="panel-heading-row"><div><h3>สัดส่วนช่วงอายุเลือดก่อนใช้</h3><div class="small-muted">ช่วยดูว่าถุงส่วนใหญ่ถูกใช้ภายในกี่วัน</div></div></div>${renderAgeDistributionSvg(insights.ageDistribution||{})}</div>
+      <div class="simple-panel"><div class="panel-heading-row"><div><h3>คงคลังอายุมาก ณ วันนี้</h3><div class="small-muted">เป็น Early Warning ปัจจุบัน ไม่ใช่ผลย้อนหลังรายเดือน</div></div></div><div class="kpi-current-aging-note"><strong>${Number(insights.longHeldCount||0).toLocaleString()} ถุง</strong><span>RBC ที่ยังอยู่ในคลังและมีอายุ ≥ 21 วัน จาก ${Number(insights.longHeldBase||0).toLocaleString()} ถุงที่ยังไม่จบผลลัพธ์</span></div></div>
+    </div>`;
 }
 
 function renderKpiOutreach({ insights, dependency, year }) {
@@ -3712,14 +3734,52 @@ async function loadBloodKpiPage(year = null, route = null, options = {}) {
   }
 }
 
+function downloadPrimaryKpiSvgAsPng(data) {
+  const svg = document.querySelector('#bloodKpiDashboard .kpi-exec-chart');
+  if (!svg) return false;
+  try {
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+    const svgText = new XMLSerializer().serializeToString(clone);
+    const blob = new Blob([svgText], { type:'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 2000; canvas.height = 1320;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      const titles={utilization:'อัตราการใช้ประโยชน์จากโลหิต',expiry:'อัตราโลหิตหมดอายุ',aging:'อายุเลือดก่อนถูกใช้รายเดือน'};
+      ctx.fillStyle='#173b5d'; ctx.font='700 44px sans-serif'; ctx.fillText(titles[data.route]||'KPI เลือด',70,72);
+      ctx.fillStyle='#7890a4'; ctx.font='400 20px sans-serif'; ctx.fillText(`Blood Stock CNMI · ปี ${Number(data.year||new Date().getFullYear())+543}`,70,110);
+      let headline='';
+      if(data.route==='utilization') headline=`อัตราการใช้ประโยชน์ ${Number(data.rate||0).toFixed(1)}%`;
+      if(data.route==='expiry') headline=`อัตราโลหิตหมดอายุ ${Number(data.rate||0).toFixed(1)}%`;
+      if(data.route==='aging') headline='Median วันรับเข้า → ใช้ แยกรายเดือน';
+      ctx.fillStyle='#36556f'; ctx.font='700 30px sans-serif'; ctx.fillText(headline,70,162);
+      const targetW=1860, targetH=1000;
+      const scale=Math.min(targetW/image.width,targetH/image.height);
+      const dw=image.width*scale, dh=image.height*scale;
+      ctx.drawImage(image,70,205,dw,dh);
+      ctx.fillStyle='#8ca0b2'; ctx.font='400 16px sans-serif'; ctx.fillText(`Export ${new Date().toLocaleDateString('th-TH')} · พร้อมใช้ใน PowerPoint / Canva`,70,1270);
+      const a=document.createElement('a'); a.download=`blood-kpi-${data.route}-${new Date().toISOString().slice(0,10)}.png`; a.href=canvas.toDataURL('image/png'); a.click();
+      URL.revokeObjectURL(url);
+    };
+    image.onerror = () => URL.revokeObjectURL(url);
+    image.src = url;
+    return true;
+  } catch (_) { return false; }
+}
+
 function downloadCurrentKpiPng() {
   const data = currentBloodKpiRouteData || {};
+  if (['utilization','expiry','aging'].includes(data.route) && downloadPrimaryKpiSvgAsPng(data)) return;
   const canvas = document.createElement('canvas');
   canvas.width = 1600; canvas.height = 900;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle='#ffffff';ctx.fillRect(0,0,1600,900);
   ctx.fillStyle='#173b5d';ctx.font='700 38px sans-serif';
-  const titles={overview:'ภาพรวม KPI เลือด',utilization:'อัตราการใช้ประโยชน์จากโลหิต',expiry:'อัตราโลหิตหมดอายุ',trc:'อัตราพึ่งพากาชาด Routine',turnaround:'ระยะเวลารับเข้า → ใช้',aging:'อัตราเลือดค้างนาน',outreach:'ประสิทธิผลเลือดจากการออกหน่วย',minimum:'Minimum Stock'};
+  const titles={overview:'ภาพรวม KPI เลือด',utilization:'อัตราการใช้ประโยชน์จากโลหิต',expiry:'อัตราโลหิตหมดอายุ',trc:'อัตราพึ่งพากาชาด Routine',turnaround:'ระยะเวลารับเข้า → ใช้',aging:'อายุเลือดก่อนถูกใช้รายเดือน',outreach:'ประสิทธิผลเลือดจากการออกหน่วย',minimum:'Minimum Stock'};
   ctx.fillText(titles[data.route]||'KPI เลือด',60,65);
   ctx.fillStyle='#7890a4';ctx.font='400 18px sans-serif';ctx.fillText(`ปี ${Number(data.year||new Date().getFullYear())+543} · Blood Stock CNMI`,60,98);
   const cards=[];
@@ -3728,7 +3788,7 @@ function downloadCurrentKpiPng() {
   if(data.route==='expiry') cards.push(['หมดอายุ',`${Number(data.rate||0).toFixed(1)}%`]);
   if(data.route==='trc') cards.push(['พึ่งพารวม',`${Number(data.overall||0).toFixed(1)}%`],['Routine',`${Number(data.adjusted||0).toFixed(1)}%`],['Rare/Ag',`${Number(data.rare||0).toLocaleString()} ถุง`]);
   if(data.route==='turnaround') cards.push(['Median รับเข้า→ใช้',`${Number.isFinite(data.value)?data.value:'—'} วัน`]);
-  if(data.route==='aging') cards.push(['RBC ค้าง ≥21 วัน',`${Number(data.rate||0).toFixed(1)}%`]);
+  if(data.route==='aging') cards.push(['คงคลังอายุมากวันนี้',`${Number(data.rate||0).toFixed(1)}%`]);
   if(data.route==='outreach') cards.push(['ประสิทธิผลรวม',`${Number(data.rate||0).toFixed(1)}%`]);
   if(data.route==='minimum') cards.push(['ต่ำกว่า Minimum วันนี้',`${(data.rows||[]).length} รายการ`]);
   cards.forEach((c,i)=>{const x=60+i*390,y=140;ctx.fillStyle='#f7fbfe';ctx.strokeStyle='#dce8f2';ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(x,y,350,130,18);ctx.fill();ctx.stroke();ctx.fillStyle='#6f8598';ctx.font='400 18px sans-serif';ctx.fillText(c[0],x+20,y+35);ctx.fillStyle='#173b5d';ctx.font='700 38px sans-serif';ctx.fillText(c[1],x+20,y+90);});
@@ -3863,13 +3923,52 @@ function buildBloodKpiInsights({ dependency, analysis, familyRows, dashboard, ye
   const daysToUse = usedFamilies.map(f => diffBloodKpiDays(f.cohortDate || f.stockInDate, f.finalDate)).filter(v => Number.isFinite(v));
   const medianDaysToUse = medianBloodKpi(daysToUse);
 
-  const unresolvedRbc = aggregated.filter(f => f.isRbc && f.outcomeCode === 'unresolved');
+  const unresolvedRbc = analyticFamilies.filter(f => f.isRbc && f.outcomeCode === 'unresolved');
   const agedThreshold = 21;
   const agedRbc = unresolvedRbc.filter(f => {
     const days = diffBloodKpiDays(f.cohortDate || f.stockInDate, today.toISOString().slice(0,10));
     return Number.isFinite(days) && days >= agedThreshold;
   });
   const longHeldRate = unresolvedRbc.length ? outreachPercent(agedRbc.length, unresolvedRbc.length) : 0;
+
+  // v2.9.46: ปรับกราฟ KPI แบบแท่งผสมเส้นให้สวยและอ่านง่ายขึ้น
+  // ตัวอย่าง: ถุงรับเข้าเดือน ก.ค. แล้วถูกใช้หลัง 30 วัน -> นับ 30 วันในเดือน ก.ค.
+  const monthlyAgeBuckets = new Map(Array.from({ length: 12 }, (_, i) => [i + 1, {
+    month: i + 1, days: [], usedCount: 0, within7: 0, day8to14: 0, day15to21: 0, over21: 0
+  }]));
+  usedFamilies.forEach(f => {
+    const receivedDate = parseBloodKpiDate(f.cohortDate || f.stockInDate);
+    if (!receivedDate || receivedDate.getFullYear() !== Number(year)) return;
+    const days = diffBloodKpiDays(f.cohortDate || f.stockInDate, f.finalDate);
+    if (!Number.isFinite(days)) return;
+    const bucket = monthlyAgeBuckets.get(receivedDate.getMonth() + 1);
+    if (!bucket) return;
+    bucket.days.push(days);
+    bucket.usedCount += 1;
+    if (days <= 7) bucket.within7 += 1;
+    else if (days <= 14) bucket.day8to14 += 1;
+    else if (days <= 21) bucket.day15to21 += 1;
+    else bucket.over21 += 1;
+  });
+  const monthlyAgeRows = Array.from(monthlyAgeBuckets.values()).map(bucket => {
+    const avg = bucket.days.length ? bucket.days.reduce((sum, v) => sum + v, 0) / bucket.days.length : null;
+    return {
+      month: bucket.month,
+      usedCount: bucket.usedCount,
+      medianDays: medianBloodKpi(bucket.days),
+      averageDays: Number.isFinite(avg) ? Number(avg.toFixed(1)) : null,
+      within7: bucket.within7,
+      day8to14: bucket.day8to14,
+      day15to21: bucket.day15to21,
+      over21: bucket.over21
+    };
+  });
+  const ageDistribution = {
+    within7: monthlyAgeRows.reduce((sum, r) => sum + Number(r.within7 || 0), 0),
+    day8to14: monthlyAgeRows.reduce((sum, r) => sum + Number(r.day8to14 || 0), 0),
+    day15to21: monthlyAgeRows.reduce((sum, r) => sum + Number(r.day15to21 || 0), 0),
+    over21: monthlyAgeRows.reduce((sum, r) => sum + Number(r.over21 || 0), 0)
+  };
 
   const sourceGroupMap = new Map();
   analyticFamilies.forEach(f => {
@@ -3957,6 +4056,8 @@ function buildBloodKpiInsights({ dependency, analysis, familyRows, dashboard, ye
     longHeldRate,
     longHeldCount: agedRbc.length,
     longHeldBase: unresolvedRbc.length,
+    monthlyAgeRows,
+    ageDistribution,
     outreachEffectiveness,
     sourceGroupRates,
     outreachEffectRows: outreachEffectRows.slice(0, 10),
@@ -4080,6 +4181,103 @@ function renderBloodKpiPage(data) {
         </div>
       </div>
     </div>`;
+}
+
+function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
+  const items = Array.isArray(rows) ? rows : [];
+  const isExpiry = mode === 'expiry';
+  const countKey = isExpiry ? 'expired' : 'used';
+  const rateKey = isExpiry ? 'expiredRate' : 'utilizationRate';
+  const barColor = isExpiry ? '#ee8a81' : '#53c29d';
+  const barGlow = isExpiry ? '#f8c6bf' : '#bfead9';
+  const lineColor = isExpiry ? '#c9534d' : '#2f7fc1';
+  const lineGlow = isExpiry ? '#f7d4cf' : '#d7ebfb';
+  const title = isExpiry ? 'จำนวน Expired + อัตราหมดอายุ' : 'จำนวน Used + อัตราการใช้ประโยชน์';
+  const monthNames=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const safeItems = Array.from({length:12}, (_, idx) => ({
+    month: idx + 1,
+    [countKey]: Number(items.find(row => Number(row?.month||0) === idx + 1)?.[countKey] || 0),
+    [rateKey]: Number(items.find(row => Number(row?.month||0) === idx + 1)?.[rateKey] || 0)
+  }));
+  const maxCountRaw = Math.max(1, ...safeItems.map(r => Number(r?.[countKey] || 0)));
+  const niceCount = Math.max(5, Math.ceil(maxCountRaw / 5) * 5);
+  const avgRate = safeItems.reduce((sum,row) => sum + Number(row?.[rateKey] || 0), 0) / safeItems.length;
+  const peak = safeItems.slice().sort((a,b)=>Number(b?.[rateKey]||0)-Number(a?.[rateKey]||0))[0] || null;
+  const totalCount = safeItems.reduce((sum,row)=>sum+Number(row?.[countKey]||0),0);
+  const w=1260,h=620,left=92,right=92,top=116,bottom=118;
+  const chartW=w-left-right, chartH=h-top-bottom;
+  const x=i=>left+chartW*(i+.5)/12;
+  const yCount=v=>top+chartH-(Number(v||0)/niceCount)*chartH;
+  const yRate=v=>top+chartH-(Math.max(0,Math.min(100,Number(v||0)))/100)*chartH;
+  const barW=Math.min(52,chartW/18);
+  const grid=[0,.25,.5,.75,1].map(frac=>{const count=Math.round(niceCount*frac),yy=top+chartH-chartH*frac;return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e7eef4" stroke-width="1.5"/><text x="${left-16}" y="${yy+5}" text-anchor="end" font-size="14" fill="#7b92a6">${count.toLocaleString()}</text><text x="${w-right+16}" y="${yy+5}" font-size="14" fill="#7b92a6">${Math.round(100*frac)}%</text>`}).join('');
+  const linePath=safeItems.map((r,i)=>`${i===0?'M':'L'}${x(i).toFixed(1)},${yRate(r?.[rateKey]).toFixed(1)}`).join(' ');
+  const bars=safeItems.map((r,i)=>{
+    const count=Number(r?.[countKey]||0), rate=Number(r?.[rateKey]||0), cx=x(i), bx=cx-barW/2, by=yCount(count), bh=Math.max(0, top+chartH-by), py=yRate(rate);
+    return `<rect x="${bx}" y="${by}" width="${barW}" height="${Math.max(4,bh)}" rx="16" fill="url(#comboBarGradient)" filter="url(#softShadow)"></rect>
+      ${count>0 ? `<g transform="translate(${cx},${Math.max(top+18, by-18)})"><rect x="-24" y="-14" width="48" height="22" rx="11" fill="#ffffff" stroke="#dbe7ef"/><text x="0" y="2" text-anchor="middle" font-size="12" font-weight="700" fill="#35556f">${count.toLocaleString()}</text></g>` : ''}
+      <circle cx="${cx}" cy="${py}" r="7" fill="#ffffff" stroke="${lineColor}" stroke-width="4"></circle>
+      <g transform="translate(${cx},${Math.max(top+20, py-26)})"><rect x="-26" y="-14" width="52" height="22" rx="11" fill="${lineGlow}"/><text x="0" y="2" text-anchor="middle" font-size="12" font-weight="700" fill="${lineColor}">${rate.toFixed(1)}%</text></g>
+      <text x="${cx}" y="${h-48}" text-anchor="middle" font-size="14" font-weight="600" fill="#597288">${monthNames[i]}</text>`;
+  }).join('');
+  const avgY=yRate(avgRate);
+  const peakText=peak ? `${monthNames[Math.max(0,Number(peak.month||1)-1)]} ${Number(peak?.[rateKey]||0).toFixed(1)}%` : '-';
+  return `<svg class="kpi-exec-chart kpi-combo-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${title} รายเดือน">
+    <defs>
+      <linearGradient id="comboBarGradient" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${barGlow}"/>
+        <stop offset="100%" stop-color="${barColor}"/>
+      </linearGradient>
+      <filter id="softShadow" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#cddae6" flood-opacity="0.45"/></filter>
+    </defs>
+    <rect x="10" y="10" width="${w-20}" height="${h-20}" rx="28" fill="#ffffff" stroke="#edf3f7"/>
+    <text x="${left}" y="40" font-size="18" font-weight="700" fill="#173b5d">${title}</text>
+    <text x="${left}" y="66" font-size="13" fill="#7890a4">แท่ง = จำนวนถุง · เส้น = ร้อยละ · ปี ${year+543}</text>
+    <g transform="translate(${w-right-380},34)"><rect x="0" y="-14" width="18" height="12" rx="5" fill="url(#comboBarGradient)"/><text x="26" y="-4" font-size="13" fill="#35556f">${isExpiry?'Expired':'Used'}</text><line x1="120" y1="-8" x2="154" y2="-8" stroke="${lineColor}" stroke-width="4"/><circle cx="137" cy="-8" r="4.5" fill="#fff" stroke="${lineColor}" stroke-width="3"/><text x="164" y="-4" font-size="13" fill="#35556f">${isExpiry?'อัตราหมดอายุ':'อัตราใช้ประโยชน์'}</text><line x1="308" y1="-8" x2="340" y2="-8" stroke="#9db3c7" stroke-width="2.5" stroke-dasharray="7 7"/><text x="350" y="-4" font-size="13" fill="#35556f">ค่าเฉลี่ย</text></g>
+    <g transform="translate(${left},78)"><rect x="0" y="0" width="236" height="60" rx="16" fill="#f7fbfe" stroke="#e4edf4"/><text x="18" y="22" font-size="12" fill="#7b92a6">จำนวนทั้งปี</text><text x="18" y="46" font-size="24" font-weight="700" fill="#173b5d">${totalCount.toLocaleString()} ถุง</text></g>
+    <g transform="translate(${left+250},78)"><rect x="0" y="0" width="236" height="60" rx="16" fill="#f7fbfe" stroke="#e4edf4"/><text x="18" y="22" font-size="12" fill="#7b92a6">ค่าเฉลี่ยรายเดือน</text><text x="18" y="46" font-size="24" font-weight="700" fill="#173b5d">${avgRate.toFixed(1)}%</text></g>
+    <g transform="translate(${left+500},78)"><rect x="0" y="0" width="300" height="60" rx="16" fill="#f7fbfe" stroke="#e4edf4"/><text x="18" y="22" font-size="12" fill="#7b92a6">จุดสูงสุดของปี</text><text x="18" y="46" font-size="24" font-weight="700" fill="#173b5d">${peakText}</text></g>
+    ${grid}
+    <line x1="${left}" y1="${avgY}" x2="${w-right}" y2="${avgY}" stroke="#9db3c7" stroke-width="2.5" stroke-dasharray="7 7"/>
+    <text x="${w-right-6}" y="${Math.max(top+16,avgY-8)}" text-anchor="end" font-size="12" fill="#6d8498">เฉลี่ย ${avgRate.toFixed(1)}%</text>
+    <text x="${left}" y="${top-20}" font-size="13" fill="#7890a4">จำนวนถุง</text>
+    <text x="${w-right}" y="${top-20}" text-anchor="end" font-size="13" fill="#7890a4">ร้อยละ (%)</text>
+    ${bars}
+    <path d="${linePath}" fill="none" stroke="${lineColor}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" filter="url(#softShadow)"></path>
+  </svg>`;
+}
+
+function renderExecutiveHorizontalBars(rows, options={}) {
+  const items=(Array.isArray(rows)?rows:[]).slice(0,8);
+  if(!items.length) return `<div class="small-muted">ยังไม่มีข้อมูลเพียงพอสำหรับแสดงกราฟ</div>`;
+  const valueKey=options.valueKey||'value', suffix=options.suffix||'', countKey=options.countKey||'', countLabel=options.countLabel||'', color=options.color||'#5aa9e6';
+  const max=Number(options.max)||Math.max(...items.map(r=>Number(r?.[valueKey]||0)),1);
+  const w=1260,rowH=82,left=410,right=120,top=26,bottom=26,h=top+bottom+rowH*items.length,chartW=w-left-right;
+  return `<svg class="kpi-exec-bar-chart" viewBox="0 0 ${w} ${h}" role="img">${items.map((item,i)=>{const v=Number(item?.[valueKey]||0),width=max?Math.max(10,(v/max)*chartW):10,y=top+i*rowH,label=String(item?.label||'');const count=countKey?Number(item?.[countKey]||0):null;return `<text x="${left-18}" y="${y+26}" text-anchor="end" font-size="17" font-weight="700" fill="#284a63">${escapeOutreachHtml(label)}</text>${countKey?`<text x="${left-18}" y="${y+50}" text-anchor="end" font-size="13" fill="#8297a9">${count.toLocaleString()} ${escapeOutreachHtml(countLabel)}</text>`:''}<rect x="${left}" y="${y+16}" width="${chartW}" height="28" rx="14" fill="#edf3f7"/><rect x="${left}" y="${y+16}" width="${width}" height="28" rx="14" fill="${color}" opacity="0.96"/><text x="${left+Math.min(width+14,chartW-8)}" y="${y+35}" font-size="16" font-weight="700" fill="#294d68">${v.toFixed(1)}${suffix}</text>`}).join('')}</svg>`;
+}
+
+function renderMonthlyAgeExecutiveSvg(rows, year) {
+  const items=Array.isArray(rows)?rows:[...Array(12)].map((_,idx)=>({month:idx+1,medianDays:null,usedCount:0}));
+  const valid=items.filter(r=>Number.isFinite(r.medianDays));
+  const w=1240,h=520,left=84,right=56,top=72,bottom=96,chartW=w-left-right,chartH=h-top-bottom;
+  const names=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const maxDays=Math.max(7,...valid.map(r=>Number(r.medianDays||0)));
+  const yMax=Math.max(28,Math.ceil(maxDays/7)*7);
+  const x=i=>left+chartW*(i+.5)/12;
+  const y=v=>top+chartH-(Number(v||0)/yMax)*chartH;
+  const grid=[0,.25,.5,.75,1].map(frac=>{const val=Math.round(yMax*frac),yy=top+chartH-chartH*frac;return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e7eef4" stroke-width="1.5"/><text x="${left-14}" y="${yy+5}" text-anchor="end" font-size="13" fill="#7890a4">${val} วัน</text>`}).join('');
+  const validPoints=items.map((r,i)=>({i,value:Number(r.medianDays)})).filter(p=>Number.isFinite(p.value));
+  const path=validPoints.map((p,j)=>`${j===0?'M':'L'}${x(p.i)},${y(p.value)}`).join(' ');
+  const points=items.map((r,i)=>{const m=Number(r.medianDays);return Number.isFinite(m)?`<circle cx="${x(i)}" cy="${y(m)}" r="8" fill="#ffffff" stroke="#367fb5" stroke-width="4"/><g transform="translate(${x(i)},${Math.max(top+22,y(m)-24)})"><rect x="-24" y="-14" width="48" height="22" rx="11" fill="#dff1ff"/><text x="0" y="2" text-anchor="middle" font-size="12" font-weight="700" fill="#27648f">${m.toFixed(1)}</text></g>`:''}).join('');
+  const labels=items.map((r,i)=>`<text x="${x(i)}" y="${h-50}" text-anchor="middle" font-size="14" font-weight="600" fill="#536f84">${names[i]}</text><text x="${x(i)}" y="${h-28}" text-anchor="middle" font-size="12" fill="#8aa0b1">n=${Number(r.usedCount||0).toLocaleString()}</text>`).join('');
+  return `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Median วันค้างก่อนใช้รายเดือน"><rect x="10" y="10" width="${w-20}" height="${h-20}" rx="28" fill="#ffffff" stroke="#edf3f7"/>${grid}<line x1="${left}" y1="${y(21)}" x2="${w-right}" y2="${y(21)}" stroke="#e4a74c" stroke-width="2.5" stroke-dasharray="8 7"/><text x="${w-right-6}" y="${Math.max(top+14,y(21)-10)}" text-anchor="end" font-size="12" fill="#a36b1d">เส้นเฝ้าระวัง 21 วัน</text><path d="${path}" fill="none" stroke="#367fb5" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>${points}${labels}<text x="${left}" y="36" font-size="18" font-weight="700" fill="#173b5d">Median วันรับเข้า → ใช้</text><text x="${left}" y="60" font-size="13" fill="#7890a4">ดูตามเดือนที่รับเข้า · ปี ${year+543}</text></svg>`;
+}
+
+function renderAgeDistributionSvg(dist={}) {
+  const rows=[['0–7 วัน',Number(dist.within7||0),'#63c29f'],['8–14 วัน',Number(dist.day8to14||0),'#75b7e8'],['15–21 วัน',Number(dist.day15to21||0),'#f1c76a'],['> 21 วัน',Number(dist.over21||0),'#ef8b83']];
+  const total=rows.reduce((s,r)=>s+r[1],0);
+  const w=720,h=300,left=150,right=80,top=28,rowH=60,chartW=w-left-right;
+  return `<svg class="kpi-age-dist-chart" viewBox="0 0 ${w} ${h}" role="img">${rows.map((r,i)=>{const pct=total?100*r[1]/total:0,y=top+i*rowH,width=chartW*pct/100;return `<text x="${left-12}" y="${y+24}" text-anchor="end" font-size="14" fill="#35556f">${r[0]}</text><rect x="${left}" y="${y+8}" width="${chartW}" height="24" rx="12" fill="#edf3f7"/><rect x="${left}" y="${y+8}" width="${Math.max(width,3)}" height="24" rx="12" fill="${r[2]}"/><text x="${left+chartW+10}" y="${y+25}" font-size="14" font-weight="700" fill="#35556f">${pct.toFixed(1)}%</text><text x="${left}" y="${y+48}" font-size="11" fill="#8aa0b1">${r[1].toLocaleString()} ถุง</text>`}).join('')}</svg>`;
 }
 
 function renderBloodOutcomeMonthlySvg(rows, year) {
