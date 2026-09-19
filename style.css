@@ -1795,6 +1795,7 @@ main { min-width:0; }
 .trend-summary-row { display:flex; flex-wrap:wrap; gap:14px 22px; margin:6px 0 14px; font-size:13px; color:#60788d; }
 .trend-summary-row span { display:inline-flex; align-items:center; gap:7px; }
 .trend-summary-row b { color:#183955; }
+.trend-total-chip { padding:4px 10px; border:1px solid #d9e6ef; border-radius:999px; background:#f7fbfd; }
 .trend-dot { display:inline-block; width:10px; height:10px; border-radius:50%; }
 .trend-in { background:#4b9fd6; }
 .trend-released { background:#46a779; }
@@ -3215,17 +3216,20 @@ body {
 .trend-unresolved { background:#a8b8c6; }
 .trend-received { background:#78b7ff; }
 .monthly-outcome-chart {
-  height:350px; display:grid; grid-template-columns:repeat(var(--trend-columns,12),minmax(72px,1fr)); gap:10px; align-items:end;
+  height:368px; display:grid; grid-template-columns:repeat(var(--trend-columns,12),minmax(72px,1fr)); gap:10px; align-items:end;
   padding:14px 8px 0; border-bottom:1px solid #e5edf4; overflow-x:auto;
 }
-.outcome-month-group { height:100%; min-width:72px; display:grid; grid-template-rows:auto 1fr auto; gap:7px; }
+.outcome-month-group { position:relative; height:100%; min-width:72px; display:grid; grid-template-rows:auto 1fr auto 18px; gap:5px; }
+.outcome-month-group.is-year-break::before { content:""; position:absolute; left:-6px; top:18px; bottom:32px; border-left:1px dashed #cbdbe7; }
 .outcome-bar-area { height:245px; min-height:245px; display:flex; align-items:flex-end; justify-content:center; border-bottom:1px solid #eef3f7; }
 .outcome-bar-pair { height:100%; min-height:100%; display:flex; align-items:flex-end; justify-content:center; gap:4px; }
 .outcome-solid-bar,
 .outcome-stack { width:28px; min-height:2px; overflow:hidden; border-radius:8px 8px 2px 2px; box-shadow:inset 0 0 0 1px rgba(31,65,91,.04); }
+.outcome-stack.is-single { width:44px; border-radius:10px 10px 3px 3px; background:#edf3f7; }
 .outcome-solid-bar { display:block; background:linear-gradient(180deg,#abd5ff 0%, #78b7ff 100%); }
 .outcome-solid-bar.is-received { background:linear-gradient(180deg,#abd5ff 0%, #78b7ff 100%); }
 .outcome-stack { display:flex; flex-direction:column-reverse; justify-content:flex-start; background:#edf3f7; }
+.month-year-label { min-height:18px; font-size:11px; line-height:18px; font-weight:700; color:#7890a4; text-align:center; }
 .outcome-segment { display:block; width:100%; min-height:0; }
 .outcome-segment.is-used { background:#2d9f73; }
 .outcome-segment.is-expired { background:#dc6d68; }
@@ -3650,3 +3654,9 @@ body {
 .kpi-inline-filter-head h3{margin:0;font-size:17px;}
 .kpi-inline-filter-panel .kpi-filter-grid{margin-top:0;}
 .kpi-inline-filter-panel .kpi-filter-gate-footer{padding-top:12px;margin-top:12px;}
+
+/* v2.9.56 chart hierarchy polish */
+.kpi-stacked-chart{background:transparent;}
+.monthly-outcome-chart.is-stacked .month-top-value{font-weight:800;color:#49677e;}
+.monthly-outcome-chart.is-stacked .outcome-segment.is-unresolved:first-child{border-radius:9px 9px 0 0;}
+@media (max-width:900px){.outcome-stack.is-single{width:40px;}}
