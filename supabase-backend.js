@@ -2772,6 +2772,31 @@
     return data || { year: null, years: [], summary: {}, months: [], specialTrackingReady: false, sdrTrackingReady: false };
   }
 
+  async function getTrcMinimumReview(filters = {}) {
+    if (!isConfigured()) throw new Error("KPI เทียบ Minimum Stock ต้องใช้ Supabase");
+    const client = getClient();
+    const dateFrom = String(filters?.dateFrom || "").slice(0, 10) || null;
+    const dateTo = String(filters?.dateTo || "").slice(0, 10) || null;
+    const { data, error } = await client.rpc("minimum_stock_trc_minimum_review_v2961", {
+      p_date_from: dateFrom,
+      p_date_to: dateTo
+    });
+    if (error) {
+      const message = String(error.message || error.code || "");
+      if (/Could not find the function|PGRST202|does not exist|schema cache/i.test(message)) {
+        return {
+          schemaReady: false,
+          message: "ยังไม่ได้ติดตั้ง KPI เทียบ Minimum Stock v2.9.61 | กรุณารัน SQL-v2.9.61-TRC-MINIMUM-REVIEW.sql 1 ครั้ง",
+          summary: {},
+          monthly: [],
+          days: []
+        };
+      }
+      throw new Error("โหลด KPI กาชาดเทียบ Minimum Stock ไม่สำเร็จ: " + error.message);
+    }
+    return data || { schemaReady: true, summary: {}, monthly: [], days: [] };
+  }
+
   async function getTrcRareRegistry(limit = 300) {
     if (!isConfigured()) throw new Error("ทะเบียนกาชาดจำเป็นต้องใช้ Supabase");
     const client = getClient();
@@ -3336,6 +3361,7 @@
     getOutreachFilterBootstrap,
     getOutreachMonthlyTrend,
     getBloodKpiRedCellDependency,
+    getTrcMinimumReview,
     getTrcRareRegistry,
     saveTrcRareTag,
     removeTrcRareTag,

@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-60-trc-chart-export";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-61-trc-minimum-review";
 const APP_SHELL = [
   "./",
   "./index.html",

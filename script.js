@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260919-v2-9-58-routine-rare-split";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260920-v2-9-61-trc-minimum-review";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -2986,6 +2986,7 @@ const bloodKpiLazyCache = {
   trend: new Map(),
   analysis: new Map(),
   familyRows: new Map(),
+  trcMinimumReview: new Map(),
   dashboard: null,
   insights: new Map(),
   bootstrap: null,
@@ -3347,6 +3348,14 @@ function summarizeBloodKpiTrcPlanning(rows = []) {
   const last3 = items.slice(-3);
   const avg3 = last3.length ? last3.reduce((sum,row)=>sum+Number(row?.routineTrc||0),0) / last3.length : 0;
   return { latest, previous, avg3, avg3Months: last3.length };
+}
+
+async function ensureBloodKpiTrcMinimumReview(filters = {}) {
+  const key = JSON.stringify({ dateFrom: filters?.dateFrom || '', dateTo: filters?.dateTo || '' });
+  if (bloodKpiLazyCache.trcMinimumReview.has(key)) return bloodKpiLazyCache.trcMinimumReview.get(key);
+  const data = await MinimumStockBackend.getTrcMinimumReview(filters || {});
+  bloodKpiLazyCache.trcMinimumReview.set(key, data);
+  return data;
 }
 
 async function ensureBloodKpiFamilyRows(filters = {}) {
@@ -3907,7 +3916,7 @@ function renderKpiExpiry({ analysis, trend, dependency, year }) {
     </div>`;
 }
 
-function renderKpiTrc({ dependency, sourceRange, year }) {
+function renderKpiTrc({ dependency, sourceRange, minimumReview, year }) {
   const summary = dependency?.summary || {};
   const months = dependency?.months || [];
   const planningMonths = mergeBloodKpiTrcPlanningMonths(dependency, sourceRange);
@@ -3919,7 +3928,7 @@ function renderKpiTrc({ dependency, sourceRange, year }) {
   const previousRoutine = Number(planning.previous?.routineTrc || 0);
   const latestLabel = planning.latest?.periodLabel || 'เดือนล่าสุด';
   const previousLabel = planning.previous?.periodLabel || 'เดือนก่อน';
-  currentBloodKpiRouteData = { route:'trc', year, overall, adjusted, rare, routine, routineBase, months, planningMonths };
+  currentBloodKpiRouteData = { route:'trc', year, overall, adjusted, rare, routine, routineBase, months, planningMonths, minimumReview };
   return `${kpiPageHeader('อัตราพึ่งพากาชาด Routine','แยกเลือดหายาก / Ag-matched / Rh Negative ออกจาก Routine KPI',year,dependency?.years||[])}
     ${renderKpiQuickCards([
       { label:'พึ่งพากาชาด Routine', value:`${adjusted.toFixed(1)}%`, note:`กาชาด Routine ${routine.toLocaleString()} จากฐาน Routine ${routineBase.toLocaleString()} ถุง`, tone:'is-good' },
@@ -3927,6 +3936,7 @@ function renderKpiTrc({ dependency, sourceRange, year }) {
       { label:`เฉลี่ย ${planning.avg3Months || 0} เดือนล่าสุด`, value:`${planning.avg3.toLocaleString(undefined,{maximumFractionDigits:1})} ถุง/เดือน`, note:'ใช้ดูแนวโน้มประกอบการวางแผนออกหน่วย', tone:'' },
       { label:'เลือดหายาก / ภาวะจำเป็น', value:`${rare.toLocaleString()} ถุง`, note:'Rare / Ag-matched / Rh Negative · แยกออก ไม่รวม Routine KPI', tone:'' }
     ])}
+    ${renderTrcMinimumReviewPanel(minimumReview, planningMonths)}
     <div class="simple-panel kpi-executive-panel mb-3" id="trc-outreach-panel">
       <div class="panel-heading-row"><div><h3>กาชาด Routine เทียบเลือดจากการออกหน่วย</h3><div class="small-muted">กราฟหลักสำหรับวางแผน · ดูจำนวนถุงกาชาด Routine เทียบกับเลือดจากการออกหน่วยในแต่ละเดือน</div></div><button class="btn btn-light btn-sm no-print" type="button" onclick="downloadTrcChartPng('outreach')">PNG</button></div>
       <div id="trc-outreach-chart">${renderRoutineTrcVsOutreachMonthlySvg(planningMonths)}</div>
@@ -4039,11 +4049,12 @@ async function loadBloodKpiPage(year = null, route = null, options = {}) {
       const [dependency, analysis, trend] = await Promise.all([ensureBloodKpiDependencyRange(filters), ensureBloodKpiAnalysis(filters), ensureBloodKpiTrendRange(filters)]);
       html = renderKpiExpiry({dependency,analysis,trend,year:endYear});
     } else if (currentBloodKpiRoute === 'trc') {
-      const [dependency, sourceRange] = await Promise.all([
+      const [dependency, sourceRange, minimumReview] = await Promise.all([
         ensureBloodKpiDependencyRange(filters),
-        ensureBloodKpiRbcSourceRange(filters)
+        ensureBloodKpiRbcSourceRange(filters),
+        ensureBloodKpiTrcMinimumReview(filters)
       ]);
-      html = renderKpiTrc({dependency,sourceRange,year:endYear});
+      html = renderKpiTrc({dependency,sourceRange,minimumReview,year:endYear});
     } else if (['turnaround','aging','outreach'].includes(currentBloodKpiRoute)) {
       const insights = await ensureBloodKpiHeavyInsights(filters);
       insights.rangeLabel = meta.label;
@@ -4761,6 +4772,133 @@ function renderRoutineTrcVsOutreachMonthlySvg(rows) {
   return wrapScrollableKpiSvg(svg, items.length > 10);
 }
 
+function buildTrcMinimumReviewMonthRows(review = {}, planningRows = []) {
+  const reviewMap = new Map((Array.isArray(review?.monthly) ? review.monthly : []).map(row => [
+    `${Number(row?.year)}-${String(Number(row?.month || 0)).padStart(2,'0')}`,
+    row
+  ]));
+  return (Array.isArray(planningRows) ? planningRows : []).map(row => {
+    const key = `${Number(row?.year)}-${String(Number(row?.month || 0)).padStart(2,'0')}`;
+    const found = reviewMap.get(key) || {};
+    return {
+      year: Number(row?.year || found?.year || 0),
+      month: Number(row?.month || found?.month || 0),
+      periodLabel: row?.periodLabel || '',
+      routineTrc: Number(found?.routineTrc || 0),
+      assessed: Number(found?.assessed || 0),
+      needed: Number(found?.needed || 0),
+      review: Number(found?.review || 0),
+      unassessed: Number(found?.unassessed || 0),
+      reviewRate: Number(found?.reviewRate || 0)
+    };
+  });
+}
+
+function renderTrcMinimumReviewMonthlySvg(review = {}, planningRows = []) {
+  const rows = buildTrcMinimumReviewMonthRows(review, planningRows);
+  const { items, multiYear, yearBands } = getKpiContinuousMonthChartMeta(rows);
+  if (!items.length) return `<div class="small-muted py-4">ไม่มีข้อมูลในช่วงที่เลือก</div>`;
+  const maxValue = Math.max(1, ...items.map(row => Number(row?.assessed || 0) + Number(row?.unassessed || 0)));
+  const step = maxValue <= 20 ? 5 : maxValue <= 100 ? 20 : maxValue <= 300 ? 50 : 100;
+  const yMax = Math.max(step, Math.ceil(maxValue / step) * step);
+  const left = 82, right = 46, top = 98, bottom = multiYear ? 122 : 92;
+  const groupW = items.length > 18 ? 72 : 86;
+  const chartW = Math.max(840, groupW * items.length);
+  const w = left + right + chartW, h = 540, chartH = h - top - bottom;
+  const chartBottom = top + chartH;
+  const xCenter = i => left + groupW * i + groupW / 2;
+  const y = value => top + chartH - (Math.max(0, Number(value || 0)) / yMax) * chartH;
+  const barW = Math.max(34, Math.min(48, groupW * .58));
+  const grid = [0,.25,.5,.75,1].map(frac => {
+    const value = Math.round(yMax * frac);
+    const yy = top + chartH - chartH * frac;
+    return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e8eff5"/><text x="${left-12}" y="${yy+4}" text-anchor="end" font-size="12" fill="#8398aa">${value.toLocaleString()}</text>`;
+  }).join('');
+  const bars = items.map((row,i) => {
+    const cx = xCenter(i), x = cx - barW/2;
+    const segments = [
+      { key:'needed', value:Number(row?.needed || 0), color:'#63bf9b', label:'Stock ต่ำกว่า Minimum' },
+      { key:'review', value:Number(row?.review || 0), color:'#e7a14f', label:'Stock พอแล้ว · ควรทบทวน' },
+      { key:'unassessed', value:Number(row?.unassessed || 0), color:'#a9b7c3', label:'ประเมินไม่ได้' }
+    ];
+    let running = 0;
+    const parts = segments.map(seg => {
+      if (seg.value <= 0) return '';
+      const yTop = y(running + seg.value), yBottom = y(running);
+      const hh = Math.max(2, yBottom-yTop);
+      const inner = seg.key === 'review' && hh >= 20
+        ? `<text x="${cx}" y="${yTop + hh/2 + 4}" text-anchor="middle" font-size="${items.length>18?9.5:10.5}" font-weight="900" fill="#fff">${seg.value.toLocaleString()}</text>`
+        : '';
+      running += seg.value;
+      return `<rect x="${x}" y="${yTop}" width="${barW}" height="${hh}" fill="${seg.color}"><title>${escapeOutreachHtml(row.periodLabel || '')} · ${seg.label} ${seg.value.toLocaleString()} ถุง</title></rect>${inner}`;
+    }).join('');
+    const total = Number(row?.routineTrc || 0);
+    const labelY = Math.max(top + 14, y(running)-8);
+    const totalLabel = total > 0 ? `<text x="${cx}" y="${labelY}" text-anchor="middle" font-size="${items.length>18?10:11}" font-weight="800" fill="#36556f" style="paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round">${total.toLocaleString()}</text>` : '';
+    return `${parts}${totalLabel}`;
+  }).join('');
+  const labels = items.map((row,i) => `<text x="${xCenter(i)}" y="${h-(multiYear?56:32)}" text-anchor="middle" font-size="${items.length>18?10.5:12.5}" fill="#587184">${escapeOutreachHtml(['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(row.month||0)] || row.periodLabel || '')}</text>`).join('');
+  const yearBandsSvg = multiYear ? renderKpiYearBandSvg(yearBands, xCenter, chartBottom) : '';
+  const legend = `<g transform="translate(${left},34)"><rect x="0" y="-9" width="14" height="14" rx="4" fill="#63bf9b"/><text x="22" y="2" font-size="12" fill="#5b7285">Stock ต่ำกว่า Minimum</text><rect x="190" y="-9" width="14" height="14" rx="4" fill="#e7a14f"/><text x="212" y="2" font-size="12" fill="#5b7285">Stock พอแล้ว · ควรทบทวน</text><rect x="430" y="-9" width="14" height="14" rx="4" fill="#a9b7c3"/><text x="452" y="2" font-size="12" fill="#5b7285">ประเมินไม่ได้</text></g>`;
+  const svg = `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="กาชาด Routine เทียบสถานะ Minimum Stock ตอนต้นวันรายเดือน"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/>${legend}${grid}${yearBandsSvg}${bars}${labels}</svg>`;
+  return wrapScrollableKpiSvg(svg, items.length > 10);
+}
+
+function renderTrcMinimumReviewBagStatus(bag = {}) {
+  if (bag?.canEvaluate === false) return `<span class="trc-min-badge is-unknown">ประเมินไม่ได้</span>`;
+  if (bag?.assessment === 'review') return `<span class="trc-min-badge is-review">ควรทบทวน</span>`;
+  return `<span class="trc-min-badge is-needed">เติม Minimum</span>`;
+}
+
+function renderTrcMinimumReviewDays(review = {}) {
+  const days = Array.isArray(review?.days) ? review.days : [];
+  if (!days.length) return `<div class="trc-min-empty">ยังไม่มีรายการกาชาด Routine ในช่วงที่เลือก</div>`;
+  return `<div class="trc-min-day-toolbar no-print">
+      <button class="trc-day-filter active" type="button" data-trc-day-filter="review" onclick="filterTrcMinimumReviewDays('review',this)">วันที่ควรทบทวน</button>
+      <button class="trc-day-filter" type="button" data-trc-day-filter="all" onclick="filterTrcMinimumReviewDays('all',this)">ทุกวันที่รับกาชาด</button>
+    </div>
+    <div class="trc-min-day-list">${days.map(day => {
+      const hasReview = Number(day?.review || 0) > 0;
+      const bags = Array.isArray(day?.bags) ? day.bags : [];
+      return `<details class="trc-min-day" data-has-review="${hasReview ? '1':'0'}" ${hasReview ? '' : 'style="display:none"'}>
+        <summary>
+          <span><b>${escapeOutreachHtml(formatThaiDateShort(day?.date) || String(day?.date || '-'))}</b><small>กาชาด Routine ${Number(day?.routineTrc || 0).toLocaleString()} ถุง</small></span>
+          <span class="trc-min-day-count ${hasReview ? 'is-review':''}">${hasReview ? `ควรทบทวน ${Number(day?.review || 0).toLocaleString()} ถุง` : `เติม Minimum ${Number(day?.needed || 0).toLocaleString()} ถุง`}</span>
+        </summary>
+        <div class="table-responsive"><table class="table simple-table trc-min-detail-table align-middle mb-0"><thead><tr><th>Bag No.</th><th>ผลิตภัณฑ์</th><th>หมู่เลือด</th><th class="text-end">Minimum</th><th class="text-end">Stock ต้นวัน</th><th>ประเมิน</th></tr></thead><tbody>${bags.map(bag => `<tr class="${bag?.assessment === 'review' && bag?.canEvaluate !== false ? 'trc-review-row':''}"><td><b class="trc-bag-no">${escapeOutreachHtml(bag?.bagNumber || '-')}</b></td><td>${escapeOutreachHtml(bag?.productType || '-')}</td><td>${escapeOutreachHtml(`${bag?.bloodGroup || '-'}${bag?.rh ? ` ${bag.rh}`:''}`)}</td><td class="text-end">${Number(bag?.minimumStock || 0).toLocaleString()}</td><td class="text-end"><b>${Number(bag?.stockStartDay || 0).toLocaleString()}</b></td><td>${renderTrcMinimumReviewBagStatus(bag)}</td></tr>`).join('')}</tbody></table></div>
+      </details>`;
+    }).join('')}</div>`;
+}
+
+function filterTrcMinimumReviewDays(mode = 'review', btn = null) {
+  document.querySelectorAll('.trc-min-day').forEach(el => {
+    el.style.display = mode === 'all' || el.dataset.hasReview === '1' ? '' : 'none';
+  });
+  document.querySelectorAll('.trc-day-filter').forEach(el => el.classList.toggle('active', el === btn || (!btn && el.dataset.trcDayFilter === mode)));
+}
+
+function renderTrcMinimumReviewPanel(review = {}, planningRows = []) {
+  if (review?.schemaReady === false) {
+    return `<div class="simple-panel kpi-executive-panel mb-3 trc-minimum-review-panel"><div class="panel-heading-row"><div><h3>กาชาด Routine เทียบ Minimum Stock</h3><div class="small-muted">ดูว่ารับกาชาดในวันที่ Stock ต่ำกว่า Minimum หรือวันที่ Stock เพียงพอแล้ว</div></div></div><div class="trc-min-setup"><b>ต้องติดตั้งส่วนคำนวณ v2.9.61 ก่อน</b><span>${escapeOutreachHtml(review?.message || 'กรุณารัน SQL-v2.9.61-TRC-MINIMUM-REVIEW.sql 1 ครั้ง')}</span></div></div>`;
+  }
+  const summary = review?.summary || {};
+  const reviewRate = Number(summary?.reviewRate || 0);
+  const unassessed = Number(summary?.unassessed || 0);
+  return `<div class="simple-panel kpi-executive-panel mb-3 trc-minimum-review-panel" id="trc-minimum-review-panel">
+    <div class="panel-heading-row"><div><h3>กาชาด Routine เทียบ Minimum Stock</h3><div class="small-muted">KPI สำหรับ CQI · ครอบคลุม LPRC/LDPRC, FFP, LDPPC, Cryo และ SDP ว่ารับกาชาดในวันที่ Stock ต้นวันต่ำกว่า Minimum หรือมีเพียงพอแล้ว</div></div><div class="trc-chart-actions no-print"><button class="btn btn-light btn-sm" type="button" onclick="downloadTrcChartPng('minimumReview')">PNG</button><button class="btn btn-light btn-sm" type="button" onclick="exportTrcMinimumReviewExcel()">Excel รายถุง</button></div></div>
+    <div class="trc-min-summary-grid">
+      <div class="trc-min-stat"><span>กาชาด Routine ที่ประเมินได้ · ทุกผลิตภัณฑ์ Minimum</span><strong>${Number(summary?.assessed || 0).toLocaleString()} ถุง</strong><small>จาก Routine ${Number(summary?.routineTrc || 0).toLocaleString()} ถุง</small></div>
+      <div class="trc-min-stat is-needed"><span>รับตอน Stock ต่ำกว่า Minimum</span><strong>${Number(summary?.needed || 0).toLocaleString()} ถุง</strong><small>สอดคล้องกับการเติม Minimum</small></div>
+      <div class="trc-min-stat is-review"><span>รับตอน Stock เพียงพอแล้ว</span><strong>${Number(summary?.review || 0).toLocaleString()} ถุง</strong><small>${Number(summary?.reviewDays || 0).toLocaleString()} วัน · ${Number(summary?.reviewMonths || 0).toLocaleString()} เดือน</small></div>
+      <div class="trc-min-stat ${reviewRate > 0 ? 'is-review':''}"><span>สัดส่วนที่ควรทบทวน</span><strong>${reviewRate.toFixed(1)}%</strong><small>ควรทบทวน ÷ รายการที่ประเมินได้</small></div>
+    </div>
+    <div id="trc-minimum-review-chart">${renderTrcMinimumReviewMonthlySvg(review, planningRows)}</div>
+    <div class="trc-min-method-note"><b>วิธีอ่าน:</b> สีส้มหมายถึง “ควรทบทวน” ไม่ได้แปลว่าเบิกผิด · ระบบตัด Rare / Ag-matched / Rh Negative ออกจาก KPI นี้ และใช้ Stock <b>ต้นวัน</b> ที่สร้างย้อนจาก DateStockIn/DateStockOut เพราะ LIS ไม่มีลำดับเวลาในวันครบทุก movement${unassessed > 0 ? ` · มี ${unassessed.toLocaleString()} ถุงที่ประเมินไม่ได้` : ''}</div>
+    <div class="trc-min-detail-head"><div><h4>ลงถึงวันและเลขถุงเลือด</h4><div class="small-muted">เปิดวันที่เพื่อดู Bag No., Minimum และ Stock ต้นวันของถุงที่รับเข้าจากกาชาด</div></div></div>
+    ${renderTrcMinimumReviewDays(review)}
+  </div>`;
+}
+
 function renderExecutiveHorizontalBars(rows, options={}) {
   const items=(Array.isArray(rows)?rows:[]).slice(0,8);
   if(!items.length) return `<div class="small-muted">ยังไม่มีข้อมูลเพียงพอสำหรับแสดงกราฟ</div>`;
@@ -4896,6 +5034,12 @@ function getTrcChartExportConfig(kind) {
       title:'เลือดหายาก / ภาวะจำเป็นจากกาชาด',
       subtitle:'จำนวนถุง Rare / Ag-matched / Rh Negative รายเดือน',
       note:'รายงานแยกเพื่อแสดงการพึ่งพาที่เกิดจากความจำเป็นทางคลินิก และไม่รวมใน Routine KPI'
+    },
+    minimumReview: {
+      panelId:'trc-minimum-review-chart',
+      title:'กาชาด Routine เทียบ Minimum Stock',
+      subtitle:'LPRC/LDPRC, FFP, LDPPC, Cryo และ SDP แยกรายเดือนว่ารับกาชาดขณะ Stock ต้นวันต่ำกว่า Minimum หรือมีเพียงพอแล้ว',
+      note:'สีส้ม = ควรทบทวน ไม่ได้สรุปว่าเบิกผิด · ตัด Rare / Ag-matched / Rh Negative ออก · Stock ย้อนหลังประเมินจาก DateStockIn/DateStockOut ณ ต้นวัน'
     }
   };
   return configs[kind] || null;
@@ -4911,6 +5055,10 @@ function getTrcChartExportSummary(kind) {
   if (kind === 'source') return `ช่วง ${range} · ใช้ดูโครงสร้างแหล่งรับเข้าและการเปลี่ยนแปลงของจำนวนถุงรายเดือน`;
   if (kind === 'rate') return `ช่วง ${range} · Routine KPI ${Number(data.adjusted || 0).toFixed(1)}% · กาชาด Routine ${Number(data.routine || 0).toLocaleString()} ถุง`;
   if (kind === 'rare') return `ช่วง ${range} · เลือดหายาก / ภาวะจำเป็น ${Number(data.rare || 0).toLocaleString()} ถุง`;
+  if (kind === 'minimumReview') {
+    const s = data.minimumReview?.summary || {};
+    return `ช่วง ${range} · ประเมินได้ ${Number(s.assessed || 0).toLocaleString()} ถุง · Stock พอแล้ว/ควรทบทวน ${Number(s.review || 0).toLocaleString()} ถุง (${Number(s.reviewRate || 0).toFixed(1)}%) · ${Number(s.reviewDays || 0).toLocaleString()} วัน`;
+  }
   return `ช่วง ${range}`;
 }
 
@@ -4967,6 +5115,71 @@ function downloadTrcChartPng(kind) {
     console.error('TRC chart export failed', error);
     showStatus('ส่งออกกราฟไม่สำเร็จ', false);
   }
+}
+
+function exportTrcMinimumReviewExcel() {
+  if (!window.XLSX) {
+    showStatus('ยังโหลดโมดูล Excel ไม่สำเร็จ กรุณารีเฟรชแล้วลองใหม่', false);
+    return;
+  }
+  const review = currentBloodKpiRouteData?.minimumReview || {};
+  if (review?.schemaReady === false) {
+    showStatus('กรุณารัน SQL-v2.9.61-TRC-MINIMUM-REVIEW.sql ก่อน', false);
+    return;
+  }
+  const summary = review?.summary || {};
+  const monthly = Array.isArray(review?.monthly) ? review.monthly : [];
+  const days = Array.isArray(review?.days) ? review.days : [];
+  const summaryRows = [
+    { รายการ:'กาชาด Routine ในช่วงที่เลือก', ค่า:Number(summary.routineTrc || 0), หน่วย:'ถุง' },
+    { รายการ:'รายการที่ประเมินได้', ค่า:Number(summary.assessed || 0), หน่วย:'ถุง' },
+    { รายการ:'รับตอน Stock ต่ำกว่า Minimum', ค่า:Number(summary.needed || 0), หน่วย:'ถุง' },
+    { รายการ:'รับตอน Stock เพียงพอแล้ว / ควรทบทวน', ค่า:Number(summary.review || 0), หน่วย:'ถุง' },
+    { รายการ:'สัดส่วนที่ควรทบทวน', ค่า:Number(summary.reviewRate || 0), หน่วย:'%' },
+    { รายการ:'วันที่มีรายการควรทบทวน', ค่า:Number(summary.reviewDays || 0), หน่วย:'วัน' },
+    { รายการ:'เดือนที่มีรายการควรทบทวน', ค่า:Number(summary.reviewMonths || 0), หน่วย:'เดือน' },
+    { รายการ:'ประเมินไม่ได้', ค่า:Number(summary.unassessed || 0), หน่วย:'ถุง' }
+  ];
+  const monthlyRows = monthly.map(row => ({
+    'ปี พ.ศ.': Number(row.year || 0) + 543,
+    เดือน: ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(row.month || 0)] || row.month,
+    'กาชาด Routine (ถุง)': Number(row.routineTrc || 0),
+    'ประเมินได้ (ถุง)': Number(row.assessed || 0),
+    'Stock ต่ำกว่า Minimum (ถุง)': Number(row.needed || 0),
+    'Stock พอแล้ว / ควรทบทวน (ถุง)': Number(row.review || 0),
+    'ประเมินไม่ได้ (ถุง)': Number(row.unassessed || 0),
+    'สัดส่วนควรทบทวน (%)': Number(row.reviewRate || 0),
+    'วันที่ควรทบทวน': Number(row.reviewDays || 0)
+  }));
+  const detailRows = [];
+  days.forEach(day => {
+    (Array.isArray(day?.bags) ? day.bags : []).forEach(bag => {
+      detailRows.push({
+        วันที่รับเข้า: formatThaiDateShort(day?.date) || String(day?.date || ''),
+        'Bag No.': bag?.bagNumber || '',
+        ผลิตภัณฑ์: bag?.productType || '',
+        หมู่เลือด: `${bag?.bloodGroup || ''}${bag?.rh ? ` ${bag.rh}` : ''}`.trim(),
+        Minimum: Number(bag?.minimumStock || 0),
+        'Stock ต้นวัน': Number(bag?.stockStartDay || 0),
+        ผลประเมิน: bag?.canEvaluate === false ? 'ประเมินไม่ได้' : bag?.assessment === 'review' ? 'ควรทบทวน — Stock พอแล้ว' : 'สอดคล้อง — Stock ต่ำกว่า Minimum',
+        หมายเหตุ: bag?.assessmentNote || ''
+      });
+    });
+  });
+  const methodRows = [
+    { หัวข้อ:'ขอบเขต', รายละเอียด:'เฉพาะกาชาด Routine; ตัด Rare / Ag-matched / Rh Negative ที่ลงทะเบียนไว้แล้วออกจาก KPI' },
+    { หัวข้อ:'Stock ย้อนหลัง', รายละเอียด:'คำนวณ Stock ต้นวันจาก DateStockIn / DateStockOut ใน LIS' },
+    { หัวข้อ:'Minimum ย้อนหลัง', รายละเอียด:'คำนวณจาก Released 180 วันก่อนวันรับเข้า: ceil(max(avg/day × 2, max daily use))' },
+    { หัวข้อ:'ข้อจำกัด', รายละเอียด:'LIS ไม่มีเวลา movement ภายในวันครบทุกแถว และฐานวิเคราะห์ย้อนหลังไม่ได้เก็บ Location รายวัน จึงใช้เป็น screening KPI เพื่อชี้รายการที่ควรทบทวน ไม่ใช่ข้อสรุปว่าเบิกผิด' },
+    { หัวข้อ:'วันที่ Export', รายละเอียด:new Date().toLocaleString('th-TH') }
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'CQI Summary');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(monthlyRows), 'Monthly');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailRows), 'Bag Detail');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(methodRows), 'Method');
+  XLSX.writeFile(wb, `trc-minimum-review-${new Date().toISOString().slice(0,10)}.xlsx`);
+  showStatus(`✅ ส่งออก Excel รายถุง ${detailRows.length.toLocaleString()} รายการแล้ว`, true);
 }
 
 function downloadBloodKpiChartPng() {

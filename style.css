@@ -3660,3 +3660,53 @@ body {
 .monthly-outcome-chart.is-stacked .month-top-value{font-weight:800;color:#49677e;}
 .monthly-outcome-chart.is-stacked .outcome-segment.is-unresolved:first-child{border-radius:9px 9px 0 0;}
 @media (max-width:900px){.outcome-stack.is-single{width:40px;}}
+
+/* v2.9.61 — TRC Routine vs Minimum Stock CQI review */
+.trc-chart-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.trc-min-summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:4px 0 14px; }
+.trc-min-stat { min-height:106px; padding:14px 15px; border:1px solid #dfeaf2; border-radius:16px; background:#f9fcfe; display:flex; flex-direction:column; justify-content:center; }
+.trc-min-stat span { color:#6f879a; font-size:12px; font-weight:800; line-height:1.35; }
+.trc-min-stat strong { margin-top:5px; color:#2f5875; font-size:25px; line-height:1.1; }
+.trc-min-stat small { margin-top:5px; color:#8a9dac; font-size:11px; line-height:1.35; }
+.trc-min-stat.is-needed { background:#f1fbf6; border-color:#d4eee2; }
+.trc-min-stat.is-needed strong { color:#24765a; }
+.trc-min-stat.is-review { background:#fff8ee; border-color:#f1ddb9; }
+.trc-min-stat.is-review strong { color:#a56616; }
+.trc-min-method-note { margin-top:12px; padding:11px 13px; border:1px solid #eadfca; background:#fffaf2; border-radius:13px; color:#745f40; font-size:12px; line-height:1.55; }
+.trc-min-detail-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin:18px 0 10px; }
+.trc-min-detail-head h4 { margin:0 0 3px; color:#31556f; font-size:17px; font-weight:900; }
+.trc-min-day-toolbar { display:flex; gap:7px; flex-wrap:wrap; margin-bottom:9px; }
+.trc-day-filter { border:1px solid #d8e7f0; background:#fff; color:#5c7990; border-radius:999px; padding:7px 11px; font-size:12px; font-weight:800; cursor:pointer; }
+.trc-day-filter.active { border-color:#9dcae8; background:#edf8ff; color:#2d7db1; }
+.trc-min-day-list { display:grid; gap:8px; }
+.trc-min-day { border:1px solid #dfe9f0; border-radius:14px; background:#fff; overflow:hidden; }
+.trc-min-day summary { list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; background:#fbfdff; }
+.trc-min-day summary::-webkit-details-marker { display:none; }
+.trc-min-day summary span:first-child { min-width:0; display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+.trc-min-day summary b { color:#31556f; font-size:14px; }
+.trc-min-day summary small { color:#8095a6; font-size:11px; }
+.trc-min-day-count { flex:0 0 auto; border-radius:999px; padding:5px 9px; background:#eaf8f1; color:#26765a; font-size:11px; font-weight:900; }
+.trc-min-day-count.is-review { background:#fff1dc; color:#a36819; }
+.trc-min-detail-table { min-width:780px; }
+.trc-min-detail-table thead th { background:#f7fafc; color:#70879a; font-size:11px; }
+.trc-min-detail-table td { font-size:12px; color:#49677e; }
+.trc-min-detail-table .trc-review-row { background:#fffcf6; }
+.trc-bag-no { color:#214f70; letter-spacing:.02em; white-space:nowrap; }
+.trc-min-badge { display:inline-flex; align-items:center; border-radius:999px; padding:5px 8px; font-size:10.5px; font-weight:900; white-space:nowrap; }
+.trc-min-badge.is-needed { background:#eaf8f1; color:#237657; }
+.trc-min-badge.is-review { background:#fff1dc; color:#9e641a; }
+.trc-min-badge.is-unknown { background:#eef2f5; color:#748797; }
+.trc-min-empty { padding:28px 12px; text-align:center; color:#8296a5; font-size:13px; }
+.trc-min-setup { display:flex; flex-direction:column; gap:4px; padding:14px 15px; border:1px solid #efdcae; background:#fff9ec; border-radius:14px; color:#735d2f; }
+.trc-min-setup span { color:#84734f; font-size:12px; }
+
+@media (max-width: 1100px) {
+  .trc-min-summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width: 640px) {
+  .trc-min-summary-grid { grid-template-columns:1fr 1fr; gap:7px; }
+  .trc-min-stat { min-height:92px; padding:11px; }
+  .trc-min-stat strong { font-size:21px; }
+  .trc-min-day summary { align-items:flex-start; flex-direction:column; }
+  .trc-chart-actions { width:100%; justify-content:flex-start; }
+}
