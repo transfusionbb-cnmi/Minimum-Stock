@@ -3064,6 +3064,13 @@ function toggleKpiTreeAndOpen(route = 'overview', btn = null) {
 
 function openKpiRoute(route, btn, event) {
   if (event) event.preventDefault();
+  if (route === 'trc-bags' && currentBloodKpiRoute === 'trc-minimum') {
+    const current = bloodKpiFilterSelections.get('trc-minimum');
+    if (current) bloodKpiFilterSelections.set('trc-bags', { ...current, route:'trc-bags' });
+  } else if (route === 'trc-minimum' && currentBloodKpiRoute === 'trc-bags') {
+    const current = bloodKpiFilterSelections.get('trc-bags');
+    if (current) bloodKpiFilterSelections.set('trc-minimum', { ...current, route:'trc-minimum' });
+  }
   toggleKpiTreeAndOpen(route, btn);
 }
 
@@ -3439,6 +3446,8 @@ function renderKpiInlineFilterPanel(route, bootstrap, preset = {}) {
   if (route === 'minimum') return '';
   const options = bootstrap?.filterOptions || {};
   const showDetailFilters = !['trc','trc-monthly','trc-minimum','trc-bags'].includes(route);
+  const showTrcMinimumProductFilter = ['trc-minimum','trc-bags'].includes(route);
+  const selectedTrcProducts = normalizeKpiSelectedValues(preset.trcProductGroups || []);
   const selectedSourceGroups = route === 'outreach' ? [OUTREACH_GROUP_SELF_OUTREACH] : normalizeKpiSelectedValues(preset.sourceGroups || []);
   const selectedSources = normalizeKpiSelectedValues(preset.sources || []);
   const selectedProducts = normalizeKpiSelectedValues(preset.products || []);
@@ -3477,6 +3486,7 @@ function renderKpiInlineFilterPanel(route, bootstrap, preset = {}) {
       ${showDetailFilters ? renderKpiMultiSelect('product','ผลิตภัณฑ์',options.products||[],selectedProducts,'ทุกชนิด') : ''}
       ${showDetailFilters ? renderKpiMultiSelect('bloodGroup','หมู่เลือด',options.bloodGroups||[],selectedBloodGroups,'ทุกหมู่') : ''}
       ${showDetailFilters ? renderKpiMultiSelect('rh','Rh',options.rhs||[],selectedRhs,'ทุก Rh') : ''}
+      ${showTrcMinimumProductFilter ? renderKpiMultiSelect('trcProduct','ชนิดผลิตภัณฑ์',TRC_MINIMUM_PRODUCT_FILTER_OPTIONS,selectedTrcProducts,'ทุกชนิด') : ''}
     </div>
     <div class="kpi-filter-gate-footer"><button class="btn btn-main" type="button" onclick="applyBloodKpiFilters('${route}')">แสดงผล</button></div>
   </div>`;
@@ -3540,7 +3550,8 @@ const kpiMultiFilterConfig = {
   source: { label: 'จุดออกหน่วย / แหล่งรับเข้า', allLabel: 'ทุกจุด' },
   product: { label: 'ผลิตภัณฑ์', allLabel: 'ทุกชนิด' },
   bloodGroup: { label: 'หมู่เลือด', allLabel: 'ทุกหมู่' },
-  rh: { label: 'Rh', allLabel: 'ทุก Rh' }
+  rh: { label: 'Rh', allLabel: 'ทุก Rh' },
+  trcProduct: { label: 'ชนิดผลิตภัณฑ์', allLabel: 'ทุกชนิด' }
 };
 const kpiMultiFilterSnapshots = {};
 
@@ -3648,6 +3659,102 @@ function commitKpiMultiSelection(key) {
   if (picker) picker.open = false;
 }
 
+const TRC_MINIMUM_PRODUCT_FILTER_OPTIONS = [
+  'เลือดแดง (LPRC/LDPRC)',
+  'FFP',
+  'LDPPC',
+  'Cryo',
+  'SDP'
+];
+
+function classifyTrcMinimumProduct(productType) {
+  const p = String(productType || '').trim().toLowerCase();
+  if (!p) return '';
+  if (
+    p.includes('leukocyte poor prc') ||
+    p.includes('leukocyte-poor prc') ||
+    p.includes('leukocyte poor packed red cell') ||
+    p.includes('leukocyte-poor packed red cell') ||
+    p.includes('leukocyte depleted prc') ||
+    p.includes('leukocyte-depleted prc') ||
+    p.includes('leukocyte depleted pack red cell') ||
+    p.includes('leukocyte depleted packed red cell') ||
+    /(^|[^a-z0-9])lprc([^a-z0-9]|$)/i.test(p) ||
+    /(^|[^a-z0-9])ldprc([^a-z0-9]|$)/i.test(p)
+  ) return 'เลือดแดง (LPRC/LDPRC)';
+  if (p.includes('fresh frozen plasma (female)')) return '';
+  if (p.includes('cryo-removed plasma') || p.includes('cryo removed plasma')) return '';
+  if (p.includes('fresh frozen plasma') || p.includes('frozen plasma') || /(^|[^a-z0-9])ffp([^a-z0-9]|$)/i.test(p)) return 'FFP';
+  if (p.includes('single donor platelet') || /(^|[^a-z0-9])sdp([^a-z0-9]|$)/i.test(p)) return 'SDP';
+  if (p.includes('leukocyte depleted pooled platelet concentrate') || p.includes('pooled platelet concentrate') || /(^|[^a-z0-9])ldppc([^a-z0-9]|$)/i.test(p)) return 'LDPPC';
+  if (p.includes('cryoprecipitate') || /(^|[^a-z0-9])cryo([^a-z0-9]|$)/i.test(p)) return 'Cryo';
+  return '';
+}
+
+function filterTrcMinimumReviewByProductGroups(review = {}, selectedGroups = []) {
+  const selected = new Set(normalizeKpiSelectedValues(selectedGroups));
+  if (!selected.size || review?.schemaReady === false) return review;
+
+  const rawDays = Array.isArray(review?.days) ? review.days : [];
+  const days = rawDays.map(day => {
+    const bags = (Array.isArray(day?.bags) ? day.bags : []).filter(bag => selected.has(classifyTrcMinimumProduct(bag?.productType)));
+    if (!bags.length) return null;
+    const needed = bags.filter(b => b?.canEvaluate !== false && b?.assessment !== 'review').length;
+    const reviewCount = bags.filter(b => b?.canEvaluate !== false && b?.assessment === 'review').length;
+    const unassessed = bags.filter(b => b?.canEvaluate === false).length;
+    return {
+      ...day,
+      routineTrc: bags.length,
+      needed,
+      review: reviewCount,
+      unassessed,
+      bags
+    };
+  }).filter(Boolean);
+
+  const monthMap = new Map();
+  days.forEach(day => {
+    const date = new Date(`${String(day?.date || '').slice(0,10)}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return;
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const key = `${year}-${String(month).padStart(2,'0')}`;
+    if (!monthMap.has(key)) monthMap.set(key, { year, month, routineTrc:0, assessed:0, needed:0, review:0, unassessed:0, reviewDays:0 });
+    const row = monthMap.get(key);
+    row.routineTrc += Number(day?.routineTrc || 0);
+    row.needed += Number(day?.needed || 0);
+    row.review += Number(day?.review || 0);
+    row.unassessed += Number(day?.unassessed || 0);
+    row.assessed += Number(day?.needed || 0) + Number(day?.review || 0);
+    if (Number(day?.review || 0) > 0) row.reviewDays += 1;
+  });
+  const monthly = Array.from(monthMap.values()).sort((a,b)=>(a.year-b.year)||(a.month-b.month)).map(row => ({
+    ...row,
+    reviewRate: row.assessed > 0 ? Number(((row.review * 100) / row.assessed).toFixed(2)) : 0
+  }));
+
+  const summary = monthly.reduce((acc,row) => {
+    acc.routineTrc += Number(row.routineTrc || 0);
+    acc.assessed += Number(row.assessed || 0);
+    acc.needed += Number(row.needed || 0);
+    acc.review += Number(row.review || 0);
+    acc.unassessed += Number(row.unassessed || 0);
+    acc.reviewDays += Number(row.reviewDays || 0);
+    if (Number(row.review || 0) > 0) acc.reviewMonths += 1;
+    return acc;
+  }, { routineTrc:0, assessed:0, needed:0, review:0, unassessed:0, reviewDays:0, reviewMonths:0 });
+  summary.reviewRate = summary.assessed > 0 ? Number(((summary.review * 100) / summary.assessed).toFixed(2)) : 0;
+  summary.dataStart = review?.summary?.dataStart || null;
+
+  return {
+    ...review,
+    productFilter: Array.from(selected),
+    summary,
+    monthly,
+    days
+  };
+}
+
 function renderKpiFilterGate(route, bootstrap, preset = {}) {
   const options = bootstrap?.filterOptions || {};
   const config = {
@@ -3664,6 +3771,8 @@ function renderKpiFilterGate(route, bootstrap, preset = {}) {
     minimum: 'Minimum Stock'
   }[route] || 'KPI เลือด';
   const showDetailFilters = !['trc','trc-monthly','trc-minimum','trc-bags','minimum'].includes(route);
+  const showTrcMinimumProductFilter = ['trc-minimum','trc-bags'].includes(route);
+  const selectedTrcProducts = normalizeKpiSelectedValues(preset.trcProductGroups || []);
   const selectedSourceGroups = route === 'outreach' ? [OUTREACH_GROUP_SELF_OUTREACH] : normalizeKpiSelectedValues(preset.sourceGroups || []);
   const selectedSources = normalizeKpiSelectedValues(preset.sources || []);
   const selectedProducts = normalizeKpiSelectedValues(preset.products || []);
@@ -3708,6 +3817,7 @@ function renderKpiFilterGate(route, bootstrap, preset = {}) {
         ${showDetailFilters ? renderKpiMultiSelect('product','ผลิตภัณฑ์',options.products||[],selectedProducts,'ทุกชนิด') : ''}
         ${showDetailFilters ? renderKpiMultiSelect('bloodGroup','หมู่เลือด',options.bloodGroups||[],selectedBloodGroups,'ทุกหมู่') : ''}
         ${showDetailFilters ? renderKpiMultiSelect('rh','Rh',options.rhs||[],selectedRhs,'ทุก Rh') : ''}
+        ${showTrcMinimumProductFilter ? renderKpiMultiSelect('trcProduct','ชนิดผลิตภัณฑ์',TRC_MINIMUM_PRODUCT_FILTER_OPTIONS,selectedTrcProducts,'ทุกชนิด') : ''}
       </div>
       <div class="kpi-filter-gate-footer"><button class="btn btn-main" type="button" onclick="applyBloodKpiFilters('${route}')">แสดงผล</button></div>
     </div>
@@ -3772,6 +3882,7 @@ function readBloodKpiFilterGate(route) {
     sourceGroups: route === 'outreach' ? [OUTREACH_GROUP_SELF_OUTREACH] : getSelectedKpiMulti('sourceGroup'),
     sources: getSelectedKpiMulti('source'),
     products: getSelectedKpiMulti('product'),
+    trcProductGroups: ['trc-minimum','trc-bags'].includes(route) ? getSelectedKpiMulti('trcProduct') : [],
     bloodGroups: getSelectedKpiMulti('bloodGroup'),
     rhs: getSelectedKpiMulti('rh')
   };
@@ -4160,11 +4271,12 @@ async function loadBloodKpiPage(year = null, route = null, options = {}) {
       ]);
       html = renderKpiTrcMonthly({dependency,sourceRange,year:endYear});
     } else if (['trc-minimum','trc-bags'].includes(currentBloodKpiRoute)) {
-      const [dependency, sourceRange, minimumReview] = await Promise.all([
+      const [dependency, sourceRange, minimumReviewRaw] = await Promise.all([
         ensureBloodKpiDependencyRange(filters),
         ensureBloodKpiRbcSourceRange(filters),
         ensureBloodKpiTrcMinimumReview(filters)
       ]);
+      const minimumReview = filterTrcMinimumReviewByProductGroups(minimumReviewRaw, selection?.trcProductGroups || []);
       html = currentBloodKpiRoute === 'trc-minimum'
         ? renderKpiTrcMinimum({dependency,sourceRange,minimumReview,year:endYear})
         : renderKpiTrcBags({dependency,sourceRange,minimumReview,year:endYear});
@@ -5030,11 +5142,13 @@ function renderTrcMinimumReviewPanel(review = {}, planningRows = [], options = {
   const includeChart = options?.includeChart !== false;
   const includeDetails = options?.includeDetails !== false;
   const heading = includeDetails && !includeChart ? 'รายการตามวัน' : 'กาชาดเทียบ Minimum Stock';
+  const selectedProducts = normalizeKpiSelectedValues(review?.productFilter || []);
+  const productChip = selectedProducts.length ? `<span class="kpi-filter-result-chip">${escapeOutreachHtml(selectedProducts.join(' · '))}</span>` : '';
   const subtitle = includeDetails && !includeChart
     ? 'เปิดตามวันที่เพื่อดู Bag No., ผลิตภัณฑ์, หมู่เลือด, Minimum และ Stock ต้นวัน'
     : 'KPI สำหรับ CQI · ครอบคลุม LPRC/LDPRC, FFP, LDPPC, Cryo และ SDP ว่ารับกาชาดในวันที่ Stock ต้นวันต่ำกว่า Minimum หรือมีเพียงพอแล้ว';
   return `<div class="simple-panel kpi-executive-panel mb-3 trc-minimum-review-panel" id="trc-minimum-review-panel">
-    <div class="panel-heading-row"><div><h3>${heading}</h3></div><div class="trc-chart-actions no-print">${includeChart ? `<button class="btn btn-light btn-sm" type="button" onclick="downloadTrcChartPng('minimumReview')">PNG</button>` : ''}<button class="btn btn-light btn-sm" type="button" onclick="exportTrcMinimumReviewExcel()">Excel รายถุง</button></div></div>
+    <div class="panel-heading-row"><div><h3>${heading}</h3>${productChip}</div><div class="trc-chart-actions no-print">${includeChart ? `<button class="btn btn-light btn-sm" type="button" onclick="downloadTrcChartPng('minimumReview')">PNG</button>` : ''}<button class="btn btn-light btn-sm" type="button" onclick="exportTrcMinimumReviewExcel()">Excel รายถุง</button></div></div>
     <div class="trc-min-summary-grid">
       <div class="trc-min-stat"><span>ประเมินได้</span><strong>${Number(summary?.assessed || 0).toLocaleString()} ถุง</strong></div>
       <div class="trc-min-stat is-needed"><span>Stock ต่ำกว่า Minimum</span><strong>${Number(summary?.needed || 0).toLocaleString()} ถุง</strong></div>
@@ -5204,7 +5318,7 @@ function getTrcChartExportConfig(kind) {
     minimumReview: {
       panelId:'trc-minimum-review-chart',
       title:'กาชาด Routine เทียบ Minimum Stock',
-      subtitle:'LPRC/LDPRC, FFP, LDPPC, Cryo และ SDP แยกรายเดือนว่ารับกาชาดขณะ Stock ต้นวันต่ำกว่า Minimum หรือมีเพียงพอแล้ว',
+      subtitle:'แยกรายเดือนว่ารับกาชาดขณะ Stock ต้นวันต่ำกว่า Minimum หรือมีเพียงพอแล้ว ตามชนิดผลิตภัณฑ์ที่เลือก',
       note:'ตัวเลขในแต่ละช่วงสี = จำนวนถุงของสถานะนั้น · สีส้ม = ควรทบทวน ไม่ได้สรุปว่าเบิกผิด · ตัด Rare / Ag-matched / Rh Negative ออก · Stock ย้อนหลังประเมินจาก DateStockIn/DateStockOut ณ ต้นวัน'
     }
   };
@@ -5223,7 +5337,9 @@ function getTrcChartExportSummary(kind) {
   if (kind === 'rare') return `ช่วง ${range} · เลือดหายาก / ภาวะจำเป็น ${Number(data.rare || 0).toLocaleString()} ถุง`;
   if (kind === 'minimumReview') {
     const s = data.minimumReview?.summary || {};
-    return `ช่วง ${range} · ประเมินได้ ${Number(s.assessed || 0).toLocaleString()} ถุง · Stock พอแล้ว/ควรทบทวน ${Number(s.review || 0).toLocaleString()} ถุง (${Number(s.reviewRate || 0).toFixed(1)}%) · ${Number(s.reviewDays || 0).toLocaleString()} วัน`;
+    const products = normalizeKpiSelectedValues(data.minimumReview?.productFilter || []);
+    const productText = products.length ? products.join(' · ') : 'ทุกชนิดผลิตภัณฑ์';
+    return `ช่วง ${range} · ผลิตภัณฑ์: ${productText} · ประเมินได้ ${Number(s.assessed || 0).toLocaleString()} ถุง · Stock พอแล้ว/ควรทบทวน ${Number(s.review || 0).toLocaleString()} ถุง (${Number(s.reviewRate || 0).toFixed(1)}%) · ${Number(s.reviewDays || 0).toLocaleString()} วัน`;
   }
   return `ช่วง ${range}`;
 }
@@ -5332,7 +5448,9 @@ function exportTrcMinimumReviewExcel() {
       });
     });
   });
+  const selectedProducts = normalizeKpiSelectedValues(review?.productFilter || []);
   const methodRows = [
+    { หัวข้อ:'ตัวกรองผลิตภัณฑ์', รายละเอียด:selectedProducts.length ? selectedProducts.join(' · ') : 'ทุกชนิดผลิตภัณฑ์' },
     { หัวข้อ:'ขอบเขต', รายละเอียด:'เฉพาะกาชาด Routine; ตัด Rare / Ag-matched / Rh Negative ที่ลงทะเบียนไว้แล้วออกจาก KPI' },
     { หัวข้อ:'Stock ย้อนหลัง', รายละเอียด:'คำนวณ Stock ต้นวันจาก DateStockIn / DateStockOut ใน LIS' },
     { หัวข้อ:'Minimum ย้อนหลัง', รายละเอียด:'คำนวณจาก Released 180 วันก่อนวันรับเข้า: ceil(max(avg/day × 2, max daily use))' },

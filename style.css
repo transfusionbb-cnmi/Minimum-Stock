@@ -3833,3 +3833,18 @@ body {
   .kpi-load-card-row .btn{width:100%;}
   .kpi-inline-actions .btn{width:100%;}
 }
+
+/* v2.9.67 — TRC Minimum product filter */
+.kpi-filter-result-chip{
+  display:inline-flex;
+  align-items:center;
+  margin-top:6px;
+  padding:4px 9px;
+  border-radius:999px;
+  background:#edf7ff;
+  color:#2d6f9f;
+  border:1px solid #d6ebfa;
+  font-size:12px;
+  font-weight:700;
+  line-height:1.2;
+}
