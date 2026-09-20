@@ -3740,3 +3740,22 @@ body {
   .kpi-category-tab{font-size:12px;padding:8px 11px;}
 }
 @media print{.kpi-category-tabs{display:none!important;}}
+
+
+/* v2.9.63 — Staff Planner style nested KPI sidebar */
+.side-tree{margin:0 0 3px 0;}
+.side-tree-parent{width:100%;position:relative;}
+.side-tree-parent .side-tree-label{width:auto !important;flex:1;text-align:left;}
+.side-tree-chevron{width:auto !important;margin-left:auto;font-size:15px;line-height:1;transition:transform .18s ease;color:#6d8da4;}
+.side-tree.open .side-tree-chevron{transform:rotate(180deg);}
+.side-tree-children{display:none;margin:1px 0 7px 31px;padding:2px 0 2px 12px;border-left:1px solid #d8e8f3;}
+.side-tree.open .side-tree-children{display:grid;gap:1px;}
+.side-tree-child{appearance:none;border:0;background:transparent;color:#5c788d;text-align:left;padding:8px 10px;border-radius:9px;font:inherit;font-size:12.5px;line-height:1.25;cursor:pointer;width:100%;}
+.side-tree-child:hover{background:#f2f9fe;color:#187db9;}
+.side-tree-child.active{background:#e6f4fd;color:#147eb9;font-weight:800;}
+.side-tree-parent.active{background:#edf8ff !important;color:#237fae !important;border-color:transparent !important;}
+.kpi-category-tabs{display:none !important;}
+@media(max-width:760px){
+  .side-tree-children{margin-left:29px;padding-left:10px;}
+  .side-tree-child{font-size:12px;padding:8px 9px;}
+}

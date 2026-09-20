@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-62-navigation-restructure";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-63-sidebar-submenus";
 const APP_SHELL = [
   "./",
   "./index.html",

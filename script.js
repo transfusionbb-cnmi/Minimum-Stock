@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260920-v2-9-62-navigation-restructure";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260920-v2-9-63-sidebar-submenus";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -3015,10 +3015,37 @@ function getKpiSidebarLandingRoute(route) {
 }
 
 function setKpiTreeState(route) {
-  const landingRoute = getKpiSidebarLandingRoute(route);
-  document.querySelectorAll('.side-btn[data-kpi-route]').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.kpiRoute === landingRoute);
+  document.querySelectorAll('[data-kpi-route]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.kpiRoute === route);
   });
+
+  const useTree = document.getElementById('bloodUseKpiTree');
+  const stockTree = document.getElementById('stockAgeKpiTree');
+  const useOpen = ['utilization','turnaround','aging'].includes(route);
+  const stockOpen = ['expiry','minimum'].includes(route);
+
+  if (useTree) useTree.classList.toggle('open', useOpen);
+  if (stockTree) stockTree.classList.toggle('open', stockOpen);
+
+  const useParent = document.getElementById('bloodUseKpiMenuBtn');
+  const stockParent = document.getElementById('stockAgeKpiMenuBtn');
+  if (useParent) useParent.classList.toggle('active', useOpen);
+  if (stockParent) stockParent.classList.toggle('active', stockOpen);
+}
+
+function toggleKpiSideTree(treeId, parentBtn) {
+  const tree = document.getElementById(treeId);
+  if (!tree) return;
+  const willOpen = !tree.classList.contains('open');
+  document.querySelectorAll('.side-tree[data-kpi-tree]').forEach(item => {
+    if (item !== tree) item.classList.remove('open');
+  });
+  tree.classList.toggle('open', willOpen);
+  if (parentBtn && willOpen) parentBtn.classList.add('tree-open');
+  document.querySelectorAll('.side-tree-parent').forEach(btn => {
+    if (btn !== parentBtn) btn.classList.remove('tree-open');
+  });
+  if (parentBtn) parentBtn.classList.toggle('tree-open', willOpen);
 }
 
 function toggleKpiTreeAndOpen(route = 'overview', btn = null) {
@@ -3102,7 +3129,7 @@ function handleAppHashRoute(force = false) {
     if (document.getElementById('installOverlay')?.style.display === 'flex') closeInstallModal();
     const route = getKpiRouteFromHash();
     const landingRoute = getKpiSidebarLandingRoute(route);
-    const routeBtn = document.querySelector(`.side-btn[data-kpi-route="${landingRoute}"]`) || document.getElementById('bloodKpiMenuBtn');
+    const routeBtn = document.querySelector(`[data-kpi-route="${route}"]`) || document.querySelector(`[data-kpi-route="${landingRoute}"]`) || document.getElementById('bloodKpiMenuBtn');
     showDashboardPage('blood-kpi', routeBtn, { skipKpiLoad: true, routed: true });
     setKpiTreeState(route);
     loadBloodKpiPage(null, route, { force });
@@ -3133,7 +3160,7 @@ function handleAppHashRoute(force = false) {
     document.querySelectorAll('.side-btn').forEach(el => el.classList.remove('active'));
     const installBtn = document.getElementById('installAppBtn');
     if (installBtn) installBtn.classList.add('active');
-    document.querySelectorAll('.side-btn[data-kpi-route]').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('[data-kpi-route]').forEach(el => el.classList.remove('active'));
     toggleSidebar(false);
     handleInstallAppClick();
     return true;
@@ -3491,7 +3518,7 @@ function kpiPageHeader(title, subtitle, year, years = [], showYearSelect = true)
       ${currentBloodKpiRoute === 'trc' ? '' : `<button class="btn btn-light" type="button" onclick="downloadCurrentKpiPng()">PNG</button>`}
       <button class="btn btn-main" type="button" onclick="window.print()">${currentBloodKpiRoute === 'trc' ? 'PDF ทั้งหน้า' : 'PDF'}</button>
     </div>
-  </div>${renderKpiCategoryTabs(currentBloodKpiRoute)}${filterPanel}`;
+  </div>${filterPanel}`;
 }
 
 function getKpiYearsFromBootstrap(bootstrap) {
