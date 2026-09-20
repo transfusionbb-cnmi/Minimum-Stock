@@ -2792,6 +2792,16 @@
           days: []
         };
       }
+      if (/statement timeout|canceling statement|cancelling statement/i.test(message)) {
+        return {
+          schemaReady: false,
+          performancePatchRequired: true,
+          message: "การคำนวณเดิมใช้เวลานานเกินไป กรุณารัน SQL-v2.9.64-TRC-MINIMUM-REVIEW-PERFORMANCE.sql 1 ครั้ง แล้วลองใหม่",
+          summary: {},
+          monthly: [],
+          days: []
+        };
+      }
       throw new Error("โหลด KPI กาชาดเทียบ Minimum Stock ไม่สำเร็จ: " + error.message);
     }
     return data || { schemaReady: true, summary: {}, monthly: [], days: [] };

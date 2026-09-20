@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260920-v2-9-63-sidebar-submenus";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260920-v2-9-64-trc-review-submenus";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -2977,7 +2977,7 @@ document.addEventListener("DOMContentLoaded", bindOutreachDetailModal);
 let currentBloodKpiInsights = null;
 
 
-const KPI_SUBROUTES = new Set(['overview','utilization','expiry','trc','turnaround','aging','outreach','minimum']);
+const KPI_SUBROUTES = new Set(['overview','utilization','expiry','trc','trc-monthly','trc-minimum','trc-bags','turnaround','aging','outreach','minimum']);
 let currentBloodKpiRoute = 'overview';
 let currentBloodKpiRouteData = null;
 const bloodKpiFilterSelections = new Map();
@@ -3009,7 +3009,7 @@ function getKpiHash(route) {
 function getKpiSidebarLandingRoute(route) {
   if (['utilization','turnaround','aging'].includes(route)) return 'utilization';
   if (['expiry','minimum'].includes(route)) return 'expiry';
-  if (route === 'trc') return 'trc';
+  if (['trc','trc-monthly','trc-minimum','trc-bags'].includes(route)) return 'trc';
   if (route === 'outreach') return 'outreach';
   return 'overview';
 }
@@ -3021,16 +3021,21 @@ function setKpiTreeState(route) {
 
   const useTree = document.getElementById('bloodUseKpiTree');
   const stockTree = document.getElementById('stockAgeKpiTree');
+  const trcTree = document.getElementById('trcKpiTree');
   const useOpen = ['utilization','turnaround','aging'].includes(route);
   const stockOpen = ['expiry','minimum'].includes(route);
+  const trcOpen = ['trc','trc-monthly','trc-minimum','trc-bags'].includes(route);
 
   if (useTree) useTree.classList.toggle('open', useOpen);
   if (stockTree) stockTree.classList.toggle('open', stockOpen);
+  if (trcTree) trcTree.classList.toggle('open', trcOpen);
 
   const useParent = document.getElementById('bloodUseKpiMenuBtn');
   const stockParent = document.getElementById('stockAgeKpiMenuBtn');
+  const trcParent = document.getElementById('trcKpiMenuBtn');
   if (useParent) useParent.classList.toggle('active', useOpen);
   if (stockParent) stockParent.classList.toggle('active', stockOpen);
+  if (trcParent) trcParent.classList.toggle('active', trcOpen);
 }
 
 function toggleKpiSideTree(treeId, parentBtn) {
@@ -3433,7 +3438,7 @@ async function ensureBloodKpiHeavyInsights(filters = {}) {
 function renderKpiInlineFilterPanel(route, bootstrap, preset = {}) {
   if (route === 'minimum') return '';
   const options = bootstrap?.filterOptions || {};
-  const showDetailFilters = route !== 'trc';
+  const showDetailFilters = !['trc','trc-monthly','trc-minimum','trc-bags'].includes(route);
   const selectedSourceGroups = route === 'outreach' ? [OUTREACH_GROUP_SELF_OUTREACH] : normalizeKpiSelectedValues(preset.sourceGroups || []);
   const selectedSources = normalizeKpiSelectedValues(preset.sources || []);
   const selectedProducts = normalizeKpiSelectedValues(preset.products || []);
@@ -3515,8 +3520,8 @@ function kpiPageHeader(title, subtitle, year, years = [], showYearSelect = true)
   return `<div class="simple-page-head mt-2">
     <div><h1>${escapeOutreachHtml(title)}</h1></div>
     <div class="d-flex gap-2 align-items-end flex-wrap no-print">
-      ${currentBloodKpiRoute === 'trc' ? '' : `<button class="btn btn-light" type="button" onclick="downloadCurrentKpiPng()">PNG</button>`}
-      <button class="btn btn-main" type="button" onclick="window.print()">${currentBloodKpiRoute === 'trc' ? 'PDF ทั้งหน้า' : 'PDF'}</button>
+      ${['trc','trc-monthly','trc-minimum','trc-bags'].includes(currentBloodKpiRoute) ? '' : `<button class="btn btn-light" type="button" onclick="downloadCurrentKpiPng()">PNG</button>`}
+      <button class="btn btn-main" type="button" onclick="window.print()">${['trc','trc-monthly','trc-minimum','trc-bags'].includes(currentBloodKpiRoute) ? 'PDF ทั้งหน้า' : 'PDF'}</button>
     </div>
   </div>${filterPanel}`;
 }
@@ -3649,13 +3654,16 @@ function renderKpiFilterGate(route, bootstrap, preset = {}) {
     overview: 'ภาพรวม KPI เลือด',
     utilization: 'อัตราการใช้ประโยชน์จากโลหิต',
     expiry: 'อัตราโลหิตหมดอายุ',
-    trc: 'อัตราพึ่งพากาชาด Routine',
+    trc: 'ภาพรวมกาชาด Routine',
+    'trc-monthly': 'รับเข้ารายเดือน / ออกหน่วย',
+    'trc-minimum': 'กาชาดเทียบ Minimum Stock',
+    'trc-bags': 'รายการถุงที่ควรทบทวน',
     turnaround: 'ระยะเวลาหมุนเวียนเลือด',
     aging: 'อายุเลือดก่อนถูกใช้',
     outreach: 'ประสิทธิผลเลือดจากการออกหน่วย',
     minimum: 'Minimum Stock'
   }[route] || 'KPI เลือด';
-  const showDetailFilters = !['trc','minimum'].includes(route);
+  const showDetailFilters = !['trc','trc-monthly','trc-minimum','trc-bags','minimum'].includes(route);
   const selectedSourceGroups = route === 'outreach' ? [OUTREACH_GROUP_SELF_OUTREACH] : normalizeKpiSelectedValues(preset.sourceGroups || []);
   const selectedSources = normalizeKpiSelectedValues(preset.sources || []);
   const selectedProducts = normalizeKpiSelectedValues(preset.products || []);
@@ -3669,7 +3677,6 @@ function renderKpiFilterGate(route, bootstrap, preset = {}) {
 
   return `<div class="kpi-filter-gate-shell">
     <div class="simple-page-head mt-2"><div><h1>${escapeOutreachHtml(config)}</h1></div></div>
-    ${renderKpiCategoryTabs(route)}
     <div class="simple-panel kpi-filter-gate">
       <div class="kpi-filter-grid">
         ${route !== 'minimum' ? `<div class="outreach-range-pair kpi-range-pair">
@@ -3980,43 +3987,72 @@ function renderKpiExpiry({ analysis, trend, dependency, year }) {
     </div>`;
 }
 
-function renderKpiTrc({ dependency, sourceRange, minimumReview, year }) {
+function getKpiTrcCore(dependency = {}, sourceRange = null) {
   const summary = dependency?.summary || {};
   const months = dependency?.months || [];
-  const planningMonths = mergeBloodKpiTrcPlanningMonths(dependency, sourceRange);
+  const planningMonths = sourceRange ? mergeBloodKpiTrcPlanningMonths(dependency, sourceRange) : [];
   const planning = summarizeBloodKpiTrcPlanning(planningMonths);
   const overall = Number(summary.rate||0), adjusted = Number(summary.adjustedRate ?? overall);
   const rare = Number(summary.rareTrcRbc||0), routine = Number(summary.routineTrcRbc ?? Math.max(0,Number(summary.trcRbc||0)-rare));
   const routineBase = Number(summary.adjustedTotalRbc ?? Math.max(0, Number(summary.totalRbc||0)-rare));
+  return { summary, months, planningMonths, planning, overall, adjusted, rare, routine, routineBase };
+}
+
+function renderKpiTrc({ dependency, year }) {
+  const core = getKpiTrcCore(dependency, null);
+  const { months, adjusted, rare, routine, routineBase } = core;
+  currentBloodKpiRouteData = { route:'trc', year, adjusted, rare, routine, routineBase, months, planningMonths:[] };
+  return `${kpiPageHeader('ภาพรวมกาชาด Routine','เลือดหายาก / Ag-matched / Rh Negative แยกออกจาก Routine KPI',year,dependency?.years||[])}
+    ${renderKpiQuickCards([
+      { label:'พึ่งพากาชาด Routine', value:`${adjusted.toFixed(1)}%`, note:`กาชาด Routine ${routine.toLocaleString()} จากฐาน Routine ${routineBase.toLocaleString()} ถุง`, tone:'is-good' },
+      { label:'เลือดหายาก / ภาวะจำเป็น', value:`${rare.toLocaleString()} ถุง`, note:'Rare / Ag-matched / Rh Negative · แยกออก ไม่รวม Routine KPI', tone:'' }
+    ])}
+    <div class="simple-panel kpi-executive-panel mb-3" id="trc-rate-panel">
+      <div class="panel-heading-row"><div><h3>แนวโน้มพึ่งพากาชาด Routine</h3><div class="small-muted">ดูอัตราพึ่งพารายเดือนหลังตัดเลือดหายาก / ภาวะจำเป็นออกแล้ว</div></div><button class="btn btn-light btn-sm no-print" type="button" onclick="downloadTrcChartPng('rate')">PNG</button></div>
+      <div id="trc-rate-chart">${renderTrcRangeSvg(months)}</div>
+    </div>
+    <div class="kpi-route-hint-card no-print"><b>ต้องการดูจำนวนถุงจริง?</b><span>เปิดเมนูย่อย “รับเข้ารายเดือน / ออกหน่วย” หรือ “กาชาดเทียบ Minimum Stock” ทางซ้าย</span></div>`;
+}
+
+function renderKpiTrcMonthly({ dependency, sourceRange, year }) {
+  const core = getKpiTrcCore(dependency, sourceRange);
+  const { planningMonths, planning, adjusted, rare, routine, routineBase, months } = core;
   const latestRoutine = Number(planning.latest?.routineTrc || 0);
   const previousRoutine = Number(planning.previous?.routineTrc || 0);
   const latestLabel = planning.latest?.periodLabel || 'เดือนล่าสุด';
   const previousLabel = planning.previous?.periodLabel || 'เดือนก่อน';
-  currentBloodKpiRouteData = { route:'trc', year, overall, adjusted, rare, routine, routineBase, months, planningMonths, minimumReview };
-  return `${kpiPageHeader('อัตราพึ่งพากาชาด Routine','แยกเลือดหายาก / Ag-matched / Rh Negative ออกจาก Routine KPI',year,dependency?.years||[])}
+  currentBloodKpiRouteData = { route:'trc-monthly', year, adjusted, rare, routine, routineBase, months, planningMonths };
+  return `${kpiPageHeader('รับเข้ารายเดือน / ออกหน่วย','ดูจำนวนรับเข้าจากกาชาด Routine เทียบเลือดที่ได้จากการออกหน่วย',year,dependency?.years||[])}
     ${renderKpiQuickCards([
-      { label:'พึ่งพากาชาด Routine', value:`${adjusted.toFixed(1)}%`, note:`กาชาด Routine ${routine.toLocaleString()} จากฐาน Routine ${routineBase.toLocaleString()} ถุง`, tone:'is-good' },
       { label:`กาชาด Routine · ${latestLabel}`, value:`${latestRoutine.toLocaleString()} ถุง`, note:`เดือนก่อน (${previousLabel}) ${previousRoutine.toLocaleString()} ถุง`, tone:'' },
       { label:`เฉลี่ย ${planning.avg3Months || 0} เดือนล่าสุด`, value:`${planning.avg3.toLocaleString(undefined,{maximumFractionDigits:1})} ถุง/เดือน`, note:'ใช้ดูแนวโน้มประกอบการวางแผนออกหน่วย', tone:'' },
-      { label:'เลือดหายาก / ภาวะจำเป็น', value:`${rare.toLocaleString()} ถุง`, note:'Rare / Ag-matched / Rh Negative · แยกออก ไม่รวม Routine KPI', tone:'' }
+      { label:'พึ่งพากาชาด Routine', value:`${adjusted.toFixed(1)}%`, note:`กาชาด Routine ${routine.toLocaleString()} จากฐาน Routine ${routineBase.toLocaleString()} ถุง`, tone:'is-good' }
     ])}
-    ${renderTrcMinimumReviewPanel(minimumReview, planningMonths)}
     <div class="simple-panel kpi-executive-panel mb-3" id="trc-outreach-panel">
       <div class="panel-heading-row"><div><h3>กาชาด Routine เทียบเลือดจากการออกหน่วย</h3><div class="small-muted">กราฟหลักสำหรับวางแผน · ดูจำนวนถุงกาชาด Routine เทียบกับเลือดจากการออกหน่วยในแต่ละเดือน</div></div><button class="btn btn-light btn-sm no-print" type="button" onclick="downloadTrcChartPng('outreach')">PNG</button></div>
       <div id="trc-outreach-chart">${renderRoutineTrcVsOutreachMonthlySvg(planningMonths)}</div>
     </div>
-    <div class="simple-panel kpi-executive-panel mb-3" id="trc-source-panel">
-      <div class="panel-heading-row"><div><h3>ภาพรวมจำนวนรับเข้า RBC / SDR รายเดือน</h3><div class="small-muted">เปลี่ยนเป็นแท่งซ้อนเพื่อลดความแน่นของกราฟ · ตัวเลขบนยอดแท่งคือจำนวนรับเข้ารวม ส่วนกาชาด Routine ดูรายละเอียดรายเดือนได้จากกราฟด้านบน</div></div><button class="btn btn-light btn-sm no-print" type="button" onclick="downloadTrcChartPng('source')">PNG</button></div>
+    <div class="simple-panel kpi-executive-panel" id="trc-source-panel">
+      <div class="panel-heading-row"><div><h3>ภาพรวมจำนวนรับเข้า RBC / SDR รายเดือน</h3><div class="small-muted">แท่งซ้อนแยกแหล่งเลือดเพื่อดูว่ารับเข้าจากโรงพยาบาล ออกหน่วย กาชาด Routine และโรงพยาบาลอื่นเท่าไร</div></div><button class="btn btn-light btn-sm no-print" type="button" onclick="downloadTrcChartPng('source')">PNG</button></div>
       <div id="trc-source-chart">${renderRbcSourceIntakeMonthlySvg(planningMonths)}</div>
-    </div>
-    <div class="simple-panel kpi-executive-panel mb-3" id="trc-rate-panel">
-      <div class="panel-heading-row"><div><h3>แนวโน้มพึ่งพากาชาด Routine</h3><div class="small-muted">แสดงเฉพาะเลือด Routine หลังตัดรายการเลือดหายาก / ภาวะจำเป็นออกแล้ว</div></div><button class="btn btn-light btn-sm no-print" type="button" onclick="downloadTrcChartPng('rate')">PNG</button></div>
-      <div id="trc-rate-chart">${renderTrcRangeSvg(months)}</div>
-    </div>
-    <div class="simple-panel kpi-executive-panel" id="trc-rare-panel">
-      <div class="panel-heading-row"><div><h3>เลือดหายาก / ภาวะจำเป็นจากกาชาด</h3><div class="small-muted">รายงานแยกเป็นจำนวนถุง ไม่รวมใน Routine KPI</div></div><button class="btn btn-light btn-sm no-print" type="button" onclick="downloadTrcChartPng('rare')">PNG</button></div>
-      <div id="trc-rare-chart">${renderTrcRareMonthlySvg(months)}</div>
     </div>`;
+}
+
+function renderKpiTrcMinimum({ dependency, sourceRange, minimumReview, year }) {
+  const core = getKpiTrcCore(dependency, sourceRange);
+  const { planningMonths, adjusted, rare, routine, routineBase, months } = core;
+  currentBloodKpiRouteData = { route:'trc-minimum', year, adjusted, rare, routine, routineBase, months, planningMonths, minimumReview };
+  return `${kpiPageHeader('กาชาดเทียบ Minimum Stock','คัดกรองเดือนที่รับกาชาด Routine ทั้งที่ Stock ต้นวันถึง Minimum แล้ว',year,dependency?.years||[])}
+    ${renderTrcMinimumReviewPanel(minimumReview, planningMonths, { includeDetails:false })}
+    <div class="kpi-route-hint-card no-print"><b>ต้องการดู Bag No. จริงของแต่ละวัน?</b><span>เปิดเมนูย่อย “รายการถุงที่ควรทบทวน” ทางซ้าย</span><button class="btn btn-main btn-sm" type="button" onclick="openKpiRoute('trc-bags',this)">เปิดรายการถุง</button></div>`;
+}
+
+function renderKpiTrcBags({ dependency, sourceRange, minimumReview, year }) {
+  const core = getKpiTrcCore(dependency, sourceRange);
+  const { planningMonths, adjusted, rare, routine, routineBase, months } = core;
+  currentBloodKpiRouteData = { route:'trc-bags', year, adjusted, rare, routine, routineBase, months, planningMonths, minimumReview };
+  return `${kpiPageHeader('รายการถุงกาชาด Routine ที่ควรทบทวน','เดือน → วัน → Bag No. พร้อม Minimum และ Stock ต้นวัน เพื่อใช้ Audit / CQI',year,dependency?.years||[])}
+    ${renderTrcMinimumReviewPanel(minimumReview, planningMonths, { includeChart:false, includeDetails:true })}`;
 }
 
 function renderKpiTurnaround({ insights, dependency, year }) {
@@ -4113,12 +4149,23 @@ async function loadBloodKpiPage(year = null, route = null, options = {}) {
       const [dependency, analysis, trend] = await Promise.all([ensureBloodKpiDependencyRange(filters), ensureBloodKpiAnalysis(filters), ensureBloodKpiTrendRange(filters)]);
       html = renderKpiExpiry({dependency,analysis,trend,year:endYear});
     } else if (currentBloodKpiRoute === 'trc') {
+      const dependency = await ensureBloodKpiDependencyRange(filters);
+      html = renderKpiTrc({dependency,year:endYear});
+    } else if (currentBloodKpiRoute === 'trc-monthly') {
+      const [dependency, sourceRange] = await Promise.all([
+        ensureBloodKpiDependencyRange(filters),
+        ensureBloodKpiRbcSourceRange(filters)
+      ]);
+      html = renderKpiTrcMonthly({dependency,sourceRange,year:endYear});
+    } else if (['trc-minimum','trc-bags'].includes(currentBloodKpiRoute)) {
       const [dependency, sourceRange, minimumReview] = await Promise.all([
         ensureBloodKpiDependencyRange(filters),
         ensureBloodKpiRbcSourceRange(filters),
         ensureBloodKpiTrcMinimumReview(filters)
       ]);
-      html = renderKpiTrc({dependency,sourceRange,minimumReview,year:endYear});
+      html = currentBloodKpiRoute === 'trc-minimum'
+        ? renderKpiTrcMinimum({dependency,sourceRange,minimumReview,year:endYear})
+        : renderKpiTrcBags({dependency,sourceRange,minimumReview,year:endYear});
     } else if (['turnaround','aging','outreach'].includes(currentBloodKpiRoute)) {
       const insights = await ensureBloodKpiHeavyInsights(filters);
       insights.rangeLabel = meta.label;
@@ -4941,25 +4988,30 @@ function filterTrcMinimumReviewDays(mode = 'review', btn = null) {
   document.querySelectorAll('.trc-day-filter').forEach(el => el.classList.toggle('active', el === btn || (!btn && el.dataset.trcDayFilter === mode)));
 }
 
-function renderTrcMinimumReviewPanel(review = {}, planningRows = []) {
+function renderTrcMinimumReviewPanel(review = {}, planningRows = [], options = {}) {
   if (review?.schemaReady === false) {
-    return `<div class="simple-panel kpi-executive-panel mb-3 trc-minimum-review-panel"><div class="panel-heading-row"><div><h3>กาชาด Routine เทียบ Minimum Stock</h3><div class="small-muted">ดูว่ารับกาชาดในวันที่ Stock ต่ำกว่า Minimum หรือวันที่ Stock เพียงพอแล้ว</div></div></div><div class="trc-min-setup"><b>ต้องติดตั้งส่วนคำนวณ v2.9.61 ก่อน</b><span>${escapeOutreachHtml(review?.message || 'กรุณารัน SQL-v2.9.61-TRC-MINIMUM-REVIEW.sql 1 ครั้ง')}</span></div></div>`;
+    return `<div class="simple-panel kpi-executive-panel mb-3 trc-minimum-review-panel"><div class="panel-heading-row"><div><h3>กาชาด Routine เทียบ Minimum Stock</h3><div class="small-muted">ดูว่ารับกาชาดในวันที่ Stock ต่ำกว่า Minimum หรือวันที่ Stock เพียงพอแล้ว</div></div></div><div class="trc-min-setup"><b>ต้องติดตั้งส่วนคำนวณ v2.9.64 ก่อน</b><span>${escapeOutreachHtml(review?.message || 'กรุณารัน SQL-v2.9.64-TRC-MINIMUM-REVIEW-PERFORMANCE.sql 1 ครั้ง')}</span></div></div>`;
   }
   const summary = review?.summary || {};
   const reviewRate = Number(summary?.reviewRate || 0);
   const unassessed = Number(summary?.unassessed || 0);
+  const includeChart = options?.includeChart !== false;
+  const includeDetails = options?.includeDetails !== false;
+  const heading = includeDetails && !includeChart ? 'รายการถุงกาชาด Routine สำหรับ Audit / CQI' : 'กาชาด Routine เทียบ Minimum Stock';
+  const subtitle = includeDetails && !includeChart
+    ? 'เปิดตามวันที่เพื่อดู Bag No., ผลิตภัณฑ์, หมู่เลือด, Minimum และ Stock ต้นวัน'
+    : 'KPI สำหรับ CQI · ครอบคลุม LPRC/LDPRC, FFP, LDPPC, Cryo และ SDP ว่ารับกาชาดในวันที่ Stock ต้นวันต่ำกว่า Minimum หรือมีเพียงพอแล้ว';
   return `<div class="simple-panel kpi-executive-panel mb-3 trc-minimum-review-panel" id="trc-minimum-review-panel">
-    <div class="panel-heading-row"><div><h3>กาชาด Routine เทียบ Minimum Stock</h3><div class="small-muted">KPI สำหรับ CQI · ครอบคลุม LPRC/LDPRC, FFP, LDPPC, Cryo และ SDP ว่ารับกาชาดในวันที่ Stock ต้นวันต่ำกว่า Minimum หรือมีเพียงพอแล้ว</div></div><div class="trc-chart-actions no-print"><button class="btn btn-light btn-sm" type="button" onclick="downloadTrcChartPng('minimumReview')">PNG</button><button class="btn btn-light btn-sm" type="button" onclick="exportTrcMinimumReviewExcel()">Excel รายถุง</button></div></div>
+    <div class="panel-heading-row"><div><h3>${heading}</h3><div class="small-muted">${subtitle}</div></div><div class="trc-chart-actions no-print">${includeChart ? `<button class="btn btn-light btn-sm" type="button" onclick="downloadTrcChartPng('minimumReview')">PNG</button>` : ''}<button class="btn btn-light btn-sm" type="button" onclick="exportTrcMinimumReviewExcel()">Excel รายถุง</button></div></div>
     <div class="trc-min-summary-grid">
       <div class="trc-min-stat"><span>กาชาด Routine ที่ประเมินได้ · ทุกผลิตภัณฑ์ Minimum</span><strong>${Number(summary?.assessed || 0).toLocaleString()} ถุง</strong><small>จาก Routine ${Number(summary?.routineTrc || 0).toLocaleString()} ถุง</small></div>
       <div class="trc-min-stat is-needed"><span>รับตอน Stock ต่ำกว่า Minimum</span><strong>${Number(summary?.needed || 0).toLocaleString()} ถุง</strong><small>สอดคล้องกับการเติม Minimum</small></div>
       <div class="trc-min-stat is-review"><span>รับตอน Stock เพียงพอแล้ว</span><strong>${Number(summary?.review || 0).toLocaleString()} ถุง</strong><small>${Number(summary?.reviewDays || 0).toLocaleString()} วัน · ${Number(summary?.reviewMonths || 0).toLocaleString()} เดือน</small></div>
       <div class="trc-min-stat ${reviewRate > 0 ? 'is-review':''}"><span>สัดส่วนที่ควรทบทวน</span><strong>${reviewRate.toFixed(1)}%</strong><small>ควรทบทวน ÷ รายการที่ประเมินได้</small></div>
     </div>
-    <div id="trc-minimum-review-chart">${renderTrcMinimumReviewMonthlySvg(review, planningRows)}</div>
+    ${includeChart ? `<div id="trc-minimum-review-chart">${renderTrcMinimumReviewMonthlySvg(review, planningRows)}</div>` : ''}
     <div class="trc-min-method-note"><b>วิธีอ่าน:</b> สีส้มหมายถึง “ควรทบทวน” ไม่ได้แปลว่าเบิกผิด · ระบบตัด Rare / Ag-matched / Rh Negative ออกจาก KPI นี้ และใช้ Stock <b>ต้นวัน</b> ที่สร้างย้อนจาก DateStockIn/DateStockOut เพราะ LIS ไม่มีลำดับเวลาในวันครบทุก movement${unassessed > 0 ? ` · มี ${unassessed.toLocaleString()} ถุงที่ประเมินไม่ได้` : ''}</div>
-    <div class="trc-min-detail-head"><div><h4>ลงถึงวันและเลขถุงเลือด</h4><div class="small-muted">เปิดวันที่เพื่อดู Bag No., Minimum และ Stock ต้นวันของถุงที่รับเข้าจากกาชาด</div></div></div>
-    ${renderTrcMinimumReviewDays(review)}
+    ${includeDetails ? `<div class="trc-min-detail-head"><div><h4>ลงถึงวันและเลขถุงเลือด</h4><div class="small-muted">เปิดวันที่เพื่อดู Bag No., Minimum และ Stock ต้นวันของถุงที่รับเข้าจากกาชาด</div></div></div>${renderTrcMinimumReviewDays(review)}` : ''}
   </div>`;
 }
 
