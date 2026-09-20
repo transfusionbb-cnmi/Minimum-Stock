@@ -3710,3 +3710,33 @@ body {
   .trc-min-day summary { align-items:flex-start; flex-direction:column; }
   .trc-chart-actions { width:100%; justify-content:flex-start; }
 }
+
+
+/* v2.9.62 — flattened navigation + KPI category tabs */
+.side-nav-section-label{
+  margin:10px 10px 6px;
+  color:#8ba1b2;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.06em;
+  line-height:1.2;
+}
+.side-nav-divider{height:1px;background:#e4eef5;margin:8px 8px;}
+.kpi-direct-btn{width:100%;}
+.kpi-category-tabs{
+  display:flex;flex-wrap:wrap;gap:8px;margin:-2px 0 14px;padding:4px 0 2px;
+}
+.kpi-category-tab{
+  appearance:none;border:1px solid #d9e8f3;background:#fff;color:#57778f;
+  border-radius:999px;padding:9px 14px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
+}
+.kpi-category-tab:hover{background:#f2f9fe;border-color:#c7e3f4;color:#187db9;}
+.kpi-category-tab.active{background:#def1ff;border-color:#bfe0f4;color:#157db8;}
+@media(max-width:760px){
+  .side-nav-section-label{margin-top:8px;font-size:9px;}
+  .side-nav-divider{margin:6px 8px;}
+  .kpi-category-tabs{gap:6px;margin-bottom:10px;}
+  .kpi-category-tab{font-size:12px;padding:8px 11px;}
+}
+@media print{.kpi-category-tabs{display:none!important;}}
