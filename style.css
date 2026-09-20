@@ -3779,3 +3779,57 @@ body {
   .kpi-route-hint-card{align-items:flex-start;}
   .kpi-route-hint-card .btn{width:100%;}
 }
+
+/* v2.9.66 — KPI clean UI / progressive disclosure */
+.kpi-info-details{
+  margin:10px 0 14px;
+  border:1px solid #e2edf4;
+  border-radius:12px;
+  background:#f9fcfe;
+  color:#597287;
+  overflow:hidden;
+}
+.kpi-info-details summary{
+  list-style:none;
+  cursor:pointer;
+  padding:10px 13px;
+  font-size:13px;
+  font-weight:800;
+  color:#315b78;
+  user-select:none;
+}
+.kpi-info-details summary::-webkit-details-marker{display:none;}
+.kpi-info-details-body{
+  border-top:1px solid #e7f0f5;
+  padding:10px 13px 12px;
+  font-size:12px;
+  line-height:1.6;
+  color:#667f92;
+}
+.kpi-inline-actions{
+  display:flex;
+  justify-content:flex-end;
+  margin:10px 0 0;
+}
+.kpi-load-card{padding:16px 18px;}
+.kpi-load-card-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  color:#647f93;
+  font-size:13px;
+}
+.kpi-blood-shell .simple-kpi span,
+.trc-min-stat span{
+  line-height:1.28;
+}
+.kpi-blood-shell .simple-kpi small,
+.trc-min-stat small{
+  line-height:1.28;
+}
+@media (max-width: 720px){
+  .kpi-load-card-row{align-items:stretch;flex-direction:column;}
+  .kpi-load-card-row .btn{width:100%;}
+  .kpi-inline-actions .btn{width:100%;}
+}
