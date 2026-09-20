@@ -4671,6 +4671,25 @@ function wrapScrollableKpiSvg(svgMarkup, wide = false) {
   return `<div class="kpi-chart-scroll${wide ? ' wide' : ''}">${svgMarkup}</div>`;
 }
 
+function renderKpiSegmentValueLabel(cx, yTop, height, value, color, options = {}) {
+  const numeric = Number(value || 0);
+  if (!(numeric > 0)) return '';
+  const barWidth = Number(options.barWidth || 40);
+  const top = Number(options.top || 0);
+  const fontSize = Number(options.fontSize || 10.5);
+  const minInside = Number(options.minInside || 17);
+  const insideColor = options.insideColor || '#ffffff';
+  const side = Number(options.side || 1) >= 0 ? 1 : -1;
+  const text = options.text || numeric.toLocaleString();
+  if (height >= minInside) {
+    return `<text x="${cx}" y="${yTop + height / 2 + fontSize * .34}" text-anchor="middle" font-size="${fontSize}" font-weight="900" fill="${insideColor}" style="paint-order:stroke;stroke:${color};stroke-width:1.8px;stroke-linejoin:round">${text}</text>`;
+  }
+  const x = cx + side * (barWidth / 2 + 5);
+  const anchor = side > 0 ? 'start' : 'end';
+  const y = Math.max(top + fontSize, yTop + height / 2 + fontSize * .34);
+  return `<text x="${x}" y="${y}" text-anchor="${anchor}" font-size="${Math.max(8.5, fontSize - .8)}" font-weight="900" fill="${color}" style="paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round">${text}</text>`;
+}
+
 function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
   const { items, monthNames, multiYear, yearBands } = getKpiContinuousMonthChartMeta(rows);
   const isExpiry = mode === 'expiry';
@@ -4712,10 +4731,14 @@ function renderExecutiveMonthlyRateChart(rows, year, mode = 'utilization') {
     const cx = xCenter(i), x = cx - barW/2, totalY = yCount(row.totalFinal), totalH = row.totalFinal > 0 ? Math.max(4, chartBottom-totalY) : 0;
     const expiredH = row.totalFinal > 0 ? (row.expired / row.totalFinal) * totalH : 0;
     const usedH = row.totalFinal > 0 ? (row.used / row.totalFinal) * totalH : 0;
+    const expiredY = totalY;
+    const usedY = chartBottom - usedH;
+    const expiredValueLabel = renderKpiSegmentValueLabel(cx, expiredY, expiredH, row.expired, expiredColor, { barWidth:barW, top, side:-1, fontSize:safeItems.length>18?9.4:10.2 });
+    const usedValueLabel = renderKpiSegmentValueLabel(cx, usedY, usedH, row.used, usedColor, { barWidth:barW, top, side:1, fontSize:safeItems.length>18?9.4:10.2 });
     const badgeY = Math.max(top + 12, totalY - 34), badgeW = row.lowBase ? 60 : 52;
     const yearTip = Number(row.year||0) ? ` ${Number(row.year)+543}` : '';
     return `<g>
-      ${row.totalFinal>0 ? `<g clip-path="url(#kpiStackClip${i})"><rect x="${x}" y="${totalY}" width="${barW}" height="${totalH}" fill="#f8fbfe"/>${row.expired>0 ? `<rect x="${x}" y="${totalY}" width="${barW}" height="${expiredH}" fill="${expiredColor}"><title>${escapeOutreachHtml(row.periodLabel)}${yearTip} · Expired ${row.expired.toLocaleString()} ถุง</title></rect>` : ''}${row.used>0 ? `<rect x="${x}" y="${chartBottom-usedH}" width="${barW}" height="${usedH}" fill="${usedColor}"><title>${escapeOutreachHtml(row.periodLabel)}${yearTip} · Used ${row.used.toLocaleString()} ถุง</title></rect>` : ''}</g><rect x="${x}" y="${totalY}" width="${barW}" height="${totalH}" rx="10" fill="none" stroke="#9dc8e9" stroke-width="1.5"><title>${escapeOutreachHtml(row.periodLabel)}${yearTip} · พร้อมใช้ ${row.totalFinal.toLocaleString()} ถุง</title></rect>` : ''}
+      ${row.totalFinal>0 ? `<g clip-path="url(#kpiStackClip${i})"><rect x="${x}" y="${totalY}" width="${barW}" height="${totalH}" fill="#f8fbfe"/>${row.expired>0 ? `<rect x="${x}" y="${totalY}" width="${barW}" height="${expiredH}" fill="${expiredColor}"><title>${escapeOutreachHtml(row.periodLabel)}${yearTip} · Expired ${row.expired.toLocaleString()} ถุง</title></rect>` : ''}${row.used>0 ? `<rect x="${x}" y="${chartBottom-usedH}" width="${barW}" height="${usedH}" fill="${usedColor}"><title>${escapeOutreachHtml(row.periodLabel)}${yearTip} · Used ${row.used.toLocaleString()} ถุง</title></rect>` : ''}</g><rect x="${x}" y="${totalY}" width="${barW}" height="${totalH}" rx="10" fill="none" stroke="#9dc8e9" stroke-width="1.5"><title>${escapeOutreachHtml(row.periodLabel)}${yearTip} · พร้อมใช้ ${row.totalFinal.toLocaleString()} ถุง</title></rect>${expiredValueLabel}${usedValueLabel}` : ''}
       ${row.rate!==null ? `<line x1="${cx}" y1="${badgeY+22}" x2="${cx}" y2="${Math.max(top+28,totalY-3)}" stroke="${row.lowBase?lowBaseColor:'#9ab2c7'}" stroke-width="1.4"/><rect x="${cx-badgeW/2}" y="${badgeY}" width="${badgeW}" height="22" rx="11" fill="${row.lowBase?'#fff7ea':'#fff'}" stroke="${row.lowBase?lowBaseColor:'#b9cfe0'}"/><text x="${cx}" y="${badgeY+15}" text-anchor="middle" font-size="11.5" font-weight="700" fill="${row.lowBase?'#b87813':primaryColor}">${row.rate.toFixed(1)}%${row.lowBase?'*':''}</text>` : ''}
       <text x="${cx}" y="${h-(multiYear?68:38)}" text-anchor="middle" font-size="${safeItems.length>18?11.5:13}" font-weight="600" fill="#5f7689">${escapeOutreachHtml(row.periodLabel)}</text>
     </g>`;
@@ -4787,23 +4810,23 @@ function renderRbcSourceIntakeMonthlySvg(rows) {
   const { items, multiYear, yearBands } = getKpiContinuousMonthChartMeta(rows);
   if (!items.length) return `<div class="small-muted py-4">ไม่มีข้อมูลในช่วงที่เลือก</div>`;
   const series = [
-    { key:'selfInhouse', label:'รับบริจาคใน รพ.', color:'#74b7e8' },
-    { key:'selfOutreach', label:'ออกหน่วย', color:'#63bf9b' },
-    { key:'routineTrc', label:'กาชาด Routine', color:'#4b83c3' },
-    { key:'otherHospital', label:'รพ.อื่น', color:'#a7b5c2' }
+    { key:'selfInhouse', label:'รับบริจาคใน รพ.', color:'#74b7e8', insideColor:'#173b5d' },
+    { key:'selfOutreach', label:'ออกหน่วย', color:'#63bf9b', insideColor:'#173b5d' },
+    { key:'routineTrc', label:'กาชาด Routine', color:'#4b83c3', insideColor:'#ffffff' },
+    { key:'otherHospital', label:'รพ.อื่น', color:'#a7b5c2', insideColor:'#173b5d' }
   ];
   const totals = items.map(row => series.reduce((sum,item)=>sum+Number(row?.[item.key]||0),0));
   const maxValue = Math.max(1, ...totals);
   const step = maxValue <= 20 ? 5 : maxValue <= 100 ? 20 : maxValue <= 300 ? 50 : maxValue <= 800 ? 100 : 200;
   const yMax = Math.max(step, Math.ceil(maxValue / step) * step);
-  const left = 82, right = 46, top = 98, bottom = multiYear ? 122 : 92;
-  const groupW = items.length > 18 ? 72 : 86;
+  const left = 82, right = 60, top = 98, bottom = multiYear ? 122 : 92;
+  const groupW = items.length > 18 ? 82 : 94;
   const chartW = Math.max(840, groupW * items.length);
   const w = left + right + chartW, h = 560, chartH = h - top - bottom;
   const xCenter = i => left + groupW * i + groupW / 2;
   const y = value => top + chartH - (Math.max(0, Number(value || 0)) / yMax) * chartH;
   const chartBottom = top + chartH;
-  const barW = Math.max(34, Math.min(48, groupW * .58));
+  const barW = Math.max(34, Math.min(48, groupW * .52));
   const grid = [0,.25,.5,.75,1].map(frac => {
     const value = Math.round(yMax * frac);
     const yy = top + chartH - chartH * frac;
@@ -4812,22 +4835,26 @@ function renderRbcSourceIntakeMonthlySvg(rows) {
   const bars = items.map((row,i) => {
     const cx = xCenter(i), x = cx - barW/2;
     let running = 0;
-    const parts = series.map(item => {
+    const parts = series.map((item, itemIndex) => {
       const value = Number(row?.[item.key] || 0);
       if (value <= 0) return '';
       const yTop = y(running + value);
       const yBottom = y(running);
       const hh = Math.max(2, yBottom - yTop);
-      const isTrc = item.key === 'routineTrc';
-      const innerLabel = isTrc && hh >= 22
-        ? `<text x="${cx}" y="${yTop + hh/2 + 4}" text-anchor="middle" font-size="${items.length>18?9.5:10.5}" font-weight="800" fill="#fff" style="paint-order:stroke;stroke:${item.color};stroke-width:2px">${value.toLocaleString()}</text>`
-        : '';
+      const valueLabel = renderKpiSegmentValueLabel(cx, yTop, hh, value, item.color, {
+        barWidth:barW,
+        top,
+        side:itemIndex % 2 === 0 ? -1 : 1,
+        fontSize:items.length>18?8.8:9.8,
+        minInside:15,
+        insideColor:item.insideColor
+      });
       running += value;
-      return `<rect x="${x}" y="${yTop}" width="${barW}" height="${hh}" fill="${item.color}" opacity=".95"><title>${escapeOutreachHtml(row.periodLabel || '')} · ${item.label} ${value.toLocaleString()} ถุง</title></rect>${innerLabel}`;
+      return `<rect x="${x}" y="${yTop}" width="${barW}" height="${hh}" fill="${item.color}" opacity=".95"><title>${escapeOutreachHtml(row.periodLabel || '')} · ${item.label} ${value.toLocaleString()} ถุง</title></rect>${valueLabel}`;
     }).join('');
     const total = totals[i] || 0;
-    const totalY = Math.max(top + 13, y(total) - 8);
-    const totalLabel = total > 0 ? `<text x="${cx}" y="${totalY}" text-anchor="middle" font-size="${items.length>18?10:11}" font-weight="800" fill="#36556f" style="paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round">${total.toLocaleString()}</text>` : '';
+    const totalY = Math.max(top + 13, y(total) - 10);
+    const totalLabel = total > 0 ? `<text x="${cx}" y="${totalY}" text-anchor="middle" font-size="${items.length>18?10:11}" font-weight="900" fill="#36556f" style="paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round">รวม ${total.toLocaleString()}</text>` : '';
     return `${parts}${totalLabel}`;
   }).join('');
   const labels = items.map((row,i) => `<text x="${xCenter(i)}" y="${h-(multiYear?56:32)}" text-anchor="middle" font-size="${items.length>18?10.5:12.5}" fill="#587184">${escapeOutreachHtml(['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(row.month||0)] || row.periodLabel || '')}</text>`).join('');
@@ -4839,9 +4866,10 @@ function renderRbcSourceIntakeMonthlySvg(rows) {
     legendX += width;
     return out;
   }).join('');
-  const svg = `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="ภาพรวมจำนวนรับเข้า RBC และ SDR รายเดือนแบบแท่งซ้อนแยกตามแหล่งเลือด"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/>${legend}${grid}${yearBandsSvg}${bars}${labels}</svg>`;
+  const svg = `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="ภาพรวมจำนวนรับเข้า RBC และ SDR รายเดือนแบบแท่งซ้อนแยกตามแหล่งเลือด พร้อมตัวเลขทุกแหล่ง"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/>${legend}${grid}${yearBandsSvg}${bars}${labels}</svg>`;
   return wrapScrollableKpiSvg(svg, items.length > 10);
 }
+
 
 function renderRoutineTrcVsOutreachMonthlySvg(rows) {
   const { items, multiYear, yearBands } = getKpiContinuousMonthChartMeta(rows);
@@ -4912,14 +4940,14 @@ function renderTrcMinimumReviewMonthlySvg(review = {}, planningRows = []) {
   const maxValue = Math.max(1, ...items.map(row => Number(row?.assessed || 0) + Number(row?.unassessed || 0)));
   const step = maxValue <= 20 ? 5 : maxValue <= 100 ? 20 : maxValue <= 300 ? 50 : 100;
   const yMax = Math.max(step, Math.ceil(maxValue / step) * step);
-  const left = 82, right = 46, top = 98, bottom = multiYear ? 122 : 92;
-  const groupW = items.length > 18 ? 72 : 86;
+  const left = 82, right = 60, top = 98, bottom = multiYear ? 122 : 92;
+  const groupW = items.length > 18 ? 78 : 90;
   const chartW = Math.max(840, groupW * items.length);
   const w = left + right + chartW, h = 540, chartH = h - top - bottom;
   const chartBottom = top + chartH;
   const xCenter = i => left + groupW * i + groupW / 2;
   const y = value => top + chartH - (Math.max(0, Number(value || 0)) / yMax) * chartH;
-  const barW = Math.max(34, Math.min(48, groupW * .58));
+  const barW = Math.max(34, Math.min(48, groupW * .54));
   const grid = [0,.25,.5,.75,1].map(frac => {
     const value = Math.round(yMax * frac);
     const yy = top + chartH - chartH * frac;
@@ -4928,32 +4956,38 @@ function renderTrcMinimumReviewMonthlySvg(review = {}, planningRows = []) {
   const bars = items.map((row,i) => {
     const cx = xCenter(i), x = cx - barW/2;
     const segments = [
-      { key:'needed', value:Number(row?.needed || 0), color:'#63bf9b', label:'Stock ต่ำกว่า Minimum' },
-      { key:'review', value:Number(row?.review || 0), color:'#e7a14f', label:'Stock พอแล้ว · ควรทบทวน' },
-      { key:'unassessed', value:Number(row?.unassessed || 0), color:'#a9b7c3', label:'ประเมินไม่ได้' }
+      { key:'needed', value:Number(row?.needed || 0), color:'#63bf9b', label:'Stock ต่ำกว่า Minimum', insideColor:'#173b5d' },
+      { key:'review', value:Number(row?.review || 0), color:'#e7a14f', label:'Stock พอแล้ว · ควรทบทวน', insideColor:'#ffffff' },
+      { key:'unassessed', value:Number(row?.unassessed || 0), color:'#a9b7c3', label:'ประเมินไม่ได้', insideColor:'#173b5d' }
     ];
     let running = 0;
-    const parts = segments.map(seg => {
+    const parts = segments.map((seg, segIndex) => {
       if (seg.value <= 0) return '';
       const yTop = y(running + seg.value), yBottom = y(running);
       const hh = Math.max(2, yBottom-yTop);
-      const inner = seg.key === 'review' && hh >= 20
-        ? `<text x="${cx}" y="${yTop + hh/2 + 4}" text-anchor="middle" font-size="${items.length>18?9.5:10.5}" font-weight="900" fill="#fff">${seg.value.toLocaleString()}</text>`
-        : '';
+      const valueLabel = renderKpiSegmentValueLabel(cx, yTop, hh, seg.value, seg.color, {
+        barWidth:barW,
+        top,
+        side:segIndex % 2 === 0 ? -1 : 1,
+        fontSize:items.length>18?9.0:10.0,
+        minInside:15,
+        insideColor:seg.insideColor
+      });
       running += seg.value;
-      return `<rect x="${x}" y="${yTop}" width="${barW}" height="${hh}" fill="${seg.color}"><title>${escapeOutreachHtml(row.periodLabel || '')} · ${seg.label} ${seg.value.toLocaleString()} ถุง</title></rect>${inner}`;
+      return `<rect x="${x}" y="${yTop}" width="${barW}" height="${hh}" fill="${seg.color}"><title>${escapeOutreachHtml(row.periodLabel || '')} · ${seg.label} ${seg.value.toLocaleString()} ถุง</title></rect>${valueLabel}`;
     }).join('');
     const total = Number(row?.routineTrc || 0);
-    const labelY = Math.max(top + 14, y(running)-8);
-    const totalLabel = total > 0 ? `<text x="${cx}" y="${labelY}" text-anchor="middle" font-size="${items.length>18?10:11}" font-weight="800" fill="#36556f" style="paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round">${total.toLocaleString()}</text>` : '';
+    const labelY = Math.max(top + 14, y(running)-10);
+    const totalLabel = total > 0 ? `<text x="${cx}" y="${labelY}" text-anchor="middle" font-size="${items.length>18?10:11}" font-weight="900" fill="#36556f" style="paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round">รวม ${total.toLocaleString()}</text>` : '';
     return `${parts}${totalLabel}`;
   }).join('');
   const labels = items.map((row,i) => `<text x="${xCenter(i)}" y="${h-(multiYear?56:32)}" text-anchor="middle" font-size="${items.length>18?10.5:12.5}" fill="#587184">${escapeOutreachHtml(['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(row.month||0)] || row.periodLabel || '')}</text>`).join('');
   const yearBandsSvg = multiYear ? renderKpiYearBandSvg(yearBands, xCenter, chartBottom) : '';
   const legend = `<g transform="translate(${left},34)"><rect x="0" y="-9" width="14" height="14" rx="4" fill="#63bf9b"/><text x="22" y="2" font-size="12" fill="#5b7285">Stock ต่ำกว่า Minimum</text><rect x="190" y="-9" width="14" height="14" rx="4" fill="#e7a14f"/><text x="212" y="2" font-size="12" fill="#5b7285">Stock พอแล้ว · ควรทบทวน</text><rect x="430" y="-9" width="14" height="14" rx="4" fill="#a9b7c3"/><text x="452" y="2" font-size="12" fill="#5b7285">ประเมินไม่ได้</text></g>`;
-  const svg = `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="กาชาด Routine เทียบสถานะ Minimum Stock ตอนต้นวันรายเดือน"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/>${legend}${grid}${yearBandsSvg}${bars}${labels}</svg>`;
+  const svg = `<svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="กาชาด Routine เทียบสถานะ Minimum Stock ตอนต้นวันรายเดือน พร้อมตัวเลขทุกสถานะ"><rect x="8" y="8" width="${w-16}" height="${h-16}" rx="26" fill="#fff" stroke="#edf3f7"/>${legend}${grid}${yearBandsSvg}${bars}${labels}</svg>`;
   return wrapScrollableKpiSvg(svg, items.length > 10);
 }
+
 
 function renderTrcMinimumReviewBagStatus(bag = {}) {
   if (bag?.canEvaluate === false) return `<span class="trc-min-badge is-unknown">ประเมินไม่ได้</span>`;
@@ -5054,22 +5088,35 @@ function renderAgeDistributionSvg(dist={}) {
 
 function renderBloodOutcomeMonthlySvg(rows, year) {
   const items = Array.isArray(rows) ? rows : [];
-  const w = 860, h = 360, left = 52, right = 24, top = 34, bottom = 54;
+  const w = 920, h = 390, left = 58, right = 40, top = 44, bottom = 58;
   const chartW = w-left-right, chartH = h-top-bottom;
   const names = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
   const totals = items.map(r => Number(r.used||0)+Number(r.expired||0)+Number(r.unresolved||0));
   const maxValue = Math.max(5, ...totals), roundedMax = Math.ceil(maxValue/5)*5;
   const y = value => top + chartH - (Number(value||0)/roundedMax)*chartH;
-  const groupW = chartW/Math.max(12,items.length||12), barW = Math.min(28,groupW*.48);
+  const groupW = chartW/Math.max(12,items.length||12), barW = Math.min(30,groupW*.44);
   const grid=[0,.25,.5,.75,1].map(frac=>{const value=Math.round(roundedMax*frac),yy=y(value);return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e7eef4"/><text x="${left-10}" y="${yy+4}" text-anchor="end" font-size="11" fill="#7890a4">${value}</text>`}).join('');
-  const bars=items.map((r,i)=>{const used=Number(r.used||0),expired=Number(r.expired||0),unresolved=Number(r.unresolved||0),total=used+expired+unresolved,cx=left+groupW*i+groupW/2,x=cx-barW/2,topY=y(total),totalH=chartH-(topY-top),usedH=total?totalH*used/total:0,expiredH=total?totalH*expired/total:0,unresolvedH=total?totalH*unresolved/total:0;return `<g><rect x="${x}" y="${topY}" width="${barW}" height="${Math.max(total?3:0,totalH)}" rx="7" fill="#f7fbfe" stroke="#dce8f2"/>${unresolved?`<rect x="${x+1}" y="${topY}" width="${barW-2}" height="${unresolvedH}" rx="6" fill="#9ab3c5"><title>${names[i]} ยังอยู่ในคลัง ${unresolved.toLocaleString()} ถุง</title></rect>`:''}${expired?`<rect x="${x+1}" y="${topY+unresolvedH}" width="${barW-2}" height="${expiredH}" fill="#f28b82"><title>${names[i]} Expired ${expired.toLocaleString()} ถุง</title></rect>`:''}${used?`<rect x="${x+1}" y="${top+chartH-usedH}" width="${barW-2}" height="${usedH}" rx="6" fill="#68c3a3"><title>${names[i]} Used ${used.toLocaleString()} ถุง</title></rect>`:''}<text x="${cx}" y="${h-18}" text-anchor="middle" font-size="11" fill="#6f8598">${names[i]}</text></g>`}).join('');
-  return `<svg class="kpi-line-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="แนวโน้มผลถุงเลือดรายเดือน">${grid}${bars}<g transform="translate(${left+8},${top-10})"><rect x="0" y="-8" width="16" height="10" rx="3" fill="#68c3a3"></rect><text x="24" y="0" font-size="12" fill="#36556f">Used</text><rect x="78" y="-8" width="16" height="10" rx="3" fill="#f28b82"></rect><text x="102" y="0" font-size="12" fill="#36556f">Expired</text><rect x="178" y="-8" width="16" height="10" rx="3" fill="#9ab3c5"></rect><text x="202" y="0" font-size="12" fill="#36556f">ยังอยู่ในคลัง</text><text x="332" y="0" font-size="12" fill="#7890a4">ปี ${year+543}</text></g></svg>`;
+  const bars=items.map((r,i)=>{
+    const used=Number(r.used||0), expired=Number(r.expired||0), unresolved=Number(r.unresolved||0), total=used+expired+unresolved;
+    const cx=left+groupW*i+groupW/2, x=cx-barW/2, topY=y(total), totalH=chartH-(topY-top);
+    const usedH=total?totalH*used/total:0, expiredH=total?totalH*expired/total:0, unresolvedH=total?totalH*unresolved/total:0;
+    const unresolvedY=topY, expiredY=topY+unresolvedH, usedY=top+chartH-usedH;
+    const labels = [
+      renderKpiSegmentValueLabel(cx, unresolvedY, unresolvedH, unresolved, '#9ab3c5', {barWidth:barW, top, side:-1, fontSize:9.2, minInside:15, insideColor:'#173b5d'}),
+      renderKpiSegmentValueLabel(cx, expiredY, expiredH, expired, '#f28b82', {barWidth:barW, top, side:1, fontSize:9.2, minInside:15, insideColor:'#ffffff'}),
+      renderKpiSegmentValueLabel(cx, usedY, usedH, used, '#68c3a3', {barWidth:barW, top, side:-1, fontSize:9.2, minInside:15, insideColor:'#173b5d'})
+    ].join('');
+    const totalLabel = total > 0 ? `<text x="${cx}" y="${Math.max(top+12,topY-8)}" text-anchor="middle" font-size="10.5" font-weight="900" fill="#36556f" style="paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round">รวม ${total.toLocaleString()}</text>` : '';
+    return `<g><rect x="${x}" y="${topY}" width="${barW}" height="${Math.max(total?3:0,totalH)}" rx="7" fill="#f7fbfe" stroke="#dce8f2"/>${unresolved?`<rect x="${x+1}" y="${topY}" width="${barW-2}" height="${unresolvedH}" rx="6" fill="#9ab3c5"><title>${names[i]} ยังอยู่ในคลัง ${unresolved.toLocaleString()} ถุง</title></rect>`:''}${expired?`<rect x="${x+1}" y="${topY+unresolvedH}" width="${barW-2}" height="${expiredH}" fill="#f28b82"><title>${names[i]} Expired ${expired.toLocaleString()} ถุง</title></rect>`:''}${used?`<rect x="${x+1}" y="${top+chartH-usedH}" width="${barW-2}" height="${usedH}" rx="6" fill="#68c3a3"><title>${names[i]} Used ${used.toLocaleString()} ถุง</title></rect>`:''}${labels}${totalLabel}<text x="${cx}" y="${h-18}" text-anchor="middle" font-size="11" fill="#6f8598">${names[i]}</text></g>`;
+  }).join('');
+  return `<svg class="kpi-line-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="แนวโน้มผลถุงเลือดรายเดือน พร้อมตัวเลขทุกผลลัพธ์">${grid}${bars}<g transform="translate(${left+8},${top-14})"><rect x="0" y="-8" width="16" height="10" rx="3" fill="#68c3a3"></rect><text x="24" y="0" font-size="12" fill="#36556f">Used</text><rect x="78" y="-8" width="16" height="10" rx="3" fill="#f28b82"></rect><text x="102" y="0" font-size="12" fill="#36556f">Expired</text><rect x="178" y="-8" width="16" height="10" rx="3" fill="#9ab3c5"></rect><text x="202" y="0" font-size="12" fill="#36556f">ยังอยู่ในคลัง</text><text x="332" y="0" font-size="12" fill="#7890a4">ปี ${year+543}</text></g></svg>`;
 }
+
 
 
 function renderBloodKpiLineSvg(months, year, comparisonYear) {
   const rows = Array.isArray(months) ? months : [];
-  const w = 860, h = 360, left = 58, right = 24, top = 26, bottom = 48;
+  const w = 920, h = 390, left = 62, right = 28, top = 36, bottom = 54;
   const chartW = w-left-right, chartH = h-top-bottom;
   const monthNames = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
   const validRates = rows.flatMap(m => [Number(m.rate||0), Number(m.previousRate||0), Number((m.adjustedRate ?? m.rate) || 0)]).filter(Number.isFinite);
@@ -5077,25 +5124,30 @@ function renderBloodKpiLineSvg(months, year, comparisonYear) {
   const yMax = Math.min(100, maxRate + 10);
   const x = i => left + (chartW * i / 11);
   const y = v => top + chartH - (Math.max(0,Math.min(yMax,Number(v||0))) / yMax) * chartH;
-  const pathFor = key => rows.map((m,i)=>`${i===0?"M":"L"}${x(i).toFixed(1)},${y(m[key]).toFixed(1)}`).join(" ");
+  const pathFor = key => rows.map((m,i)=>`${i===0?"M":"L"}${x(i).toFixed(1)},${y(m[key] ?? m.rate).toFixed(1)}`).join(" ");
   const grid = [0, .25, .5, .75, 1].map(frac => {
     const value = Math.round(yMax*frac);
     const yy = y(value);
     return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#e7eef4"/><text x="${left-10}" y="${yy+4}" text-anchor="end" font-size="11" fill="#7890a4">${value}%</text>`;
   }).join("");
   const xLabels = rows.map((m,i)=>`<text x="${x(i)}" y="${h-18}" text-anchor="middle" font-size="11" fill="#6f8598">${monthNames[i]}</text>`).join("");
+  const labelStyle='paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round';
   const currentDots = rows.map((m,i)=>`<circle cx="${x(i)}" cy="${y(m.rate)}" r="4" fill="#2d9f73"><title>${monthNames[i]} ${year+543}: ${Number(m.rate||0).toFixed(1)}%</title></circle>`).join("");
   const adjustedDots = rows.map((m,i)=>`<circle cx="${x(i)}" cy="${y(m.adjustedRate ?? m.rate)}" r="3" fill="#1c77c3"><title>${monthNames[i]} ปรับแล้ว: ${Number((m.adjustedRate ?? m.rate)||0).toFixed(1)}%</title></circle>`).join("");
   const prevDots = rows.map((m,i)=>`<circle cx="${x(i)}" cy="${y(m.previousRate)}" r="3" fill="#7890a4"><title>${monthNames[i]} ${comparisonYear+543}: ${Number(m.previousRate||0).toFixed(1)}%</title></circle>`).join("");
-  return `<svg class="kpi-line-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="แนวโน้มอัตราพึ่งพาเลือดแดงจากสภากาชาดไทย">
+  const currentLabels = rows.map((m,i)=>`<text x="${x(i)}" y="${Math.max(top+11,y(m.rate)-11)}" text-anchor="middle" font-size="9.8" font-weight="800" fill="#2d9f73" style="${labelStyle}">${Number(m.rate||0).toFixed(1)}%</text>`).join('');
+  const adjustedLabels = rows.map((m,i)=>`<text x="${x(i)}" y="${Math.min(top+chartH-8,y(m.adjustedRate ?? m.rate)+17)}" text-anchor="middle" font-size="9.3" font-weight="800" fill="#1c77c3" style="${labelStyle}">${Number((m.adjustedRate ?? m.rate)||0).toFixed(1)}%</text>`).join('');
+  const prevLabels = rows.map((m,i)=>`<text x="${x(i)}" y="${Math.min(top+chartH+16,y(m.previousRate)+31)}" text-anchor="middle" font-size="8.8" font-weight="700" fill="#7890a4" style="${labelStyle}">${Number(m.previousRate||0).toFixed(1)}%</text>`).join('');
+  return `<svg class="kpi-line-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="แนวโน้มอัตราพึ่งพาเลือดแดงจากสภากาชาดไทย พร้อมตัวเลขทุกเส้น">
     ${grid}
     <path d="${pathFor("previousRate")}" fill="none" stroke="#8fa5b7" stroke-width="2.5" stroke-dasharray="7 6"/>
     <path d="${pathFor("rate")}" fill="none" stroke="#2d9f73" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="${pathFor("adjustedRate")}" fill="none" stroke="#1c77c3" stroke-width="2.5" stroke-dasharray="2 8"/>
-    ${prevDots}${currentDots}${adjustedDots}${xLabels}
+    ${prevDots}${currentDots}${adjustedDots}${prevLabels}${currentLabels}${adjustedLabels}${xLabels}
     <g transform="translate(${left+8},${top+8})"><line x1="0" y1="0" x2="28" y2="0" stroke="#2d9f73" stroke-width="4"/><text x="36" y="4" font-size="12" fill="#36556f">รวม ${year+543}</text><line x1="118" y1="0" x2="146" y2="0" stroke="#1c77c3" stroke-width="2.5" stroke-dasharray="2 8"/><text x="154" y="4" font-size="12" fill="#36556f">ปรับแล้ว</text><line x1="240" y1="0" x2="268" y2="0" stroke="#8fa5b7" stroke-width="2.5" stroke-dasharray="7 6"/><text x="276" y="4" font-size="12" fill="#36556f">${comparisonYear+543}</text></g>
   </svg>`;
 }
+
 
 function renderHorizontalBarChartSvg(rows, options = {}) {
   const items = Array.isArray(rows) ? rows : [];
@@ -5137,7 +5189,7 @@ function getTrcChartExportConfig(kind) {
       panelId:'trc-source-chart',
       title:'ภาพรวมจำนวนรับเข้า RBC / SDR รายเดือน',
       subtitle:'แท่งซ้อนแสดงจำนวนรับเข้าจากแต่ละแหล่งในเดือนเดียวกัน',
-      note:'ตัวเลขบนยอดแท่ง = จำนวนรับเข้ารวม · ตัวเลขสีขาวในช่วงสีน้ำเงิน (เมื่อพื้นที่พอ) = กาชาด Routine · รายละเอียดทุกแหล่งดูได้จากสี/คำอธิบายกราฟ'
+      note:'ตัวเลขบนยอดแท่ง = จำนวนรับเข้ารวม · แต่ละช่วงสีแสดงจำนวนถุงของแหล่งนั้นโดยตรง · Rare / Ag-matched / Rh Negative แยกออกจาก Routine KPI ตามเกณฑ์เดิม'
     },
     rate: {
       panelId:'trc-rate-chart',
@@ -5155,7 +5207,7 @@ function getTrcChartExportConfig(kind) {
       panelId:'trc-minimum-review-chart',
       title:'กาชาด Routine เทียบ Minimum Stock',
       subtitle:'LPRC/LDPRC, FFP, LDPPC, Cryo และ SDP แยกรายเดือนว่ารับกาชาดขณะ Stock ต้นวันต่ำกว่า Minimum หรือมีเพียงพอแล้ว',
-      note:'สีส้ม = ควรทบทวน ไม่ได้สรุปว่าเบิกผิด · ตัด Rare / Ag-matched / Rh Negative ออก · Stock ย้อนหลังประเมินจาก DateStockIn/DateStockOut ณ ต้นวัน'
+      note:'ตัวเลขในแต่ละช่วงสี = จำนวนถุงของสถานะนั้น · สีส้ม = ควรทบทวน ไม่ได้สรุปว่าเบิกผิด · ตัด Rare / Ag-matched / Rh Negative ออก · Stock ย้อนหลังประเมินจาก DateStockIn/DateStockOut ณ ต้นวัน'
     }
   };
   return configs[kind] || null;
@@ -5304,25 +5356,36 @@ function downloadBloodKpiChartPng() {
   if (!months.length) return;
   const year = Number(data.year||0), prev = Number(data.comparisonYear||year-1);
   const canvas = document.createElement("canvas");
-  canvas.width = 1600; canvas.height = 860;
+  canvas.width = 1700; canvas.height = 980;
   const ctx = canvas.getContext("2d");
   ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,canvas.width,canvas.height);
   ctx.fillStyle="#173b5d"; ctx.font="700 34px sans-serif"; ctx.fillText("อัตราการพึ่งพาเลือดแดงจากสภากาชาดไทย",60,58);
-  ctx.fillStyle="#6f8598"; ctx.font="400 18px sans-serif"; ctx.fillText(`ปี ${year+543} เทียบกับ ${prev+543}`,60,90);
-  const left=92, top=155, right=70, bottom=95, chartW=canvas.width-left-right, chartH=canvas.height-top-bottom;
+  ctx.fillStyle="#6f8598"; ctx.font="400 18px sans-serif"; ctx.fillText(`ปี ${year+543} เทียบกับ ${prev+543} · แสดงตัวเลขของทุกเส้น`,60,90);
+  const left=100, top=180, right=80, bottom=160, chartW=canvas.width-left-right, chartH=canvas.height-top-bottom;
   const maxRate=Math.min(100,Math.max(20,Math.ceil(Math.max(...months.flatMap(m=>[Number(m.rate||0),Number(m.previousRate||0),Number((m.adjustedRate??m.rate)||0)]),0)/10)*10+10));
   const x=i=>left+chartW*i/11, y=v=>top+chartH-(Number(v||0)/maxRate)*chartH;
   ctx.strokeStyle="#e6eef4"; ctx.fillStyle="#7890a4"; ctx.font="400 13px sans-serif";
-  for(let i=0;i<=4;i++){const val=Math.round(maxRate*i/4),yy=y(val);ctx.beginPath();ctx.moveTo(left,yy);ctx.lineTo(left+chartW,yy);ctx.stroke();ctx.fillText(`${val}%`,40,yy+4);}
+  for(let i=0;i<=4;i++){const val=Math.round(maxRate*i/4),yy=y(val);ctx.beginPath();ctx.moveTo(left,yy);ctx.lineTo(left+chartW,yy);ctx.stroke();ctx.fillText(`${val}%`,46,yy+4);}
   const drawLine=(key,color,dash=[],width=3)=>{ctx.save();ctx.strokeStyle=color;ctx.lineWidth=width;ctx.setLineDash(dash);ctx.beginPath();months.forEach((m,i)=>{const xx=x(i),yy=y(m[key] ?? m.rate);if(i===0)ctx.moveTo(xx,yy);else ctx.lineTo(xx,yy);});ctx.stroke();ctx.restore();};
   drawLine('previousRate','#8fa5b7',[8,6],2.5); drawLine('rate','#2d9f73',[],4); drawLine('adjustedRate','#1c77c3',[2,8],2.5);
   const names=["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
-  months.forEach((m,i)=>{ctx.fillStyle="#2d9f73";ctx.beginPath();ctx.arc(x(i),y(m.rate),5,0,Math.PI*2);ctx.fill();ctx.fillStyle="#60788d";ctx.font="600 13px sans-serif";ctx.fillText(names[i],x(i)-14,top+chartH+32);});
-  ctx.fillStyle="#36556f";ctx.font="600 15px sans-serif";ctx.fillText(`รวม ${year+543}`,80,125);ctx.strokeStyle="#2d9f73";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(20,120);ctx.lineTo(65,120);ctx.stroke();
-  ctx.fillText(`ปรับแล้ว`,215,125);ctx.save();ctx.strokeStyle="#1c77c3";ctx.lineWidth=2.5;ctx.setLineDash([2,8]);ctx.beginPath();ctx.moveTo(135,120);ctx.lineTo(200,120);ctx.stroke();ctx.restore();
-  ctx.fillText(`${prev+543}`,365,125);ctx.save();ctx.strokeStyle="#8fa5b7";ctx.lineWidth=2.5;ctx.setLineDash([8,6]);ctx.beginPath();ctx.moveTo(300,120);ctx.lineTo(350,120);ctx.stroke();ctx.restore();
+  months.forEach((m,i)=>{
+    const series=[
+      {v:Number(m.rate||0),c:'#2d9f73',dy:-14,font:'700 13px sans-serif'},
+      {v:Number((m.adjustedRate??m.rate)||0),c:'#1c77c3',dy:22,font:'700 12px sans-serif'},
+      {v:Number(m.previousRate||0),c:'#7890a4',dy:42,font:'600 11px sans-serif'}
+    ];
+    series.forEach((it,j)=>{ctx.fillStyle=it.c;ctx.beginPath();ctx.arc(x(i),y(it.v),j===0?5:4,0,Math.PI*2);ctx.fill();ctx.font=it.font;const t=`${it.v.toFixed(1)}%`;const tw=ctx.measureText(t).width;ctx.strokeStyle='#fff';ctx.lineWidth=5;ctx.strokeText(t,x(i)-tw/2,y(it.v)+it.dy);ctx.fillText(t,x(i)-tw/2,y(it.v)+it.dy);});
+    ctx.fillStyle="#60788d";ctx.font="600 13px sans-serif";ctx.fillText(names[i],x(i)-14,top+chartH+34);
+  });
+  ctx.fillStyle="#36556f";ctx.font="600 15px sans-serif";ctx.fillText(`รวม ${year+543}`,80,135);ctx.strokeStyle="#2d9f73";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(20,130);ctx.lineTo(65,130);ctx.stroke();
+  ctx.fillText(`ปรับแล้ว`,215,135);ctx.save();ctx.strokeStyle="#1c77c3";ctx.lineWidth=2.5;ctx.setLineDash([2,8]);ctx.beginPath();ctx.moveTo(135,130);ctx.lineTo(200,130);ctx.stroke();ctx.restore();
+  ctx.fillText(`${prev+543}`,365,135);ctx.save();ctx.strokeStyle="#8fa5b7";ctx.lineWidth=2.5;ctx.setLineDash([8,6]);ctx.beginPath();ctx.moveTo(300,130);ctx.lineTo(350,130);ctx.stroke();ctx.restore();
+  ctx.fillStyle='#71889b';ctx.font='400 17px sans-serif';ctx.fillText('หมายเหตุ: ค่า “ปรับแล้ว” ใช้ Routine KPI หลังตัด Rare / Ag-matched / Rh Negative ตามเกณฑ์ระบบ',60,canvas.height-78);
+  ctx.fillStyle='#8ca0b2';ctx.font='400 15px sans-serif';ctx.fillText(`Blood Stock CNMI · Export ${new Date().toLocaleDateString('th-TH')} · ตัวเลขกำกับครบทุก series`,60,canvas.height-44);
   const link=document.createElement('a');link.download=`blood-kpi-rbc-trc-${year+543}.png`;link.href=canvas.toDataURL('image/png');link.click();
 }
+
 
 function exportBloodKpiExcel() {
   if (!currentBloodKpiData || !currentBloodKpiInsights || !window.XLSX) return;

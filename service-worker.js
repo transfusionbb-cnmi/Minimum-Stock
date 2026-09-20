@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-64-trc-review-submenus";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-65-data-labels-unique-icons";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -22,6 +22,11 @@ const APP_SHELL = [
   "./icons/menu/outreach.png",
   "./icons/menu/kpi.png",
   "./icons/menu/redcross.png",
+  "./icons/menu/blood-use.svg",
+  "./icons/menu/stock-age.svg",
+  "./icons/menu/blood-source.svg",
+  "./icons/menu/outreach-kpi.svg",
+  "./icons/menu/rare-blood.svg",
   "./icons/menu/user-add.png",
   "./icons/menu/install.png",
   "./icons/menu/users.png",
