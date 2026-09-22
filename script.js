@@ -135,7 +135,7 @@ const WEB_APP_URL = (window.MINIMUM_STOCK_CONFIG && window.MINIMUM_STOCK_CONFIG.
             if (!progress) return;
             if (progress.message) showStatus(progress.message, true);
             if (progress.stage === "outreach-save") uploadBtn.textContent = "กำลังเตรียมข้อมูล LIS...";
-            if (progress.stage === "outreach-merge") uploadBtn.textContent = "กำลังอัปเดต Status ถุงเดิม...";
+            if (progress.stage === "outreach-merge") uploadBtn.textContent = "กำลังอัปเดตฐาน LIS...";
             if (progress.stage === "snapshot") uploadBtn.textContent = "กำลังอัปเดต Dashboard...";
           }
         });
@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260920-v2-9-64-trc-review-submenus";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260922-v2-9-68-lis-upload-timeout";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;

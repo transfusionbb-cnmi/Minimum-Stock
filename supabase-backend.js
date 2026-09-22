@@ -1102,6 +1102,7 @@
     const known = new Set([
       "Released",
       "Available",
+      "Booked",
       "Dedicated",
       "In Screening Process",
       "Quarantine",
@@ -2387,6 +2388,19 @@
     return data || { ok: true };
   }
 
+  async function ensureLisUploadPerformancePatchV2968() {
+    if (!isConfigured()) return { ok: true };
+    const client = getClient();
+    const { data, error } = await client.rpc("minimum_stock_lis_upload_patch_status_v2968");
+    if (error && /Could not find the function|PGRST202|does not exist|schema cache/i.test(String(error.message || error.code || ""))) {
+      throw new Error("Supabase ยังไม่ได้ติดตั้งตัวแก้อัปโหลด LIS v2.9.68 | กรุณารันไฟล์ SQL-v2.9.68-LIS-UPLOAD-TIMEOUT-FIX.sql 1 ครั้ง แล้วลองอัปโหลดใหม่");
+    }
+    if (error) {
+      throw new Error("ตรวจสอบตัวแก้อัปโหลด LIS v2.9.68 ไม่สำเร็จ: " + error.message);
+    }
+    return data || { ok: true };
+  }
+
   async function getLisDataState() {
     if (!isConfigured()) return { baselineEstablished: false, masterCount: 0, uniqueBags: 0, latestUpload: {} };
     const client = getClient();
@@ -2962,7 +2976,12 @@
       p_excluded_component_count: Number(analysis.excludedComponentCount || 0),
       p_validation: analysis.validation || {}
     };
-    let { data, error } = await client.rpc("minimum_stock_outreach_merge_batch_to_master_v2930", params);
+    let { data, error } = await client.rpc("minimum_stock_outreach_merge_batch_to_master_v2968", params);
+    if (error && /Could not find the function|PGRST202|does not exist|schema cache/i.test(String(error.message || error.code || ""))) {
+      const previous = await client.rpc("minimum_stock_outreach_merge_batch_to_master_v2930", params);
+      data = previous.data;
+      error = previous.error;
+    }
     if (error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""))) {
       const previous = await client.rpc("minimum_stock_outreach_merge_batch_to_master_v2919", params);
       data = previous.data;
@@ -2983,7 +3002,13 @@
       data = legacy.data;
       error = legacy.error;
     }
-    if (error) throw new Error("อัปเดตฐานประวัติ LIS ไม่สำเร็จ: " + error.message);
+    if (error) {
+      const message = String(error.message || error.code || error || "");
+      if (/statement timeout|canceling statement|cancelling statement/i.test(message)) {
+        throw new Error("อัปเดตฐานประวัติ LIS ใช้เวลานานเกินกำหนด | กรุณาตรวจสอบว่าได้รัน SQL-v2.9.68-LIS-UPLOAD-TIMEOUT-FIX.sql แล้ว จากนั้นลองอัปโหลดไฟล์เดิมอีกครั้ง");
+      }
+      throw new Error("อัปเดตฐานประวัติ LIS ไม่สำเร็จ: " + message);
+    }
     return data || { ok: true };
   }
 
@@ -2998,6 +3023,9 @@
 
   async function uploadExcel(file, options = {}) {
     if (!isConfigured()) return fallbackUploadExcel(file, options.gasWebAppUrl);
+
+    // v2.9.68: ตรวจ patch ก่อนเริ่ม staging เพื่อไม่ให้ผู้ใช้รออัปโหลดหลายหมื่นแถวแล้วค่อยเจอ statement timeout
+    await ensureLisUploadPerformancePatchV2968();
 
     // v2.7.1:
     // - ฐานย้อนหลังเดิมอยู่ใน minimum_stock_outreach_master
