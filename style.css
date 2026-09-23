@@ -3899,3 +3899,12 @@ body {
 .kpi-minimum-filter-panel .kpi-minimum-presets{grid-column:1/-1}
 
 .kpi-compare-years{display:flex;flex-wrap:wrap;gap:8px;max-width:100%}.kpi-compare-years label{display:inline-flex;align-items:center;gap:5px;padding:6px 9px;border:1px solid #cfdeeb;border-radius:9px;background:#fff;font-weight:600;cursor:pointer}.kpi-compare-years input{accent-color:#3298d5}
+
+/* Mini Mobile Blood Donation CQI */
+.mini-cqi-filters,.mini-cqi-form-grid,.mini-cqi-checks,.mini-cqi-counts{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+.mini-cqi-filters label,.mini-cqi-form-grid label{display:grid;gap:5px;color:#365a75;font-weight:600}
+.mini-cqi-filters input,.mini-cqi-form-grid input,.mini-cqi-form-grid textarea{min-width:180px}
+.mini-cqi-form-grid{margin:12px 0}.mini-cqi-checks{align-items:center;margin:15px 0}
+.mini-cqi-checks label,.mini-cqi-counts span{border:1px solid #dceaf3;border-radius:12px;padding:9px 12px;background:#f8fcff}
+.mini-cqi-card{display:flex;flex-direction:column;gap:8px;text-align:left}.mini-cqi-card small{font-size:.78rem;color:#567188}.mini-cqi-card b{font-size:.95rem}
+.mini-cqi-bag-scroll{max-height:520px;overflow:auto}.mini-cqi-outing button{margin-right:6px}

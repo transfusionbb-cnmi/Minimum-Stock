@@ -477,6 +477,9 @@
     const groups = buildMinimumStockGroups();
     const bucket = {};
     const uniqueCurrentStockRows = collectUniqueCurrentStockRows(dataRows);
+    // The fallback upload calculator must use the same origin-bag unit as the
+    // historical SQL. LIS exports can repeat a released component in many rows.
+    const countedReleasedFamilies = new Set();
 
     groups.forEach(g => {
       if (!bucket[g.key]) {
@@ -532,6 +535,12 @@
       const cleanDate = parseYmdDate(cleanDateText);
       if (!cleanDate) return;
       if (cleanDate < startDate || cleanDate > endDate) return;
+
+      const familyKey = normalizeOutreachFamilyBagKey(bagNumber);
+      if (!familyKey) return;
+      const useKey = `${matchedGroup.key}|${targetBloodGroup}|${familyKey}`;
+      if (countedReleasedFamilies.has(useKey)) return;
+      countedReleasedFamilies.add(useKey);
 
       item.totalUsed += releasedMultiplier;
       item.daily[cleanDateText] = (item.daily[cleanDateText] || 0) + releasedMultiplier;
@@ -1449,6 +1458,7 @@
         sourceInfo,
         collectDate,
         dateStockIn,
+        expireDate: normalizeAnyDate(getHeaderValue(row, headerMap, 'ExpireDate')),
         dateStockOut: normalizeDateTimeDisplay(dateStockOutRaw),
         status,
         destroyReason,
@@ -1492,6 +1502,7 @@
         const reasons = chooseUniqueText(items.map(item => item.destroyReason));
         const collectDates = Array.from(new Set(items.map(item => item.collectDate).filter(Boolean))).sort();
         const dateStockIns = Array.from(new Set(items.map(item => item.dateStockIn).filter(Boolean))).sort();
+        const expireDates = Array.from(new Set(items.map(item => item.expireDate).filter(Boolean))).sort();
         const dateStockOuts = items.map(item => item.dateStockOut).filter(Boolean);
         const sourceGroup = OUTREACH_SOURCE_GROUPS.EXCLUDED;
         const collectDate = collectDates[0] || normalizeAnyDateStrict(first?.row?.[EXCEL_COL.collectDate]) || "";
@@ -1507,6 +1518,7 @@
           collectDate,
           cohortDate: getOutreachCohortDate(sourceGroup, collectDate, dateStockIn),
           dateStockIn,
+          expireDate: expireDates[0] || '',
           dateStockOut: dateStockOuts[dateStockOuts.length - 1] || "",
           status: statuses.conflict ? statuses.values.join(" | ") : statuses.value,
           destroyReason: reasons.conflict ? reasons.values.join(" | ") : reasons.value,
@@ -1529,6 +1541,7 @@
       const outcomes = Array.from(new Set(usableItems.map(item => item.outcomeCode)));
       const collectDates = Array.from(new Set(usableItems.map(item => item.collectDate).filter(Boolean))).sort();
       const dateStockIns = Array.from(new Set(usableItems.map(item => item.dateStockIn).filter(Boolean))).sort();
+      const expireDates = Array.from(new Set(usableItems.map(item => item.expireDate).filter(Boolean))).sort();
       const dateStockOuts = usableItems.map(item => item.dateStockOut).filter(Boolean);
 
       const sourceConflict = source.conflict || sourceGroups.length !== 1;
@@ -1553,7 +1566,7 @@
 
       const collectDateConflict = collectDates.length > 1;
       const dateConflict = dateStockIns.length > 1;
-      const fieldConflict = bagNumber.conflict || productType.conflict || bloodGroup.conflict || rh.conflict || collectDateConflict || dateConflict;
+      const fieldConflict = bagNumber.conflict || productType.conflict || bloodGroup.conflict || rh.conflict || collectDateConflict || dateConflict || expireDates.length>1;
       if (fieldConflict) {
         issues.push({
           type: "field_conflict",
@@ -1584,6 +1597,7 @@
         collectDate,
         cohortDate,
         dateStockIn,
+        expireDate: expireDates[0] || '',
         dateStockOut: dateStockOuts[dateStockOuts.length - 1] || "",
         status: statuses.conflict ? statuses.values.join(" | ") : statuses.value,
         destroyReason: reasons.conflict ? reasons.values.join(" | ") : reasons.value,
@@ -2175,6 +2189,7 @@
       collect_date: row.collectDate || null,
       cohort_date: row.cohortDate || getOutreachCohortDate(row.sourceGroup, row.collectDate, row.dateStockIn) || null,
       date_stock_in: row.dateStockIn || null,
+      expire_date: row.expireDate || null,
       date_stock_out: row.dateStockOut || "",
       status: row.status || "",
       destroy_reason: row.destroyReason || "",
@@ -2198,6 +2213,7 @@
       collectDate: row.collect_date || "",
       cohortDate: row.cohort_date || getOutreachCohortDate(row.source_group, row.collect_date, row.date_stock_in) || "",
       dateStockIn: row.date_stock_in || "",
+      expireDate: row.expire_date || '',
       dateStockOut: row.date_stock_out || "",
       status: row.status || "",
       destroyReason: row.destroy_reason || "",
@@ -2792,6 +2808,31 @@
     const { data, error } = await client.rpc("minimum_stock_historical_day_v2973", { p_day: String(date || "").slice(0, 10) });
     if (error) throw new Error("โหลดสต๊อกย้อนหลังไม่สำเร็จ: " + error.message);
     return data || { rows: [], canEvaluate: false };
+  }
+
+  async function getCqiOutings(dateFrom, dateTo) {
+    const client=getClient();
+    const {data,error}=await client.from('minimum_stock_cqi_mobile_outings').select('*')
+      .gte('outing_date',dateFrom).lte('outing_date',dateTo).order('outing_date',{ascending:false});
+    if(error) throw new Error('โหลดรายการออกหน่วยไม่ได้: '+error.message);
+    return data||[];
+  }
+
+  async function saveCqiOuting(payload) {
+    const client=getClient();
+    const fields=['outing_date','site','start_at','inspected_by_name','area_ok','ventilation_ok','workstations_ok','equipment_ok','donor_beds_ok','consumables_ok','emergency_kit_ok','cold_chain_ok','facilities_ok','issue_text','resolution_text'];
+    const record=Object.fromEntries(fields.map(key=>[key,payload[key]]));
+    const query=payload.id ? client.from('minimum_stock_cqi_mobile_outings').update(record).eq('id',payload.id)
+      :client.from('minimum_stock_cqi_mobile_outings').insert(record);
+    const {data,error}=await query.select('*').single();
+    if(error) throw new Error('บันทึกการออกหน่วยไม่ได้: '+error.message);
+    return data;
+  }
+
+  async function confirmCqiOuting(id) {
+    const {data,error}=await getClient().rpc('minimum_stock_cqi_confirm_outing_v2976',{p_id:id});
+    if(error) throw new Error('ยืนยันความพร้อมไม่ได้: '+error.message);
+    return data;
   }
 
   async function getTrcMinimumReview(filters = {}) {
@@ -3413,6 +3454,9 @@
     saveTrcRareTag,
     removeTrcRareTag,
     getOutreachFamilyRows,
+    getCqiOutings,
+    saveCqiOuting,
+    confirmCqiOuting,
     getOutreachRows,
     adminClearAllData,
     clearAllOutreachBatches,

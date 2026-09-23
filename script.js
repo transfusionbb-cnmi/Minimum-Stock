@@ -3095,6 +3095,7 @@ const APP_PAGE_ROUTES = {
   minimum: '#/stock',
   expiry: '#/expiry',
   mobile: '#/mobile',
+  'mini-cqi': '#/cqi/mini-mobile',
   outreach: '#/outcomes',
   'trc-rare': '#/trc-required',
   install: '#/install',
@@ -3108,6 +3109,7 @@ const APP_ROUTE_ALIASES = new Map([
   ['stock', 'minimum'], ['minimum', 'minimum'],
   ['expiry', 'expiry'], ['near-expiry', 'expiry'],
   ['mobile', 'mobile'], ['mobile-unit', 'mobile'],
+  ['cqi/mini-mobile','mini-cqi'],
   ['outcomes', 'outreach'], ['outreach', 'outreach'], ['blood-outcomes', 'outreach'],
   ['trc-required', 'trc-rare'], ['trc-rare', 'trc-rare'],
   ['install', 'install'],
@@ -6194,6 +6196,11 @@ function formatDisplayDateTime(value) {
 
   if (page === "mobile") {
   loadMobilePlanning();
+  loadMiniCqiOutings();
+}
+
+if (page === 'mini-cqi') {
+  loadMiniCqi();
 }
 
 if (page === "expiry") {
