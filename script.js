@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260923-v2-9-70-kpi-charts-filters";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260923-v2-9-71-simple-kpi-menu";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -3008,34 +3008,21 @@ function getKpiHash(route) {
 
 function getKpiSidebarLandingRoute(route) {
   if (['utilization','turnaround','aging'].includes(route)) return 'utilization';
-  if (['expiry','minimum'].includes(route)) return 'expiry';
-  if (['trc','cqi','trc-monthly','trc-minimum','trc-bags'].includes(route)) return 'trc';
-  if (route === 'outreach') return 'outreach';
+  if (route === 'trc-monthly') return 'trc';
+  if (route === 'trc-bags') return 'trc-minimum';
+  if (['expiry','outreach','minimum','trc-minimum','trc','cqi'].includes(route)) return route;
   return 'overview';
 }
 
 function setKpiTreeState(route) {
+  const landing = getKpiSidebarLandingRoute(route);
   document.querySelectorAll('[data-kpi-route]').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.kpiRoute === route);
+    btn.classList.toggle('active', btn.dataset.kpiRoute === landing);
   });
-
-  const useTree = document.getElementById('bloodUseKpiTree');
-  const stockTree = document.getElementById('stockAgeKpiTree');
-  const trcTree = document.getElementById('trcKpiTree');
-  const useOpen = ['utilization','turnaround','aging'].includes(route);
-  const stockOpen = ['expiry','minimum'].includes(route);
-  const trcOpen = ['trc','cqi','trc-monthly','trc-minimum','trc-bags'].includes(route);
-
-  if (useTree) useTree.classList.toggle('open', useOpen);
-  if (stockTree) stockTree.classList.toggle('open', stockOpen);
-  if (trcTree) trcTree.classList.toggle('open', trcOpen);
-
-  const useParent = document.getElementById('bloodUseKpiMenuBtn');
-  const stockParent = document.getElementById('stockAgeKpiMenuBtn');
-  const trcParent = document.getElementById('trcKpiMenuBtn');
-  if (useParent) useParent.classList.toggle('active', useOpen);
-  if (stockParent) stockParent.classList.toggle('active', stockOpen);
-  if (trcParent) trcParent.classList.toggle('active', trcOpen);
+  const tree = document.getElementById('bloodKpiTree');
+  const parent = document.getElementById('bloodKpiMenuBtn');
+  if (tree) tree.classList.add('open');
+  if (parent) { parent.classList.add('active'); parent.setAttribute('aria-expanded','true'); }
 }
 
 function toggleKpiSideTree(treeId, parentBtn) {
@@ -3051,6 +3038,7 @@ function toggleKpiSideTree(treeId, parentBtn) {
     if (btn !== parentBtn) btn.classList.remove('tree-open');
   });
   if (parentBtn) parentBtn.classList.toggle('tree-open', willOpen);
+  if (parentBtn) parentBtn.setAttribute('aria-expanded', String(willOpen));
 }
 
 function toggleKpiTreeAndOpen(route = 'overview', btn = null) {
@@ -3512,6 +3500,21 @@ function renderKpiCategoryTabs(route) {
       ['turnaround','รับเข้า → ใช้'],
       ['aging','อายุเลือดก่อนใช้']
     ],
+    trc: [
+      ['cqi','จัดหาเอง'],
+      ['trc','รับกาชาด'],
+      ['trc-monthly','รับเข้ารายเดือน']
+    ],
+    cqi: [
+      ['cqi','จัดหาเอง'],
+      ['trc','รับกาชาด'],
+      ['trc-monthly','รับเข้ารายเดือน']
+    ],
+    'trc-monthly': [
+      ['cqi','จัดหาเอง'],
+      ['trc','รับกาชาด'],
+      ['trc-monthly','รับเข้ารายเดือน']
+    ],
     expiry: [
       ['expiry','โลหิตหมดอายุ'],
       ['minimum','Minimum Stock']
@@ -3519,6 +3522,14 @@ function renderKpiCategoryTabs(route) {
     minimum: [
       ['expiry','โลหิตหมดอายุ'],
       ['minimum','Minimum Stock']
+    ],
+    'trc-minimum': [
+      ['trc-minimum','สรุปตามวัน'],
+      ['trc-bags','ดูรายการถุง']
+    ],
+    'trc-bags': [
+      ['trc-minimum','สรุปตามวัน'],
+      ['trc-bags','ดูรายการถุง']
     ]
   };
   const tabs = groups[route];
@@ -3536,7 +3547,7 @@ function kpiPageHeader(title, subtitle, year, years = [], showYearSelect = true)
       ${['trc','trc-monthly','trc-minimum','trc-bags'].includes(currentBloodKpiRoute) ? '' : `<button class="btn btn-light" type="button" onclick="downloadCurrentKpiPng()">PNG</button>`}
       <button class="btn btn-main" type="button" onclick="window.print()">${['trc','trc-monthly','trc-minimum','trc-bags'].includes(currentBloodKpiRoute) ? 'PDF ทั้งหน้า' : 'PDF'}</button>
     </div>
-  </div>${filterPanel}`;
+  </div>${renderKpiCategoryTabs(currentBloodKpiRoute)}${filterPanel}`;
 }
 
 function getKpiYearsFromBootstrap(bootstrap) {
