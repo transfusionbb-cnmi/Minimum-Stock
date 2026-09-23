@@ -3908,3 +3908,5 @@ body {
 .mini-cqi-checks label,.mini-cqi-counts span{border:1px solid #dceaf3;border-radius:12px;padding:9px 12px;background:#f8fcff}
 .mini-cqi-card{display:flex;flex-direction:column;gap:8px;text-align:left}.mini-cqi-card small{font-size:.78rem;color:#567188}.mini-cqi-card b{font-size:.95rem}
 .mini-cqi-bag-scroll{max-height:520px;overflow:auto}.mini-cqi-outing button{margin-right:6px}
+.mini-cqi-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.mini-cqi-tabs button{border:1px solid #cfe1ee;background:#fff;color:#37546b;padding:9px 14px;border-radius:12px;font-weight:650}.mini-cqi-tabs button.active{background:#e7f4ff;color:#1b6b9f;border-color:#90cafa}
+#miniCqiDashboard [data-mini-panel][hidden]{display:none!important}
