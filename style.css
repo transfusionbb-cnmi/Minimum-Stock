@@ -3848,3 +3848,28 @@ body {
   font-weight:700;
   line-height:1.2;
 }
+
+/* v2.9.70: year comparison and product family filters */
+.kpi-compare-label{display:inline-flex;align-items:center;gap:7px;color:#315974;font-weight:700;white-space:nowrap}
+.kpi-compare-label select{border:1px solid #bdd8e9;border-radius:9px;background:#fff;color:#1c5072;padding:5px 7px;min-width:80px}
+.kpi-product-family-presets{display:flex;align-items:center;flex-wrap:wrap;gap:7px;grid-column:1/-1;padding:8px 2px}
+.kpi-product-family-presets span{font-weight:700;color:#365a75;margin-right:8px}
+.kpi-family-preset{border:1px solid #c9dfed;background:#fff;color:#2d648a;border-radius:18px;padding:6px 12px;cursor:pointer}
+.kpi-family-preset.active,.kpi-family-preset:hover{background:#e6f5fd;border-color:#50a8d9}
+.kpi-year-chart-scroll{overflow-x:auto;max-width:100%}
+.kpi-year-chart-scroll svg{min-width:760px;width:100%;height:auto}
+@media(max-width:700px){.kpi-compare-label{flex-wrap:wrap}.outreach-range-quick-actions{flex-wrap:wrap}.kpi-year-chart-scroll svg{min-width:730px}}
+/* v2.9.70: consistent KPI filter layout */
+.kpi-filter-gate-shell{max-width:none}
+.kpi-inline-filter-panel{padding:18px 20px;border-radius:22px}
+.kpi-inline-filter-panel .kpi-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}
+.kpi-inline-filter-panel .kpi-range-pair{grid-column:1/-1;max-width:850px;width:100%}
+.kpi-year-compare-row{grid-column:1/-1;display:flex;align-items:center;flex-wrap:wrap;gap:9px;padding:12px 14px;border:1px solid #dceaf3;border-radius:15px;background:#f8fcff;color:#365a75;font-weight:700}
+.kpi-year-compare-row select{min-width:94px;min-height:36px;border:1px solid #cfdeeb;border-radius:10px;padding:5px 9px;background:#fff;color:#1f4b69}
+.kpi-year-compare-row button{border:1px solid #98cbe9;border-radius:11px;background:#e8f6fd;color:#23658d;font-weight:700;padding:7px 13px;cursor:pointer}
+.kpi-inline-filter-panel .filter-multi-select{min-height:56px;border-radius:13px}
+.kpi-inline-filter-panel .filter-multi-select>summary{min-height:54px;padding-top:7px;padding-bottom:7px}
+.kpi-inline-filter-panel .kpi-fixed-filter{min-height:54px;display:flex;align-items:center;color:#426780;background:#f3f8fc;border:1px solid #dae8f2;border-radius:13px;padding:9px 14px}
+.kpi-inline-filter-panel .kpi-product-family-presets{margin:1px 0 0;padding:3px 0}
+@media(max-width:900px){.kpi-inline-filter-panel .kpi-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.kpi-inline-filter-panel .kpi-filter-grid{grid-template-columns:1fr}.kpi-inline-filter-panel .kpi-range-pair,.kpi-year-compare-row,.kpi-product-family-presets{grid-column:1/-1}}

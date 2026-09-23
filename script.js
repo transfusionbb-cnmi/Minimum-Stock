@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260923-v2-9-69-cqi-self-supply";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260923-v2-9-70-kpi-charts-filters";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -3459,7 +3459,7 @@ function renderKpiInlineFilterPanel(route, bootstrap, preset = {}) {
   const fromParts = outreachMonthParts(preset.dateFrom || '', '');
   const toParts = outreachMonthParts(preset.dateTo || '', '');
   return `<div class="simple-panel kpi-inline-filter-panel no-print">
-    <div class="panel-heading-row kpi-inline-filter-head"><div><h3>ตัวกรองข้อมูล</h3></div></div>
+    <div class="panel-heading-row kpi-inline-filter-head"><div><h3>ตัวกรองข้อมูล</h3><small class="small-muted">เลือกช่วงเวลา แล้วกดแสดงผล · ตัวกรองที่ไม่ได้เลือกหมายถึงทุกค่า</small></div></div>
     <div class="kpi-filter-grid">
       <div class="outreach-range-pair kpi-range-pair">
         <div class="outreach-range-head">
@@ -3480,12 +3480,15 @@ function renderKpiInlineFilterPanel(route, bootstrap, preset = {}) {
           <select id="kpiMonthToYear" class="form-select" aria-label="ปีสิ้นสุด" onchange="syncKpiMonthRange()">${renderOutreachYearSelectOptions(availableMinDate, availableMaxDate, toParts.year)}</select>
         </div></div>
       </div>
+      <div class="kpi-year-compare-row"><span>เทียบผลรายปี</span><select id="kpiCompareYearA" aria-label="ปีแรกที่เปรียบเทียบ">${renderKpiCompareYearOptions(availableMinDate,availableMaxDate,preset.compareYearA,1)}</select><span>กับ</span><select id="kpiCompareYearB" aria-label="ปีที่สองที่เปรียบเทียบ">${renderKpiCompareYearOptions(availableMinDate,availableMaxDate,preset.compareYearB,0)}</select><button type="button" onclick="applyKpiYearCompare('${route}')">แสดงกราฟเทียบปี</button></div>
       ${showDetailFilters && route === 'outreach' ? `<div class="outreach-filter-item kpi-fixed-filter"><span class="product-picker-label">กลุ่มแหล่งรับเข้า</span><strong>${escapeOutreachHtml(OUTREACH_GROUP_SELF_OUTREACH)}</strong></div>` : ''}
       ${showDetailFilters && route !== 'outreach' ? renderKpiMultiSelect('sourceGroup','กลุ่มแหล่งรับเข้า',options.sourceGroups||[],selectedSourceGroups,'ทุกกลุ่ม') : ''}
       ${showDetailFilters && showSite ? renderKpiMultiSelect('source','จุดออกหน่วย / แหล่งรับเข้า',options.sources||[],selectedSources,'ทุกจุด') : ''}
+      ${showDetailFilters ? renderKpiProductFamilyShortcuts(options.products||[],selectedProducts) : ''}
       ${showDetailFilters ? renderKpiMultiSelect('product','ผลิตภัณฑ์',options.products||[],selectedProducts,'ทุกชนิด') : ''}
       ${showDetailFilters ? renderKpiMultiSelect('bloodGroup','หมู่เลือด',options.bloodGroups||[],selectedBloodGroups,'ทุกหมู่') : ''}
       ${showDetailFilters ? renderKpiMultiSelect('rh','Rh',options.rhs||[],selectedRhs,'ทุก Rh') : ''}
+      ${route === 'cqi' || route === 'trc' || route === 'trc-monthly' ? '<div class="kpi-fixed-filter">ผลิตภัณฑ์: เลือดแดง (รวม SDR)</div>' : ''}
       ${showTrcMinimumProductFilter ? renderKpiMultiSelect('trcProduct','ชนิดผลิตภัณฑ์',TRC_MINIMUM_PRODUCT_FILTER_OPTIONS,selectedTrcProducts,'ทุกชนิด') : ''}
     </div>
     <div class="kpi-filter-gate-footer"><button class="btn btn-main" type="button" onclick="applyBloodKpiFilters('${route}')">แสดงผล</button></div>
@@ -3756,73 +3759,52 @@ function filterTrcMinimumReviewByProductGroups(review = {}, selectedGroups = [])
 }
 
 function renderKpiFilterGate(route, bootstrap, preset = {}) {
-  const options = bootstrap?.filterOptions || {};
-  const config = {
-    overview: 'ภาพรวม KPI เลือด',
-    utilization: 'อัตราการใช้ประโยชน์จากโลหิต',
-    expiry: 'อัตราโลหิตหมดอายุ',
-    trc: 'ภาพรวมกาชาด Routine',
-    cqi: 'CQI จัดหาโลหิตด้วยตนเอง',
-    'trc-monthly': 'รับเข้ารายเดือน / ออกหน่วย',
-    'trc-minimum': 'กาชาดเทียบ Minimum Stock',
-    'trc-bags': 'รายการถุงที่ควรทบทวน',
-    turnaround: 'ระยะเวลาหมุนเวียนเลือด',
-    aging: 'อายุเลือดก่อนถูกใช้',
-    outreach: 'ประสิทธิผลเลือดจากการออกหน่วย',
-    minimum: 'Minimum Stock'
-  }[route] || 'KPI เลือด';
-  const showDetailFilters = !['trc','cqi','trc-monthly','trc-minimum','trc-bags','minimum'].includes(route);
-  const showTrcMinimumProductFilter = ['trc-minimum','trc-bags'].includes(route);
-  const selectedTrcProducts = normalizeKpiSelectedValues(preset.trcProductGroups || []);
-  const selectedSourceGroups = route === 'outreach' ? [OUTREACH_GROUP_SELF_OUTREACH] : normalizeKpiSelectedValues(preset.sourceGroups || []);
-  const selectedSources = normalizeKpiSelectedValues(preset.sources || []);
-  const selectedProducts = normalizeKpiSelectedValues(preset.products || []);
-  const selectedBloodGroups = normalizeKpiSelectedValues(preset.bloodGroups || []);
-  const selectedRhs = normalizeKpiSelectedValues(preset.rhs || []);
-  const showSite = ['outreach','overview','utilization','expiry','turnaround','aging'].includes(route);
-  const availableMinDate = options.minDate || bootstrap?.sourceStartDate || '';
-  const availableMaxDate = options.maxDate || bootstrap?.sourceEndDate || '';
-  const fromParts = outreachMonthParts(preset.dateFrom || '', '');
-  const toParts = outreachMonthParts(preset.dateTo || '', '');
+  const titles={overview:'ภาพรวม KPI เลือด',utilization:'การใช้ประโยชน์จากโลหิต',expiry:'โลหิตหมดอายุ',trc:'พึ่งกาชาด Routine',cqi:'การจัดหาโลหิตด้วยตนเอง','trc-monthly':'รับเข้ารายเดือน / ออกหน่วย','trc-minimum':'กาชาดเทียบ Minimum Stock','trc-bags':'รายการถุงที่ควรทบทวน',turnaround:'ระยะเวลาหมุนเวียนเลือด',aging:'อายุเลือดก่อนถูกใช้',outreach:'ประสิทธิผลออกหน่วย'};
+  return `<div class="kpi-filter-gate-shell"><div class="simple-page-head mt-2"><h1>${escapeOutreachHtml(titles[route]||'KPI เลือด')}</h1></div>${renderKpiInlineFilterPanel(route,bootstrap,preset)}</div>`;
+}
 
-  return `<div class="kpi-filter-gate-shell">
-    <div class="simple-page-head mt-2"><div><h1>${escapeOutreachHtml(config)}</h1></div></div>
-    <div class="simple-panel kpi-filter-gate">
-      <div class="kpi-filter-grid">
-        ${route !== 'minimum' ? `<div class="outreach-range-pair kpi-range-pair">
-          <div class="outreach-range-head">
-            <strong>ช่วงข้อมูล</strong>
-            <div class="outreach-range-quick-actions">
-              <button type="button" onclick="setKpiQuickMonthRange('thisYear')">ปีนี้</button>
-              <button type="button" onclick="setKpiQuickMonthRange('last12')">12 เดือนล่าสุด</button>
-              <button type="button" onclick="setKpiQuickMonthRange('all')">ทั้งหมด</button>
-            </div>
-          </div>
-          <div class="outreach-month-year-side">
-            <div class="outreach-month-year-controls">
-              <select id="kpiMonthFromMonth" class="form-select" aria-label="เดือนเริ่มต้น" onchange="syncKpiMonthRange()">${renderOutreachMonthSelectOptions(fromParts.month)}</select>
-              <select id="kpiMonthFromYear" class="form-select" aria-label="ปีเริ่มต้น" onchange="syncKpiMonthRange()">${renderOutreachYearSelectOptions(availableMinDate, availableMaxDate, fromParts.year)}</select>
-            </div>
-          </div>
-          <span class="outreach-range-arrow">→</span>
-          <div class="outreach-month-year-side">
-            <div class="outreach-month-year-controls">
-              <select id="kpiMonthToMonth" class="form-select" aria-label="เดือนสิ้นสุด" onchange="syncKpiMonthRange()">${renderOutreachMonthSelectOptions(toParts.month)}</select>
-              <select id="kpiMonthToYear" class="form-select" aria-label="ปีสิ้นสุด" onchange="syncKpiMonthRange()">${renderOutreachYearSelectOptions(availableMinDate, availableMaxDate, toParts.year)}</select>
-            </div>
-          </div>
-        </div>` : ''}
-        ${showDetailFilters && route === 'outreach' ? `<div class="outreach-filter-item kpi-fixed-filter"><span class="product-picker-label">กลุ่มแหล่งรับเข้า</span><strong>${escapeOutreachHtml(OUTREACH_GROUP_SELF_OUTREACH)}</strong></div>` : ''}
-        ${showDetailFilters && route !== 'outreach' ? renderKpiMultiSelect('sourceGroup','กลุ่มแหล่งรับเข้า',options.sourceGroups||[],selectedSourceGroups,'ทุกกลุ่ม') : ''}
-        ${showDetailFilters && showSite ? renderKpiMultiSelect('source','จุดออกหน่วย / แหล่งรับเข้า',options.sources||[],selectedSources,'ทุกจุด') : ''}
-        ${showDetailFilters ? renderKpiMultiSelect('product','ผลิตภัณฑ์',options.products||[],selectedProducts,'ทุกชนิด') : ''}
-        ${showDetailFilters ? renderKpiMultiSelect('bloodGroup','หมู่เลือด',options.bloodGroups||[],selectedBloodGroups,'ทุกหมู่') : ''}
-        ${showDetailFilters ? renderKpiMultiSelect('rh','Rh',options.rhs||[],selectedRhs,'ทุก Rh') : ''}
-        ${showTrcMinimumProductFilter ? renderKpiMultiSelect('trcProduct','ชนิดผลิตภัณฑ์',TRC_MINIMUM_PRODUCT_FILTER_OPTIONS,selectedTrcProducts,'ทุกชนิด') : ''}
-      </div>
-      <div class="kpi-filter-gate-footer"><button class="btn btn-main" type="button" onclick="applyBloodKpiFilters('${route}')">แสดงผล</button></div>
-    </div>
-  </div>`;
+function renderKpiCompareYearOptions(minDate, maxDate, selected, fallbackOffset = 0) {
+  const earliest = Number(String(minDate || '').slice(0,4));
+  const latest = Number(String(maxDate || '').slice(0,4));
+  if (!Number.isFinite(earliest) || !Number.isFinite(latest)) return '';
+  const defaultYear = Math.max(earliest,latest-fallbackOffset);
+  return Array.from({length:latest-earliest+1},(_,i)=>earliest+i).map(year=>`<option value="${year}" ${year===Number(selected||defaultYear)?'selected':''}>${year+543}</option>`).join('');
+}
+
+function applyKpiYearCompare(route) {
+  const a = Number(document.getElementById('kpiCompareYearA')?.value);
+  const b = Number(document.getElementById('kpiCompareYearB')?.value);
+  if (!Number.isInteger(a) || !Number.isInteger(b) || a === b) return showModal('error','เลือกปีที่ต่างกัน','กรุณาเลือกสองปีที่ต้องการเปรียบเทียบ');
+  setKpiMonthRangeControls(`${Math.min(a,b)}-01`,`${Math.max(a,b)}-12`);
+  const selection = readBloodKpiFilterGate(route);
+  selection.compareYearA = a;
+  selection.compareYearB = b;
+  bloodKpiFilterSelections.set(route,selection);
+  loadBloodKpiPage(null,route,{apply:true,selection});
+}
+
+function renderKpiProductFamilyShortcuts(products = [], selected = []) {
+  const families = [['ทั้งหมด','all'],['เลือดแดง','RBC'],['เกล็ดเลือด','PLATELET'],['FFP','FFP'],['Cryo','CRYO']];
+  const group = products => products.map(p=>String(p));
+  const current = group(selected);
+  const options = families.map(([label,key])=>`<button type="button" class="kpi-family-preset ${key==='all' && !current.length ? 'active':''}" onclick="chooseKpiProductFamily('${key}')">${label}</button>`).join('');
+  return `<div class="kpi-product-family-presets"><span>เลือกกลุ่มผลิตภัณฑ์</span>${options}</div>`;
+}
+
+function chooseKpiProductFamily(family) {
+  const products = bloodKpiLazyCache.bootstrap?.filterOptions?.products || [];
+  const matches = family === 'all' ? [] : products.filter(product => {
+    const name = String(product||'').toLowerCase();
+    if (family === 'RBC') return isBloodKpiRbcDependencyProduct(product);
+    if (family === 'FFP') return classifyTrcMinimumProduct(product) === 'FFP';
+    if (family === 'CRYO') return classifyTrcMinimumProduct(product) === 'Cryo';
+    if (family === 'PLATELET') return outreachProductFamilyClient(product) === 'PLATELET';
+    return false;
+  });
+  if (family !== 'all' && !matches.length) return showModal('error','ไม่มีผลิตภัณฑ์กลุ่มนี้','กรุณาตรวจชนิดผลิตภัณฑ์ในข้อมูล LIS');
+  document.querySelectorAll('.kpi-multi-check[data-filter-key="product"]').forEach(input=> {input.checked=matches.includes(input.value);});
+  updateKpiMultiDraft('product');updateKpiMultiLabel('product');
+  document.querySelectorAll('.kpi-family-preset').forEach(button=>button.classList.toggle('active',button.textContent === ({all:'ทั้งหมด',RBC:'เลือดแดง',PLATELET:'เกล็ดเลือด',FFP:'FFP',CRYO:'Cryo'}[family])));
 }
 
 function getKpiMonthRangeControlValues() {
@@ -3889,6 +3871,49 @@ function readBloodKpiFilterGate(route) {
   };
 }
 
+async function renderBloodKpiYearComparison(route, selection, filters, data) {
+  const years = [Number(selection.compareYearA),Number(selection.compareYearB)];
+  if (!years.every(Number.isInteger) || years[0] === years[1]) return '';
+  const sliced = year => ({...filters,dateFrom:`${year}-01-01`,dateTo:`${year}-12-31`});
+  let rows = [], title = '', unit = '%', note = '';
+  if (route === 'cqi') {
+    title = 'จัดหาโลหิตด้วยตนเอง';
+    rows = (data.rows||[]).map(r=>({year:r.year,month:r.month,value:r.rate,base:r.base}));
+    note = 'จุดที่ยอดแยกแหล่งไม่ตรงยอดรวมจะเว้นว่าง';
+  } else if (route === 'trc') {
+    title = 'พึ่งกาชาด Routine';
+    rows = (data.months||[]).map(r=>({year:r.year,month:r.month,value:Number(r.adjustedTotalRbc||0)>0?Number(r.adjustedRate):null}));
+  } else if (route === 'trc-monthly') {
+    title = 'รับเข้ากาชาด Routine';unit = ' ถุง';
+    rows = (data.planningMonths||[]).map(r=>({year:r.year,month:r.month,value:Number(r.totalRbc||0)>0?Number(r.routineTrc):null}));
+  } else if (route === 'trc-minimum' || route === 'trc-bags') {
+    title = 'วันที่ Stock พอแต่ยังรับกาชาด';
+    rows = (data.minimumReview?.monthly||[]).map(r=>({year:r.year,month:r.month,value:Number(r.assessed||0)>0?100*Number(r.review||0)/Number(r.assessed):null}));
+    note = 'ร้อยละของถุงที่ประเมินได้';
+  } else if (route === 'utilization' || route === 'expiry') {
+    title = route==='utilization'?'การใช้ประโยชน์':'โลหิตหมดอายุ';
+    rows = (data.monthly||[]).map(r=>({year:r.year,month:r.month,value:Number(r.totalFinal||0)>0?Number(route==='utilization'?r.utilizationRate:r.expiredRate):null}));
+  } else if (route === 'aging') {
+    title='Median อายุเลือดก่อนใช้';unit=' วัน';
+    rows=(data.monthlyAgeRows||[]).map(r=>({year:r.year,month:r.month,value:Number(r.usedCount||0)>0 && Number.isFinite(Number(r.medianDays))?Number(r.medianDays):null}));
+  } else if (route === 'overview') {
+    title = 'การใช้ประโยชน์จากโลหิต';
+    const trend = await ensureBloodKpiTrendRange(filters);
+    rows = trendToOutcomeRows(trend).map(r=>({year:r.year,month:r.month,value:r.utilizationRate}));
+    note='ดูอัตราหมดอายุและการพึ่งพากาชาดแยกในแต่ละหน้า KPI';
+  } else if (route === 'turnaround' || route === 'outreach') {
+    title = route==='turnaround'?'Median วันรับเข้า → ใช้':'ประสิทธิผลออกหน่วย';
+    unit = route==='turnaround'?' วัน':'%';
+    const yearly = await Promise.all(years.map(y=>ensureBloodKpiHeavyInsights(sliced(y))));
+    const yearValues = yearly.map((r,i)=>({year:years[i],value:route==='turnaround'?r.medianDaysToUse:r.outreachEffectiveness}));
+    return `<div class="simple-panel kpi-executive-panel mt-3"><h3>เทียบปี · ${title}</h3>${renderKpiTwoYearBarSvg(yearValues,title,unit)}<div class="small-muted">คำนวณแยกจากรายการถุงของแต่ละปี</div></div>`;
+  }
+  if (!title) return '';
+  const selectedRows=rows.filter(r=>years.includes(Number(r.year)));
+  const overlay=renderKpiYearOverlayChart(selectedRows,'value',{title,unit,yMax:unit==='%'?100:undefined,target:route==='cqi'?85:undefined});
+  return `<div class="simple-panel kpi-executive-panel mt-3"><div class="panel-heading-row"><h3>เทียบปี · ${title}</h3></div>${overlay}${note?`<div class="small-muted">${note}</div>`:''}</div>`;
+}
+
 function buildBloodKpiBackendFilters(selection = {}) {
   const filters = {};
   if (selection.dateFrom) filters.dateFrom = selection.dateFrom;
@@ -3925,6 +3950,7 @@ function renderKpiOverview({ dependency, analysis, year }) {
       <button class="simple-kpi is-alert kpi-click-card" onclick="openKpiRoute('expiry',null,event)"><span>โลหิตหมดอายุ</span><strong>${expiry.toFixed(1)}%</strong></button>
       <button class="simple-kpi is-good kpi-click-card" onclick="openKpiRoute('trc',null,event)"><span>พึ่งพากาชาด Routine</span><strong>${routineRate.toFixed(1)}%</strong></button>
     </div>
+    <div class="simple-panel kpi-executive-panel mb-3"><div class="panel-heading-row"><h3>ภาพรวมตัวชี้วัดในช่วงที่เลือก</h3></div>${renderHorizontalBarChartSvg([{label:'การใช้ประโยชน์',value:utilization},{label:'โลหิตหมดอายุ',value:expiry},{label:'พึ่งกาชาด Routine',value:routineRate}],{valueKey:'value',suffix:'%',max:100,color:'#5aa9e6'})}</div>
     <div class="kpi-overview-links">
       ${[
         ['turnaround','ระยะเวลารับเข้า → ใช้'],
@@ -4142,6 +4168,40 @@ function calculateCqiSelfSupplyMonths(dependency = {}, sourceRange = {}) {
   });
 }
 
+function renderKpiYearOverlayChart(rows = [], key = 'rate', options = {}) {
+  const years = [...new Set(rows.map(r => Number(r.year)).filter(Boolean))].sort();
+  if (!years.length) return '<div class="small-muted py-4">ไม่มีข้อมูลในช่วงที่เลือก</div>';
+  const names = ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const colors = ['#3a84c4','#ef9148','#54a984','#946bc0'];
+  const values = rows.map(r => r[key]).filter(v => v !== null && v !== undefined && Number.isFinite(Number(v))).map(Number);
+  const max = Math.max(Number(options.yMax || 0), Number(options.target || 0), ...values, 1);
+  const yMax = options.yMax || Math.ceil(max * 1.1 / 10) * 10;
+  const w = 1000, h = 445, left = 70, right = 45, top = 85, bottom = 60;
+  const x = m => left + (m - 1) * (w-left-right) / 11;
+  const y = v => top + (h-top-bottom) * (1 - Math.max(0, Math.min(yMax, Number(v))) / yMax);
+  const grid = [0,.25,.5,.75,1].map(f => { const v=yMax*f; return `<line x1="${left}" y1="${y(v)}" x2="${w-right}" y2="${y(v)}" stroke="#e7eff5"/><text x="${left-10}" y="${y(v)+4}" text-anchor="end" font-size="12" fill="#60798c">${Number(v.toFixed(1))}${options.unit||''}</text>`; }).join('');
+  const series = years.map((year,i) => {
+    const color = colors[i % colors.length];
+    const pts = rows.filter(r=>Number(r.year)===year && r[key] !== null && r[key] !== undefined && Number.isFinite(Number(r[key]))).sort((a,b)=>Number(a.month)-Number(b.month));
+    // A missing month breaks the line; no point is inferred from another month.
+    const paths = pts.map((r,j)=>`${j && Number(r.month)===Number(pts[j-1].month)+1 ? 'L':'M'}${x(Number(r.month))},${y(r[key])}`).join(' ');
+    const dots = pts.map(r => `<circle cx="${x(Number(r.month))}" cy="${y(r[key])}" r="5" fill="#fff" stroke="${color}" stroke-width="3"><title>${names[Number(r.month)]} ${year+543}: ${Number(r[key]).toFixed(1)}${options.unit||''}</title></circle><text x="${x(Number(r.month))}" y="${Math.max(top+15,y(r[key])-(i%2?22:12))}" text-anchor="middle" font-size="11" font-weight="700" fill="${color}" style="paint-order:stroke;stroke:#fff;stroke-width:4px">${Number(r[key]).toFixed(1)}${options.unit||''}</text>`).join('');
+    return `<path d="${paths}" fill="none" stroke="${color}" stroke-width="3.5"/>${dots}<g transform="translate(${left+i*155},57)"><line x1="0" y1="0" x2="25" y2="0" stroke="${color}" stroke-width="4"/><text x="32" y="4" font-size="13" fill="#3a536b">${year+543}</text></g>`;
+  }).join('');
+  const goal = Number(options.target) > 0 ? `<line x1="${left}" y1="${y(options.target)}" x2="${w-right}" y2="${y(options.target)}" stroke="#df6866" stroke-width="2" stroke-dasharray="8 6"/><text x="${w-right-3}" y="${y(options.target)-7}" text-anchor="end" fill="#b94646" font-size="12" font-weight="700">เป้าหมาย ${options.target}${options.unit||''}</text>` : '';
+  const labels = names.slice(1).map((name,i)=>`<text x="${x(i+1)}" y="${h-24}" text-anchor="middle" font-size="12" fill="#647c91">${name}</text>`).join('');
+  return `<div class="kpi-year-chart-scroll"><svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeOutreachHtml(options.title||'เปรียบเทียบรายเดือนแยกปี')}"><rect x="5" y="5" width="${w-10}" height="${h-10}" rx="20" fill="#fff" stroke="#e7eff5"/><text x="${left}" y="34" font-size="17" font-weight="700" fill="#234969">${escapeOutreachHtml(options.title||'เปรียบเทียบรายเดือนแยกปี')}</text>${grid}${goal}${series}${labels}</svg></div><div class="small-muted mt-2">จุดที่ไม่มีข้อมูลจะเว้นว่าง ไม่มีการแทนค่าเป็น 0</div>`;
+}
+
+function renderKpiTwoYearBarSvg(items, title, unit) {
+  const max=Math.max(1,...items.map(r=>Number(r.value)||0));
+  const bars=items.map((r,i)=>{
+    const y=85+i*100, width=Math.max(0,Math.min(590,(Number(r.value)||0)/max*590));
+    return `<text x="80" y="${y+22}" fill="#335c76" font-size="20" font-weight="700">${r.year+543}</text><rect x="170" y="${y}" width="590" height="35" rx="13" fill="#edf4f9"/><rect x="170" y="${y}" width="${width}" height="35" rx="13" fill="${i?'#eaa174':'#5da9d9'}"/><text x="780" y="${y+24}" fill="#34546c" font-size="20" font-weight="700">${r.value !== null && r.value !== undefined && Number.isFinite(Number(r.value))?Number(r.value).toFixed(1)+unit:'ไม่มีข้อมูล'}</text>`;
+  }).join('');
+  return `<svg class="kpi-exec-chart" viewBox="0 0 1050 330" role="img" aria-label="${escapeOutreachHtml(title)}"><rect width="1050" height="330" rx="18" fill="#fff"/><text x="55" y="43" fill="#244967" font-size="20" font-weight="700">${escapeOutreachHtml(title)}</text>${bars}</svg>`;
+}
+
 function renderKpiCqi({ dependency, sourceRange, year }) {
   const rows = calculateCqiSelfSupplyMonths(dependency, sourceRange);
   const eligible = rows.filter(row => row.rate !== null);
@@ -4150,17 +4210,18 @@ function renderKpiCqi({ dependency, sourceRange, year }) {
   const coverage = eligible.length ? passed / eligible.length * 100 : null;
   const monthName = row => `${['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(row.month)||0]} ${Number(row.year||0)+543}`;
   currentBloodKpiRouteData = { route:'cqi', year, rows, passed, coverage };
-  return `${kpiPageHeader('CQI · จัดหาโลหิตด้วยตนเอง','KPI 2 · เป้าหมายรายเดือน ≥ 85% และผ่านอย่างน้อย 50% ของเดือนที่มีข้อมูล',year,dependency?.years||[])}
+  return `${kpiPageHeader('การจัดหาโลหิตด้วยตนเอง','เป้าหมายรายเดือน ≥ 85% และผ่านอย่างน้อย 50% ของเดือนที่มีข้อมูล',year,dependency?.years||[])}
     ${renderKpiQuickCards([
       {label:'เดือนผ่านเกณฑ์ ≥ 85%',value:eligible.length ? `${passed} / ${eligible.length} เดือน` : '—',note:'นับเฉพาะเดือนที่มีข้อมูลและยอดตรงกัน',tone:coverage >= 50 ? 'is-good' : 'is-alert'},
-      {label:'สัดส่วนเดือนที่ผ่าน',value:coverage === null ? '—' : `${coverage.toFixed(1)}%`,note:'เป้าหมาย CQI ≥ 50%',tone:coverage >= 50 ? 'is-good' : 'is-alert'},
+      {label:'สัดส่วนเดือนที่ผ่าน',value:coverage === null ? '—' : `${coverage.toFixed(1)}%`,note:'เป้าหมาย ≥ 50%',tone:coverage >= 50 ? 'is-good' : 'is-alert'},
       {label:'เดือนต้องตรวจสอบ',value:`${mismatched.length} เดือน`,note:'ยอดแยกแหล่งไม่ตรงยอดรวม จึงงดตัดสินผล',tone:mismatched.length ? 'is-alert' : ''}
     ])}
+    <div class="simple-panel kpi-executive-panel mb-3"><div class="panel-heading-row"><div><h3>แนวโน้มการจัดหาโลหิตด้วยตนเอง</h3></div></div>${renderKpiYearOverlayChart(rows, 'rate', {title:'สัดส่วนจัดหาเองรายเดือน (%)', target:85, yMax:100, unit:'%'})}</div>
     <div class="simple-panel kpi-executive-panel mb-3"><div class="panel-heading-row"><div><h3>ผลรายเดือน</h3></div></div>
     <div class="table-responsive"><table class="table simple-table align-middle mb-0"><thead><tr><th>เดือน</th><th class="text-end">จัดหาเอง ใน รพ. + ออกหน่วย</th><th class="text-end">กาชาด</th><th class="text-end">รพ.อื่น</th><th class="text-end">รวม</th><th class="text-end">จัดหาเอง</th><th>ผล ≥ 85%</th></tr></thead><tbody>
     ${rows.length ? rows.map(row => `<tr><td>${escapeOutreachHtml(monthName(row))}</td><td class="text-end">${row.own.toLocaleString()}</td><td class="text-end">${row.trc.toLocaleString()}</td><td class="text-end">${row.other.toLocaleString()}</td><td class="text-end">${row.base.toLocaleString()}</td><td class="text-end fw-bold">${row.rate === null ? '—' : row.rate.toFixed(1)+'%'}</td><td>${row.base !== row.dependencyBase ? 'ตรวจสอบยอด' : row.rate === null ? 'ไม่มีข้อมูล' : row.rate >= 85 ? 'ผ่าน' : 'ไม่ผ่าน'}</td></tr>`).join('') : '<tr><td colspan="7">ไม่มีข้อมูลในช่วงที่เลือก</td></tr>'}
     </tbody></table></div></div>
-    <div class="simple-panel"><h3>นิยามที่ใช้</h3><p class="mb-1">จัดหาเอง (%) = (หาเองใน รพ. + หาเองออกหน่วย) ÷ เลือดแดงรับเข้าทุกแหล่ง × 100 · นับเป็นรายเดือน ไม่ใช่อัตราพึ่งพากาชาดกลับด้าน</p><p class="small-muted mb-0">นับระดับถุงต้นทางตามวันที่รับเข้า; เดือนที่ยอดแยกแหล่งไม่เท่ากับยอดรวม หรือไม่มีเลือดรับเข้า จะไม่รวมในตัวหารเดือนประเมิน CQI · KPI 1 และ 3 ต้องตรวจจากสถานะการใช้จริงและวันหมดอายุแยกต่างหาก</p></div>`;
+    <div class="simple-panel"><h3>นิยามที่ใช้</h3><p class="mb-1">จัดหาเอง (%) = (หาเองใน รพ. + หาเองออกหน่วย) ÷ เลือดแดงรับเข้าทุกแหล่ง × 100 · นับเป็นรายเดือน</p><p class="small-muted mb-0">นับระดับถุงต้นทางตามวันที่รับเข้า; เดือนที่ยอดแยกแหล่งไม่เท่ากับยอดรวม หรือไม่มีเลือดรับเข้า จะไม่รวมในตัวหารเดือนประเมิน</p></div>`;
 }
 
 function renderKpiTrcMonthly({ dependency, sourceRange, year }) {
@@ -4201,6 +4262,7 @@ function renderKpiTrcBags({ dependency, sourceRange, minimumReview, year }) {
   const { planningMonths, adjusted, rare, routine, routineBase, months } = core;
   currentBloodKpiRouteData = { route:'trc-bags', year, adjusted, rare, routine, routineBase, months, planningMonths, minimumReview };
   return `${kpiPageHeader('รายการถุงที่ควรทบทวน','',year,dependency?.years||[])}
+    <div class="simple-panel kpi-executive-panel mb-3"><div class="panel-heading-row"><h3>ถุงที่ควรทบทวนรายเดือน</h3></div>${renderTrcMinimumReviewMonthlySvg(minimumReview,planningMonths)}</div>
     ${renderTrcMinimumReviewPanel(minimumReview, planningMonths, { includeChart:false, includeDetails:true })}`;
 }
 
@@ -4254,13 +4316,29 @@ function renderKpiOutreach({ insights, dependency, year }) {
     <div class="simple-panel"><div class="panel-heading-row"><div><h3>Top จุดออกหน่วยตามอัตราการใช้ประโยชน์</h3></div></div>${renderHorizontalBarChartSvg(rows,{valueKey:'rate',suffix:'%',color:'#68c3a3',max:100,sublabelKey:'finalCount',sublabelSuffix:' ถุงที่พร้อมใช้'})}</div>`;
 }
 
+let minimumKpiProductFamily = 'all';
+function changeMinimumKpiProductFamily(value) {
+  minimumKpiProductFamily = ['all','RBC','PLATELET','FFP','CRYO'].includes(value) ? value : 'all';
+  const box=document.getElementById('bloodKpiDashboard');
+  if (box && bloodKpiLazyCache.dashboard) { box.innerHTML=renderKpiMinimum({dashboard:bloodKpiLazyCache.dashboard,year:new Date().getFullYear()});enhanceBloodKpiChartExports(box); }
+}
 function renderKpiMinimum({ dashboard, year }) {
-  const rows=(dashboard?.results||[]).filter(r=>Number(r?.gap||0)<0).map(r=>({type:r.type||'',bloodGroup:r.bloodGroup||'',minimumStock:Number(r.minimumStock||0),netAvailable:Number(r.netAvailable||0),gap:Number(r.gap||0)}));
+  const all=(dashboard?.results||[]);
+  const filtered=all.filter(r=>{
+    if(minimumKpiProductFamily==='all')return true;
+    const type=String(r.type||'');
+    if(minimumKpiProductFamily==='FFP')return classifyTrcMinimumProduct(type)==='FFP';
+    if(minimumKpiProductFamily==='CRYO')return classifyTrcMinimumProduct(type)==='Cryo';
+    return minimumKpiProductFamily==='RBC'?isBloodKpiRbcDependencyProduct(type):outreachProductFamilyClient(type)==='PLATELET';
+  });
+  const rows=filtered.filter(r=>Number(r?.gap||0)<0).map(r=>({type:r.type||'',bloodGroup:r.bloodGroup||'',minimumStock:Number(r.minimumStock||0),netAvailable:Number(r.netAvailable||0),gap:Number(r.gap||0)}));
   currentBloodKpiRouteData={route:'minimum',year,rows,total:Number(dashboard?.results?.length||0)};
   return `${kpiPageHeader('Minimum Stock','',year,[], false)}
+    <div class="simple-panel kpi-inline-filter-panel no-print"><div class="panel-heading-row"><h3>ตัวกรองข้อมูล · Stock วันนี้</h3></div><label>กลุ่มผลิตภัณฑ์ <select class="form-select" style="max-width:280px" onchange="changeMinimumKpiProductFamily(this.value)">${[['all','ทุกชนิด'],['RBC','เลือดแดง'],['PLATELET','เกล็ดเลือด'],['FFP','FFP'],['CRYO','Cryo']].map(([value,label])=>`<option value="${value}" ${minimumKpiProductFamily===value?'selected':''}>${label}</option>`).join('')}</select></label><small class="small-muted">Stock ณ วันนี้ ไม่มีข้อมูลย้อนหลังสำหรับเทียบปี</small></div>
     ${renderKpiQuickCards([
-      { label:'ต่ำกว่า Minimum วันนี้', value:`${rows.length} รายการ`, note:`จาก ${Number(dashboard?.results?.length||0)} รายการ`, tone:'is-alert' }
+      { label:'ต่ำกว่า Minimum วันนี้', value:`${rows.length} รายการ`, note:`จาก ${filtered.length} รายการ`, tone:'is-alert' }
     ])}
+    <div class="simple-panel kpi-executive-panel mb-3"><div class="panel-heading-row"><h3>จำนวนที่ขาดจาก Minimum วันนี้</h3></div>${renderHorizontalBarChartSvg(rows.slice().sort((a,b)=>a.gap-b.gap).slice(0,8).map(r=>({label:`${r.type} ${r.bloodGroup}`,value:Math.abs(r.gap)})),{valueKey:'value',suffix:' ถุง',color:'#ec8b80'})}</div>
     <div class="simple-panel"><div class="panel-heading-row"><div><h3>รายการที่ต่ำกว่า Minimum วันนี้</h3></div></div><div class="table-responsive"><table class="table simple-table align-middle mb-0"><thead><tr><th>ชนิด</th><th>หมู่เลือด</th><th class="text-end">Minimum</th><th class="text-end">ใช้ได้จริง</th><th class="text-end">ขาด</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${escapeOutreachHtml(r.type)}</td><td><b>${escapeOutreachHtml(r.bloodGroup)}</b></td><td class="text-end">${r.minimumStock}</td><td class="text-end">${r.netAvailable}</td><td class="text-end text-danger">${Math.abs(r.gap)}</td></tr>`).join(''):`<tr><td colspan="5" class="small-muted">ไม่มีรายการต่ำกว่า Minimum วันนี้</td></tr>`}</tbody></table></div></div>`;
 }
 
@@ -4280,6 +4358,7 @@ async function loadBloodKpiPage(year = null, route = null, options = {}) {
     if (currentBloodKpiRoute === 'minimum' && (!options?.apply || options?.filterOnly)) {
       const dashboard = await ensureBloodKpiDashboard();
       box.innerHTML = renderKpiMinimum({ dashboard, year:new Date().getFullYear() });
+      enhanceBloodKpiChartExports(box);
       return;
     }
     const selection = options?.selection || bloodKpiFilterSelections.get(currentBloodKpiRoute) || {};
@@ -4329,9 +4408,59 @@ async function loadBloodKpiPage(year = null, route = null, options = {}) {
       html = renderKpiMinimum({dashboard,year:new Date().getFullYear()});
     }
     box.innerHTML = html;
+    if (selection.compareYearA && selection.compareYearB && currentBloodKpiRoute !== 'minimum') {
+      const resultRoute = currentBloodKpiRoute;
+      try {
+        const comparison = await renderBloodKpiYearComparison(resultRoute,selection,filters,currentBloodKpiRouteData||{});
+        if (resultRoute===currentBloodKpiRoute && box.isConnected) box.insertAdjacentHTML('beforeend',comparison);
+      } catch (compareError) {
+        if (resultRoute===currentBloodKpiRoute) box.insertAdjacentHTML('beforeend',`<div class="simple-panel small-muted">เทียบปีไม่ได้: ${escapeOutreachHtml(compareError.message)}</div>`);
+      }
+    }
+    enhanceBloodKpiChartExports(box);
   } catch (err) {
     box.innerHTML = `<div class="hero-card mt-4"><h4 class="fw-bold mb-2">เปิด KPI นี้ไม่ได้</h4><div class="small-muted mb-3">${escapeOutreachHtml(err.message)}</div><button class="btn btn-main" type="button" onclick="loadBloodKpiPage(null,currentBloodKpiRoute,{filterOnly:true})">ตัวกรอง</button></div>`;
   }
+}
+
+function enhanceBloodKpiChartExports(root) {
+  root.querySelectorAll('.simple-panel svg').forEach(svg=>{
+    const panel = svg.closest('.simple-panel');
+    const heading = panel?.querySelector('.panel-heading-row') || panel;
+    if (!heading || heading.querySelector('.kpi-export-chart') || [...heading.querySelectorAll('button')].some(button=>/PNG/i.test(button.textContent||''))) return;
+    const button=document.createElement('button');
+    button.type='button';button.className='btn btn-light btn-sm no-print kpi-export-chart';
+    button.textContent='บันทึกกราฟ PNG';
+    button.onclick=()=>downloadKpiPanelChartPng(svg,heading.querySelector('h3')?.textContent||'KPI');
+    heading.appendChild(button);
+  });
+}
+
+function downloadKpiPanelChartPng(svg,title) {
+  if (!svg) return;
+  const clone=svg.cloneNode(true);
+  clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+  const view=svg.viewBox?.baseVal;
+  clone.setAttribute('width',String(view?.width||1000));clone.setAttribute('height',String(view?.height||480));
+  const objectUrl=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)],{type:'image/svg+xml;charset=utf-8'}));
+  const img=new Image();
+  img.onload=()=>{
+    try {
+      const canvas=document.createElement('canvas');canvas.width=2000;canvas.height=1180;
+      const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle='#163c5d';ctx.font='bold 38px sans-serif';ctx.fillText(String(title||'KPI').slice(0,72),65,65);
+      const selection=bloodKpiFilterSelections.get(currentBloodKpiRoute)||{};
+      const label=[selection.dateFrom?.slice(0,7),selection.dateTo?.slice(0,7)].filter(Boolean).join(' – ');
+      const products=selection.products?.length?selection.products.join(', '):currentBloodKpiRoute==='cqi'?'เลือดแดง':'ทุกผลิตภัณฑ์';
+      ctx.fillStyle='#506d82';ctx.font='22px sans-serif';ctx.fillText(`ช่วง ${label||'ปัจจุบัน'} · ${products}`.slice(0,110),65,108);
+      const scale=Math.min(1860/img.width,970/img.height);
+      ctx.drawImage(img,65,145,img.width*scale,img.height*scale);
+      ctx.fillStyle='#758da0';ctx.font='18px sans-serif';ctx.fillText(`CNMI Blood Stock · บันทึก ${new Date().toLocaleDateString('th-TH')}`,65,1150);
+      const link=document.createElement('a');link.download=`blood-stock-${currentBloodKpiRoute}-${new Date().toISOString().slice(0,10)}.png`;link.href=canvas.toDataURL('image/png');link.click();
+    } finally {URL.revokeObjectURL(objectUrl);}
+  };
+  img.onerror=()=>{URL.revokeObjectURL(objectUrl);showModal('error','บันทึกกราฟไม่สำเร็จ','กรุณาลองอีกครั้ง');};
+  img.src=objectUrl;
 }
 
 function downloadPrimaryKpiSvgAsPng(data) {
@@ -4349,13 +4478,14 @@ function downloadPrimaryKpiSvgAsPng(data) {
       canvas.width = 2000; canvas.height = 1320;
       const ctx = canvas.getContext('2d');
       ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,canvas.width,canvas.height);
-      const titles={utilization:'อัตราการใช้ประโยชน์จากโลหิต',expiry:'อัตราโลหิตหมดอายุ',aging:'อายุเลือดก่อนถูกใช้รายเดือน'};
+      const titles={utilization:'อัตราการใช้ประโยชน์จากโลหิต',expiry:'อัตราโลหิตหมดอายุ',aging:'อายุเลือดก่อนถูกใช้รายเดือน',cqi:'การจัดหาโลหิตด้วยตนเอง'};
       ctx.fillStyle='#173b5d'; ctx.font='700 44px sans-serif'; ctx.fillText(titles[data.route]||'KPI เลือด',70,72);
       ctx.fillStyle='#7890a4'; ctx.font='400 20px sans-serif'; ctx.fillText(`Blood Stock CNMI · ปี ${Number(data.year||new Date().getFullYear())+543}`,70,110);
       let headline='';
       if(data.route==='utilization') headline=`อัตราการใช้ประโยชน์ ${Number(data.rate||0).toFixed(1)}%`;
       if(data.route==='expiry') headline=`อัตราโลหิตหมดอายุ ${Number(data.rate||0).toFixed(1)}%`;
       if(data.route==='aging') headline='Median วันรับเข้า → ใช้ แยกรายเดือน';
+      if(data.route==='cqi') headline=`เดือนผ่านเกณฑ์ ${Number(data.passed||0)} เดือน · เป้าหมายรายเดือน ≥ 85%`;
       ctx.fillStyle='#36556f'; ctx.font='700 30px sans-serif'; ctx.fillText(headline,70,162);
       const targetW=1860, targetH=1000;
       const scale=Math.min(targetW/image.width,targetH/image.height);
@@ -4373,7 +4503,7 @@ function downloadPrimaryKpiSvgAsPng(data) {
 
 function downloadCurrentKpiPng() {
   const data = currentBloodKpiRouteData || {};
-  if (['utilization','expiry','aging'].includes(data.route) && downloadPrimaryKpiSvgAsPng(data)) return;
+  if (['utilization','expiry','aging','cqi'].includes(data.route) && downloadPrimaryKpiSvgAsPng(data)) return;
   const canvas = document.createElement('canvas');
   canvas.width = 1600; canvas.height = 900;
   const ctx = canvas.getContext('2d');
@@ -5185,7 +5315,7 @@ function renderTrcMinimumReviewPanel(review = {}, planningRows = [], options = {
   const productChip = selectedProducts.length ? `<span class="kpi-filter-result-chip">${escapeOutreachHtml(selectedProducts.join(' · '))}</span>` : '';
   const subtitle = includeDetails && !includeChart
     ? 'เปิดตามวันที่เพื่อดู Bag No., ผลิตภัณฑ์, หมู่เลือด, Minimum และ Stock ต้นวัน'
-    : 'KPI สำหรับ CQI · ครอบคลุม LPRC/LDPRC, FFP, LDPPC, Cryo และ SDP ว่ารับกาชาดในวันที่ Stock ต้นวันต่ำกว่า Minimum หรือมีเพียงพอแล้ว';
+    : 'ครอบคลุม LPRC/LDPRC, FFP, LDPPC, Cryo และ SDP ว่ารับกาชาดในวันที่ Stock ต้นวันต่ำกว่า Minimum หรือมีเพียงพอแล้ว';
   return `<div class="simple-panel kpi-executive-panel mb-3 trc-minimum-review-panel" id="trc-minimum-review-panel">
     <div class="panel-heading-row"><div><h3>${heading}</h3>${productChip}</div><div class="trc-chart-actions no-print">${includeChart ? `<button class="btn btn-light btn-sm" type="button" onclick="downloadTrcChartPng('minimumReview')">PNG</button>` : ''}<button class="btn btn-light btn-sm" type="button" onclick="exportTrcMinimumReviewExcel()">Excel รายถุง</button></div></div>
     <div class="trc-min-summary-grid">
