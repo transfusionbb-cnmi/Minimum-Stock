@@ -2786,6 +2786,14 @@
     return data || { year: null, years: [], summary: {}, months: [], specialTrackingReady: false, sdrTrackingReady: false };
   }
 
+  async function getHistoricalMinimumDay(date) {
+    if (!isConfigured()) throw new Error("สต๊อกย้อนหลังต้องใช้ Supabase");
+    const client = getClient();
+    const { data, error } = await client.rpc("minimum_stock_historical_day_v2973", { p_day: String(date || "").slice(0, 10) });
+    if (error) throw new Error("โหลดสต๊อกย้อนหลังไม่สำเร็จ: " + error.message);
+    return data || { rows: [], canEvaluate: false };
+  }
+
   async function getTrcMinimumReview(filters = {}) {
     if (!isConfigured()) throw new Error("KPI เทียบ Minimum Stock ต้องใช้ Supabase");
     const client = getClient();
@@ -3399,6 +3407,7 @@
     getOutreachFilterBootstrap,
     getOutreachMonthlyTrend,
     getBloodKpiRedCellDependency,
+    getHistoricalMinimumDay,
     getTrcMinimumReview,
     getTrcRareRegistry,
     saveTrcRareTag,

@@ -3873,3 +3873,27 @@ body {
 .kpi-inline-filter-panel .kpi-product-family-presets{margin:1px 0 0;padding:3px 0}
 @media(max-width:900px){.kpi-inline-filter-panel .kpi-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.kpi-inline-filter-panel .kpi-filter-grid{grid-template-columns:1fr}.kpi-inline-filter-panel .kpi-range-pair,.kpi-year-compare-row,.kpi-product-family-presets{grid-column:1/-1}}
+
+/* v2.9.73: align outcome filters with KPI pages */
+.outreach-kpi-filter-panel{padding:18px 20px;border-radius:22px}
+.outreach-kpi-filter-head{margin-bottom:14px}
+.outreach-kpi-filter-head h3{margin:0;font-size:17px}
+.outreach-kpi-filter-panel .outreach-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}
+.outreach-kpi-filter-panel .outreach-range-pair{grid-column:1/-1;max-width:850px;width:100%;padding:12px 14px}
+.outreach-kpi-filter-panel .outreach-range-pair .form-select{min-height:48px;border-radius:13px}
+.outreach-kpi-filter-panel .outreach-family-presets{grid-column:1/-1;margin:0;padding:3px 0}
+.outreach-kpi-filter-panel .product-multi-select,.outreach-kpi-filter-panel .filter-multi-select{min-height:56px;border-radius:13px}
+.outreach-kpi-filter-panel .product-multi-select>summary,.outreach-kpi-filter-panel .filter-multi-select>summary{min-height:54px;padding-top:7px;padding-bottom:7px}
+.outreach-kpi-filter-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:14px;padding-top:13px;border-top:1px solid #e4eef5}
+@media(max-width:900px){.outreach-kpi-filter-panel .outreach-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.outreach-kpi-filter-panel .outreach-filter-grid{grid-template-columns:1fr}.outreach-kpi-filter-panel .outreach-range-pair,.outreach-kpi-filter-panel .outreach-family-presets{grid-column:1/-1}.outreach-kpi-filter-footer{flex-wrap:wrap}.outreach-kpi-filter-footer>.d-flex{width:100%;justify-content:flex-end}}
+
+.kpi-minimum-filter-panel .outreach-filter-item{min-width:0;display:flex;flex-direction:column;gap:6px;font-weight:700;color:#365a75}
+.kpi-minimum-filter-panel .form-select{min-height:54px;border-radius:13px}
+
+.kpi-selectable-bars [hidden]{display:none!important}
+.kpi-bar-direction-buttons{display:flex;gap:6px;margin:10px 0 4px}
+.kpi-bar-direction-buttons button{border:1px solid #c9dfed;border-radius:11px;background:#fff;color:#315974;padding:7px 12px;font-weight:700;cursor:pointer}
+.kpi-bar-direction-buttons button.active{background:#e6f5fd;border-color:#50a8d9;color:#136691}
+
+.kpi-minimum-filter-panel .kpi-minimum-presets{grid-column:1/-1}
