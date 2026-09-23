@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260922-v2-9-68-lis-upload-timeout";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260923-v2-9-69-cqi-self-supply";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -2977,7 +2977,7 @@ document.addEventListener("DOMContentLoaded", bindOutreachDetailModal);
 let currentBloodKpiInsights = null;
 
 
-const KPI_SUBROUTES = new Set(['overview','utilization','expiry','trc','trc-monthly','trc-minimum','trc-bags','turnaround','aging','outreach','minimum']);
+const KPI_SUBROUTES = new Set(['overview','utilization','expiry','trc','cqi','trc-monthly','trc-minimum','trc-bags','turnaround','aging','outreach','minimum']);
 let currentBloodKpiRoute = 'overview';
 let currentBloodKpiRouteData = null;
 const bloodKpiFilterSelections = new Map();
@@ -3009,7 +3009,7 @@ function getKpiHash(route) {
 function getKpiSidebarLandingRoute(route) {
   if (['utilization','turnaround','aging'].includes(route)) return 'utilization';
   if (['expiry','minimum'].includes(route)) return 'expiry';
-  if (['trc','trc-monthly','trc-minimum','trc-bags'].includes(route)) return 'trc';
+  if (['trc','cqi','trc-monthly','trc-minimum','trc-bags'].includes(route)) return 'trc';
   if (route === 'outreach') return 'outreach';
   return 'overview';
 }
@@ -3024,7 +3024,7 @@ function setKpiTreeState(route) {
   const trcTree = document.getElementById('trcKpiTree');
   const useOpen = ['utilization','turnaround','aging'].includes(route);
   const stockOpen = ['expiry','minimum'].includes(route);
-  const trcOpen = ['trc','trc-monthly','trc-minimum','trc-bags'].includes(route);
+  const trcOpen = ['trc','cqi','trc-monthly','trc-minimum','trc-bags'].includes(route);
 
   if (useTree) useTree.classList.toggle('open', useOpen);
   if (stockTree) stockTree.classList.toggle('open', stockOpen);
@@ -3445,7 +3445,7 @@ async function ensureBloodKpiHeavyInsights(filters = {}) {
 function renderKpiInlineFilterPanel(route, bootstrap, preset = {}) {
   if (route === 'minimum') return '';
   const options = bootstrap?.filterOptions || {};
-  const showDetailFilters = !['trc','trc-monthly','trc-minimum','trc-bags'].includes(route);
+  const showDetailFilters = !['trc','cqi','trc-monthly','trc-minimum','trc-bags'].includes(route);
   const showTrcMinimumProductFilter = ['trc-minimum','trc-bags'].includes(route);
   const selectedTrcProducts = normalizeKpiSelectedValues(preset.trcProductGroups || []);
   const selectedSourceGroups = route === 'outreach' ? [OUTREACH_GROUP_SELF_OUTREACH] : normalizeKpiSelectedValues(preset.sourceGroups || []);
@@ -3762,6 +3762,7 @@ function renderKpiFilterGate(route, bootstrap, preset = {}) {
     utilization: 'อัตราการใช้ประโยชน์จากโลหิต',
     expiry: 'อัตราโลหิตหมดอายุ',
     trc: 'ภาพรวมกาชาด Routine',
+    cqi: 'CQI จัดหาโลหิตด้วยตนเอง',
     'trc-monthly': 'รับเข้ารายเดือน / ออกหน่วย',
     'trc-minimum': 'กาชาดเทียบ Minimum Stock',
     'trc-bags': 'รายการถุงที่ควรทบทวน',
@@ -3770,7 +3771,7 @@ function renderKpiFilterGate(route, bootstrap, preset = {}) {
     outreach: 'ประสิทธิผลเลือดจากการออกหน่วย',
     minimum: 'Minimum Stock'
   }[route] || 'KPI เลือด';
-  const showDetailFilters = !['trc','trc-monthly','trc-minimum','trc-bags','minimum'].includes(route);
+  const showDetailFilters = !['trc','cqi','trc-monthly','trc-minimum','trc-bags','minimum'].includes(route);
   const showTrcMinimumProductFilter = ['trc-minimum','trc-bags'].includes(route);
   const selectedTrcProducts = normalizeKpiSelectedValues(preset.trcProductGroups || []);
   const selectedSourceGroups = route === 'outreach' ? [OUTREACH_GROUP_SELF_OUTREACH] : normalizeKpiSelectedValues(preset.sourceGroups || []);
@@ -4127,6 +4128,41 @@ function renderKpiTrc({ dependency, year }) {
 `;
 }
 
+function calculateCqiSelfSupplyMonths(dependency = {}, sourceRange = {}) {
+  const rows = mergeBloodKpiTrcPlanningMonths(dependency, sourceRange);
+  return rows.map(row => {
+    const own = Number(row.selfInhouse || 0) + Number(row.selfOutreach || 0);
+    const trc = Number(row.trcTotal || 0);
+    const other = Number(row.otherHospital || 0);
+    const base = own + trc + other;
+    const dependencyBase = Number(row.totalRbc || 0);
+    return { ...row, own, trc, other, base, dependencyBase,
+      consistent: base === dependencyBase,
+      rate: base > 0 && base === dependencyBase ? own / base * 100 : null };
+  });
+}
+
+function renderKpiCqi({ dependency, sourceRange, year }) {
+  const rows = calculateCqiSelfSupplyMonths(dependency, sourceRange);
+  const eligible = rows.filter(row => row.rate !== null);
+  const mismatched = rows.filter(row => row.base !== row.dependencyBase);
+  const passed = eligible.filter(row => row.rate >= 85).length;
+  const coverage = eligible.length ? passed / eligible.length * 100 : null;
+  const monthName = row => `${['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][Number(row.month)||0]} ${Number(row.year||0)+543}`;
+  currentBloodKpiRouteData = { route:'cqi', year, rows, passed, coverage };
+  return `${kpiPageHeader('CQI · จัดหาโลหิตด้วยตนเอง','KPI 2 · เป้าหมายรายเดือน ≥ 85% และผ่านอย่างน้อย 50% ของเดือนที่มีข้อมูล',year,dependency?.years||[])}
+    ${renderKpiQuickCards([
+      {label:'เดือนผ่านเกณฑ์ ≥ 85%',value:eligible.length ? `${passed} / ${eligible.length} เดือน` : '—',note:'นับเฉพาะเดือนที่มีข้อมูลและยอดตรงกัน',tone:coverage >= 50 ? 'is-good' : 'is-alert'},
+      {label:'สัดส่วนเดือนที่ผ่าน',value:coverage === null ? '—' : `${coverage.toFixed(1)}%`,note:'เป้าหมาย CQI ≥ 50%',tone:coverage >= 50 ? 'is-good' : 'is-alert'},
+      {label:'เดือนต้องตรวจสอบ',value:`${mismatched.length} เดือน`,note:'ยอดแยกแหล่งไม่ตรงยอดรวม จึงงดตัดสินผล',tone:mismatched.length ? 'is-alert' : ''}
+    ])}
+    <div class="simple-panel kpi-executive-panel mb-3"><div class="panel-heading-row"><div><h3>ผลรายเดือน</h3></div></div>
+    <div class="table-responsive"><table class="table simple-table align-middle mb-0"><thead><tr><th>เดือน</th><th class="text-end">จัดหาเอง ใน รพ. + ออกหน่วย</th><th class="text-end">กาชาด</th><th class="text-end">รพ.อื่น</th><th class="text-end">รวม</th><th class="text-end">จัดหาเอง</th><th>ผล ≥ 85%</th></tr></thead><tbody>
+    ${rows.length ? rows.map(row => `<tr><td>${escapeOutreachHtml(monthName(row))}</td><td class="text-end">${row.own.toLocaleString()}</td><td class="text-end">${row.trc.toLocaleString()}</td><td class="text-end">${row.other.toLocaleString()}</td><td class="text-end">${row.base.toLocaleString()}</td><td class="text-end fw-bold">${row.rate === null ? '—' : row.rate.toFixed(1)+'%'}</td><td>${row.base !== row.dependencyBase ? 'ตรวจสอบยอด' : row.rate === null ? 'ไม่มีข้อมูล' : row.rate >= 85 ? 'ผ่าน' : 'ไม่ผ่าน'}</td></tr>`).join('') : '<tr><td colspan="7">ไม่มีข้อมูลในช่วงที่เลือก</td></tr>'}
+    </tbody></table></div></div>
+    <div class="simple-panel"><h3>นิยามที่ใช้</h3><p class="mb-1">จัดหาเอง (%) = (หาเองใน รพ. + หาเองออกหน่วย) ÷ เลือดแดงรับเข้าทุกแหล่ง × 100 · นับเป็นรายเดือน ไม่ใช่อัตราพึ่งพากาชาดกลับด้าน</p><p class="small-muted mb-0">นับระดับถุงต้นทางตามวันที่รับเข้า; เดือนที่ยอดแยกแหล่งไม่เท่ากับยอดรวม หรือไม่มีเลือดรับเข้า จะไม่รวมในตัวหารเดือนประเมิน CQI · KPI 1 และ 3 ต้องตรวจจากสถานะการใช้จริงและวันหมดอายุแยกต่างหาก</p></div>`;
+}
+
 function renderKpiTrcMonthly({ dependency, sourceRange, year }) {
   const core = getKpiTrcCore(dependency, sourceRange);
   const { planningMonths, planning, adjusted, rare, routine, routineBase, months } = core;
@@ -4264,6 +4300,9 @@ async function loadBloodKpiPage(year = null, route = null, options = {}) {
     } else if (currentBloodKpiRoute === 'trc') {
       const dependency = await ensureBloodKpiDependencyRange(filters);
       html = renderKpiTrc({dependency,year:endYear});
+    } else if (currentBloodKpiRoute === 'cqi') {
+      const [dependency, sourceRange] = await Promise.all([ensureBloodKpiDependencyRange(filters), ensureBloodKpiRbcSourceRange(filters)]);
+      html = renderKpiCqi({dependency,sourceRange,year:endYear});
     } else if (currentBloodKpiRoute === 'trc-monthly') {
       const [dependency, sourceRange] = await Promise.all([
         ensureBloodKpiDependencyRange(filters),

@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-68-lis-upload-timeout";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-69-cqi-self-supply";
 const APP_SHELL = [
   "./",
   "./index.html",
