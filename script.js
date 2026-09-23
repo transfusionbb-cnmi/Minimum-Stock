@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260923-v2-9-73-outcomes-filters";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260923-v2-9-74-historical-stock-fix";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -4398,7 +4398,9 @@ async function loadMinimumKpiSelectedDate(date = minimumKpiSelectedDate) {
     enhanceBloodKpiChartExports(box);
   } catch (error) {
     if (requestId !== minimumKpiRequestId) return;
-    box.innerHTML = '<div class="simple-panel"><h3>ยังเปิดสต๊อกย้อนหลังไม่ได้</h3><p>ต้องติดตั้ง SQL-v2.9.73-HISTORICAL-MINIMUM.sql ใน Supabase ก่อน แล้วลองเลือกวันที่อีกครั้ง</p><small>' + escapeOutreachHtml(error?.message || String(error)) + '</small></div>';
+    const detail = String(error?.message || error || '');
+    const needsSql = /PGRST202|Could not find the function|does not exist|schema cache/i.test(detail);
+    box.innerHTML = `<div class="simple-panel"><h3>ยังเปิดสต๊อกย้อนหลังไม่ได้</h3><p>${needsSql ? 'ยังไม่พบฟังก์ชันสต๊อกย้อนหลัง กรุณารัน SQL-v2.9.74-HISTORICAL-MINIMUM-FIX.sql ใน Supabase SQL Editor' : 'คำนวณข้อมูลไม่สำเร็จ กรุณาตรวจข้อความผิดพลาดด้านล่าง แล้วลองอีกครั้ง'}</p><div class="d-flex gap-2 align-items-center flex-wrap"><label>วันที่ต้องการดู <input type="date" class="form-control" value="${escapeOutreachHtml(minimumKpiSelectedDate)}" max="${escapeOutreachHtml(new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Bangkok'}))}" id="minimumRetryDate"></label><button class="btn btn-main" type="button" onclick="loadMinimumKpiSelectedDate(document.getElementById('minimumRetryDate').value)">ลองอีกครั้ง</button></div><small class="small-muted d-block mt-3">${escapeOutreachHtml(detail)}</small></div>`;
   }
 }
 
