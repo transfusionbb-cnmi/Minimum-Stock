@@ -3503,7 +3503,7 @@ function renderKpiInlineFilterPanel(route, bootstrap, preset = {}) {
           <select id="kpiMonthToYear" class="form-select" aria-label="ปีสิ้นสุด" onchange="syncKpiMonthRange()">${renderOutreachYearSelectOptions(availableMinDate, availableMaxDate, toParts.year)}</select>
         </div></div>
       </div>
-      <div class="kpi-year-compare-row"><span>เทียบผลรายปี</span><select id="kpiCompareYearA" aria-label="ปีแรกที่เปรียบเทียบ">${renderKpiCompareYearOptions(availableMinDate,availableMaxDate,preset.compareYearA,1)}</select><span>กับ</span><select id="kpiCompareYearB" aria-label="ปีที่สองที่เปรียบเทียบ">${renderKpiCompareYearOptions(availableMinDate,availableMaxDate,preset.compareYearB,0)}</select><button type="button" onclick="applyKpiYearCompare('${route}')">แสดงกราฟเทียบปี</button></div>
+      <div class="kpi-year-compare-row"><span>เทียบผลหลายปี</span>${renderKpiComparisonPicker(availableMinDate,availableMaxDate,preset)}<button type="button" onclick="applyKpiYearCompare('${route}')">แสดงกราฟเทียบปี</button></div>
       ${showDetailFilters && route === 'outreach' ? `<div class="outreach-filter-item kpi-fixed-filter"><span class="product-picker-label">กลุ่มแหล่งรับเข้า</span><strong>${escapeOutreachHtml(OUTREACH_GROUP_SELF_OUTREACH)}</strong></div>` : ''}
       ${showDetailFilters && route !== 'outreach' ? renderKpiMultiSelect('sourceGroup','กลุ่มแหล่งรับเข้า',options.sourceGroups||[],selectedSourceGroups,'ทุกกลุ่ม') : ''}
       ${showDetailFilters && showSite ? renderKpiMultiSelect('source','จุดออกหน่วย / แหล่งรับเข้า',options.sources||[],selectedSources,'ทุกจุด') : ''}
@@ -3817,14 +3817,21 @@ function renderKpiCompareYearOptions(minDate, maxDate, selected, fallbackOffset 
   return Array.from({length:latest-earliest+1},(_,i)=>earliest+i).map(year=>`<option value="${year}" ${year===Number(selected||defaultYear)?'selected':''}>${year+543}</option>`).join('');
 }
 
+function renderKpiComparisonPicker(minDate,maxDate,preset={}) {
+  const earliest=Number(String(minDate||'').slice(0,4));
+  const latest=Number(String(maxDate||'').slice(0,4));
+  if (!Number.isInteger(earliest)||!Number.isInteger(latest)||earliest>latest) return '<span>ไม่มีปีให้เลือก</span>';
+  const selected=(preset.compareYears||[preset.compareYearA,preset.compareYearB]).map(Number).filter(Number.isInteger);
+  const defaults=selected.length?selected:[Math.max(earliest,latest-1),latest];
+  return `<div class="kpi-compare-years" role="group" aria-label="เลือกปีที่จะเทียบ">${Array.from({length:latest-earliest+1},(_,i)=>earliest+i).map(year=>`<label><input type="checkbox" class="kpi-compare-year" value="${year}" ${defaults.includes(year)?'checked':''}> ${year+543}</label>`).join('')}</div>`;
+}
+
 function applyKpiYearCompare(route) {
-  const a = Number(document.getElementById('kpiCompareYearA')?.value);
-  const b = Number(document.getElementById('kpiCompareYearB')?.value);
-  if (!Number.isInteger(a) || !Number.isInteger(b) || a === b) return showModal('error','เลือกปีที่ต่างกัน','กรุณาเลือกสองปีที่ต้องการเปรียบเทียบ');
-  setKpiMonthRangeControls(`${Math.min(a,b)}-01`,`${Math.max(a,b)}-12`);
+  const years=Array.from(document.querySelectorAll('.kpi-compare-year:checked')).map(el=>Number(el.value)).sort((a,b)=>a-b);
+  if (years.length<2) return showModal('error','เลือกปีอย่างน้อย 2 ปี','กรุณาเลือกปีที่ต้องการเปรียบเทียบอย่างน้อยสองปี');
+  setKpiMonthRangeControls(`${years[0]}-01`,`${years[years.length-1]}-12`);
   const selection = readBloodKpiFilterGate(route);
-  selection.compareYearA = a;
-  selection.compareYearB = b;
+  selection.compareYears = years;
   bloodKpiFilterSelections.set(route,selection);
   loadBloodKpiPage(null,route,{apply:true,selection});
 }
@@ -3906,6 +3913,7 @@ function readBloodKpiFilterGate(route) {
   const range = getKpiMonthRangeControlValues();
   return {
     route,
+    compareYears: Array.from(document.querySelectorAll('.kpi-compare-year:checked')).map(el=>Number(el.value)),
     dateFrom: range.from ? `${range.from}-01` : '',
     dateTo: range.to ? outreachLastDayOfMonth(range.to) : '',
     sourceGroups: route === 'outreach' ? [OUTREACH_GROUP_SELF_OUTREACH] : getSelectedKpiMulti('sourceGroup'),
@@ -3918,8 +3926,8 @@ function readBloodKpiFilterGate(route) {
 }
 
 async function renderBloodKpiYearComparison(route, selection, filters, data) {
-  const years = [Number(selection.compareYearA),Number(selection.compareYearB)];
-  if (!years.every(Number.isInteger) || years[0] === years[1]) return '';
+  const years = [...new Set((selection.compareYears||[selection.compareYearA,selection.compareYearB]).map(Number).filter(Number.isInteger))].sort((a,b)=>a-b);
+  if (years.length<2) return '';
   const sliced = year => ({...filters,dateFrom:`${year}-01-01`,dateTo:`${year}-12-31`});
   let rows = [], title = '', unit = '%', note = '';
   if (route === 'cqi') {
@@ -4222,7 +4230,7 @@ function renderKpiYearOverlayChart(rows = [], key = 'rate', options = {}) {
   const values = rows.map(r => r[key]).filter(v => v !== null && v !== undefined && Number.isFinite(Number(v))).map(Number);
   const max = Math.max(Number(options.yMax || 0), Number(options.target || 0), ...values, 1);
   const yMax = options.yMax || Math.ceil(max * 1.1 / 10) * 10;
-  const w = 1000, h = 445, left = 70, right = 45, top = 85, bottom = 60;
+  const w = Math.max(1000, 90 + years.length * 125), h = 445, left = 70, right = 45, top = 85, bottom = 60;
   const x = m => left + (m - 1) * (w-left-right) / 11;
   const y = v => top + (h-top-bottom) * (1 - Math.max(0, Math.min(yMax, Number(v))) / yMax);
   const grid = [0,.25,.5,.75,1].map(f => { const v=yMax*f; return `<line x1="${left}" y1="${y(v)}" x2="${w-right}" y2="${y(v)}" stroke="#e7eff5"/><text x="${left-10}" y="${y(v)+4}" text-anchor="end" font-size="12" fill="#60798c">${Number(v.toFixed(1))}${options.unit||''}</text>`; }).join('');
@@ -4248,22 +4256,24 @@ function switchKpiYearBarDirection(button, direction) {
 
 function renderKpiSelectableYearBars(items, title, unit) {
   const max = Math.max(1,...items.map(item=>Number(item.value)||0));
+  const chartWidth=Math.max(1050,180+items.length*175);
   const bars = items.map((item,i) => {
-    const x=330+i*370, value=Number(item.value)||0, height=Math.max(0,Math.min(230,value/max*230));
+    const x=110+i*175, value=Number(item.value)||0, height=Math.max(0,Math.min(230,value/max*230));
     const label=item.value !== null && item.value !== undefined && Number.isFinite(Number(item.value)) ? Number(item.value).toFixed(1)+unit : 'ไม่มีข้อมูล';
-    return `<rect x="${x}" y="${300-height}" width="200" height="${height}" rx="12" fill="${i?'#eaa174':'#5da9d9'}"/><text x="${x+100}" y="${Math.max(56,290-height)}" text-anchor="middle" fill="#34546c" font-size="21" font-weight="700">${escapeOutreachHtml(label)}</text><text x="${x+100}" y="342" text-anchor="middle" fill="#34546c" font-size="20">${item.year+543}</text>`;
+    return `<rect x="${x}" y="${300-height}" width="125" height="${height}" rx="12" fill="${i%2?'#eaa174':'#5da9d9'}"/><text x="${x+62}" y="${Math.max(56,290-height)}" text-anchor="middle" fill="#34546c" font-size="18" font-weight="700">${escapeOutreachHtml(label)}</text><text x="${x+62}" y="342" text-anchor="middle" fill="#34546c" font-size="20">${item.year+543}</text>`;
   }).join('');
-  const vertical=`<svg class="kpi-exec-chart" viewBox="0 0 1050 390" role="img" aria-label="${escapeOutreachHtml(title)} กราฟแท่งแนวตั้ง"><rect width="1050" height="390" rx="18" fill="#fff"/><text x="55" y="43" fill="#244967" font-size="20" font-weight="700">${escapeOutreachHtml(title)}</text>${bars}</svg>`;
+  const vertical=`<svg class="kpi-exec-chart" viewBox="0 0 ${chartWidth} 390" role="img" aria-label="${escapeOutreachHtml(title)} กราฟแท่งแนวตั้ง"><rect width="${chartWidth}" height="390" rx="18" fill="#fff"/><text x="55" y="43" fill="#244967" font-size="20" font-weight="700">${escapeOutreachHtml(title)}</text>${bars}</svg>`;
   return `<div class="kpi-selectable-bars"><div class="kpi-bar-direction-buttons no-print" role="group" aria-label="เลือกทิศทางกราฟ"><button type="button" class="active" onclick="switchKpiYearBarDirection(this,'horizontal')">แนวนอน</button><button type="button" onclick="switchKpiYearBarDirection(this,'vertical')">แนวตั้ง</button></div><div data-bar-direction="horizontal">${renderKpiTwoYearBarSvg(items,title,unit)}</div><div data-bar-direction="vertical" hidden>${vertical}</div></div>`;
 }
 
 function renderKpiTwoYearBarSvg(items, title, unit) {
   const max=Math.max(1,...items.map(r=>Number(r.value)||0));
+  const chartHeight=Math.max(330,110+items.length*82);
   const bars=items.map((r,i)=>{
-    const y=85+i*100, width=Math.max(0,Math.min(590,(Number(r.value)||0)/max*590));
+    const y=85+i*82, width=Math.max(0,Math.min(590,(Number(r.value)||0)/max*590));
     return `<text x="80" y="${y+22}" fill="#335c76" font-size="20" font-weight="700">${r.year+543}</text><rect x="170" y="${y}" width="590" height="35" rx="13" fill="#edf4f9"/><rect x="170" y="${y}" width="${width}" height="35" rx="13" fill="${i?'#eaa174':'#5da9d9'}"/><text x="780" y="${y+24}" fill="#34546c" font-size="20" font-weight="700">${r.value !== null && r.value !== undefined && Number.isFinite(Number(r.value))?Number(r.value).toFixed(1)+unit:'ไม่มีข้อมูล'}</text>`;
   }).join('');
-  return `<svg class="kpi-exec-chart" viewBox="0 0 1050 330" role="img" aria-label="${escapeOutreachHtml(title)}"><rect width="1050" height="330" rx="18" fill="#fff"/><text x="55" y="43" fill="#244967" font-size="20" font-weight="700">${escapeOutreachHtml(title)}</text>${bars}</svg>`;
+  return `<svg class="kpi-exec-chart" viewBox="0 0 1050 ${chartHeight}" role="img" aria-label="${escapeOutreachHtml(title)}"><rect width="1050" height="${chartHeight}" rx="18" fill="#fff"/><text x="55" y="43" fill="#244967" font-size="20" font-weight="700">${escapeOutreachHtml(title)}</text>${bars}</svg>`;
 }
 
 function renderKpiCqi({ dependency, sourceRange, year }) {
@@ -4497,7 +4507,7 @@ async function loadBloodKpiPage(year = null, route = null, options = {}) {
       html = renderKpiMinimum({dashboard,year:new Date().getFullYear()});
     }
     box.innerHTML = html;
-    if (selection.compareYearA && selection.compareYearB && currentBloodKpiRoute !== 'minimum') {
+    if ((selection.compareYears?.length>=2 || (selection.compareYearA && selection.compareYearB)) && currentBloodKpiRoute !== 'minimum') {
       const resultRoute = currentBloodKpiRoute;
       try {
         const comparison = await renderBloodKpiYearComparison(resultRoute,selection,filters,currentBloodKpiRouteData||{});

@@ -3897,3 +3897,5 @@ body {
 .kpi-bar-direction-buttons button.active{background:#e6f5fd;border-color:#50a8d9;color:#136691}
 
 .kpi-minimum-filter-panel .kpi-minimum-presets{grid-column:1/-1}
+
+.kpi-compare-years{display:flex;flex-wrap:wrap;gap:8px;max-width:100%}.kpi-compare-years label{display:inline-flex;align-items:center;gap:5px;padding:6px 9px;border:1px solid #cfdeeb;border-radius:9px;background:#fff;font-weight:600;cursor:pointer}.kpi-compare-years input{accent-color:#3298d5}
