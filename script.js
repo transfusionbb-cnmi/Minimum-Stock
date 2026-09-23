@@ -280,7 +280,7 @@ let currentOutreachTrendYear = new Date().getFullYear();
 let currentOutreachTrendData = null;
 let currentBloodKpiData = null;
 let currentTrcRareData = null;
-const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260923-v2-9-71-simple-kpi-menu";
+const APP_VERSION = window.MINIMUM_STOCK_APP_VERSION || "20260923-v2-9-72-kpi-menu-labels";
 const DASHBOARD_CACHE_KEY = `minimumStock.${APP_VERSION}.dashboard.summary`;
 const MOBILE_CACHE_KEY = `minimumStock.${APP_VERSION}.mobile.latest`;
 const EXPIRY_CACHE_KEY = `minimumStock.${APP_VERSION}.expiry.latest`;
@@ -2995,15 +2995,15 @@ const bloodKpiLazyCache = {
 
 function getKpiRouteFromHash() {
   const raw = String(window.location.hash || '').replace(/^#\/?/, '');
-  if (raw === 'kpi' || raw === 'blood-kpi') return 'overview';
+  if (raw === 'kpi' || raw === 'blood-kpi') return 'utilization';
   const m = raw.match(/^(?:kpi|blood-kpi)\/([^/?#]+)/i);
-  const route = String(m?.[1] || 'overview').toLowerCase();
-  return KPI_SUBROUTES.has(route) ? route : 'overview';
+  const route = String(m?.[1] || 'utilization').toLowerCase();
+  return KPI_SUBROUTES.has(route) ? route : 'utilization';
 }
 
 function getKpiHash(route) {
-  const safe = KPI_SUBROUTES.has(route) ? route : 'overview';
-  return safe === 'overview' ? '#/kpi' : `#/kpi/${safe}`;
+  const safe = KPI_SUBROUTES.has(route) ? route : 'utilization';
+  return safe === 'utilization' ? '#/kpi' : `#/kpi/${safe}`;
 }
 
 function getKpiSidebarLandingRoute(route) {
@@ -3011,7 +3011,7 @@ function getKpiSidebarLandingRoute(route) {
   if (route === 'trc-monthly') return 'trc';
   if (route === 'trc-bags') return 'trc-minimum';
   if (['expiry','outreach','minimum','trc-minimum','trc','cqi'].includes(route)) return route;
-  return 'overview';
+  return 'utilization';
 }
 
 function setKpiTreeState(route) {
@@ -3041,7 +3041,7 @@ function toggleKpiSideTree(treeId, parentBtn) {
   if (parentBtn) parentBtn.setAttribute('aria-expanded', String(willOpen));
 }
 
-function toggleKpiTreeAndOpen(route = 'overview', btn = null) {
+function toggleKpiTreeAndOpen(route = 'utilization', btn = null) {
   const target = getKpiHash(route);
   if (window.location.hash === target) {
     handleAppHashRoute(true);
@@ -3107,7 +3107,7 @@ function getAppPageButton(page) {
 
 function navigateToPageRoute(page, btn = null) {
   if (page === 'blood-kpi') {
-    toggleKpiTreeAndOpen('overview', btn);
+    toggleKpiTreeAndOpen('utilization', btn);
     return;
   }
   const target = getAppPageHash(page);
@@ -3168,6 +3168,13 @@ function handleAppHashRoute(force = false) {
 
   const btn = getAppPageButton(page);
   showDashboardPage(page, btn, { routed: true });
+  if (page === 'outreach') {
+    const tree = document.getElementById('bloodKpiTree');
+    const parent = document.getElementById('bloodKpiMenuBtn');
+    if (tree) tree.classList.add('open');
+    if (parent) { parent.classList.add('active'); parent.setAttribute('aria-expanded', 'true'); }
+    document.querySelectorAll('[data-kpi-route]').forEach(el => el.classList.remove('active'));
+  }
   return true;
 }
 
