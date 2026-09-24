@@ -2818,6 +2818,21 @@
     return data||[];
   }
 
+  async function getCqiPlans(dateFrom, dateTo) {
+    const {data,error}=await getClient().from('minimum_stock_cqi_outing_plans').select('*')
+      .gte('outing_date',dateFrom).lte('outing_date',dateTo).order('outing_date',{ascending:false});
+    if(error) throw new Error('โหลดแผน CQI ไม่สำเร็จ: '+error.message);
+    return data||[];
+  }
+
+  async function registerCqiPlan({letterDate,letterRef,outingDate,site}) {
+    const {data,error}=await getClient().rpc('minimum_stock_cqi_register_plan_v2979',{
+      p_letter_date:letterDate,p_letter_ref:letterRef,p_outing_date:outingDate,p_site:site
+    });
+    if(error) throw new Error('บันทึกแผน CQI ไม่สำเร็จ: '+error.message);
+    return data;
+  }
+
   async function saveCqiOuting(payload) {
     const client=getClient();
     const fields=['outing_date','site','start_at','inspected_by_name','area_ok','ventilation_ok','workstations_ok','equipment_ok','donor_beds_ok','consumables_ok','emergency_kit_ok','cold_chain_ok','facilities_ok','issue_text','resolution_text'];
@@ -3455,6 +3470,8 @@
     removeTrcRareTag,
     getOutreachFamilyRows,
     getCqiOutings,
+    getCqiPlans,
+    registerCqiPlan,
     saveCqiOuting,
     confirmCqiOuting,
     getOutreachRows,
