@@ -4241,7 +4241,12 @@ function renderKpiYearOverlayChart(rows = [], key = 'rate', options = {}) {
     const pts = rows.filter(r=>Number(r.year)===year && r[key] !== null && r[key] !== undefined && Number.isFinite(Number(r[key]))).sort((a,b)=>Number(a.month)-Number(b.month));
     // A missing month breaks the line; no point is inferred from another month.
     const paths = pts.map((r,j)=>`${j && Number(r.month)===Number(pts[j-1].month)+1 ? 'L':'M'}${x(Number(r.month))},${y(r[key])}`).join(' ');
-    const dots = pts.map(r => `<circle cx="${x(Number(r.month))}" cy="${y(r[key])}" r="5" fill="#fff" stroke="${color}" stroke-width="3"><title>${names[Number(r.month)]} ${year+543}: ${Number(r[key]).toFixed(1)}${options.unit||''}</title></circle><text x="${x(Number(r.month))}" y="${Math.max(top+15,y(r[key])-(i%2?22:12))}" text-anchor="middle" font-size="11" font-weight="700" fill="${color}" style="paint-order:stroke;stroke:#fff;stroke-width:4px">${Number(r[key]).toFixed(1)}${options.unit||''}</text>`).join('');
+    const dots = pts.map(r => {
+      const pointY = y(r[key]);
+      const labelY = Math.max(top + 17, Math.min(h - bottom - 8, pointY + (i % 2 ? 24 : -14)));
+      const label = years.length > 2 ? '' : `<text x="${x(Number(r.month))}" y="${labelY}" text-anchor="middle" font-size="13" font-weight="700" fill="${color}" style="paint-order:stroke;stroke:#fff;stroke-width:4px">${Number(r[key]).toFixed(1)}${options.unit||''}</text>`;
+      return `<circle cx="${x(Number(r.month))}" cy="${pointY}" r="5" fill="#fff" stroke="${color}" stroke-width="3"><title>${names[Number(r.month)]} ${year+543}: ${Number(r[key]).toFixed(1)}${options.unit||''}</title></circle>${label}`;
+    }).join('');
     return `<path d="${paths}" fill="none" stroke="${color}" stroke-width="3.5"/>${dots}<g transform="translate(${left+i*155},57)"><line x1="0" y1="0" x2="25" y2="0" stroke="${color}" stroke-width="4"/><text x="32" y="4" font-size="13" fill="#3a536b">${year+543}</text></g>`;
   }).join('');
   const goal = Number(options.target) > 0 ? `<line x1="${left}" y1="${y(options.target)}" x2="${w-right}" y2="${y(options.target)}" stroke="#df6866" stroke-width="2" stroke-dasharray="8 6"/><text x="${w-right-3}" y="${y(options.target)-7}" text-anchor="end" fill="#b94646" font-size="12" font-weight="700">เป้าหมาย ${options.target}${options.unit||''}</text>` : '';

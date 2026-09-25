@@ -1,11 +1,12 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-74-historical-stock-fix";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-81-ui-readability";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./style.css",
   "./script.js",
+  "./cqi-mini.js",
   "./supabase-config.js",
   "./supabase-backend.js",
   "./auth.js",

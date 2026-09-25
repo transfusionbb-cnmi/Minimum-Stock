@@ -3903,7 +3903,7 @@ body {
 /* Mini Mobile Blood Donation CQI */
 .mini-cqi-filters,.mini-cqi-form-grid,.mini-cqi-checks,.mini-cqi-counts{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
 .mini-cqi-filters label,.mini-cqi-form-grid label{display:grid;gap:5px;color:#365a75;font-weight:600}
-.mini-cqi-filters input,.mini-cqi-form-grid input,.mini-cqi-form-grid textarea{min-width:180px}
+.mini-cqi-filters input:not([type="checkbox"]),.mini-cqi-form-grid input,.mini-cqi-form-grid textarea{min-width:180px}
 .mini-cqi-form-grid{margin:12px 0}.mini-cqi-checks{align-items:center;margin:15px 0}
 .mini-cqi-checks label,.mini-cqi-counts span{border:1px solid #dceaf3;border-radius:12px;padding:9px 12px;background:#f8fcff}
 .mini-cqi-card{display:flex;flex-direction:column;gap:8px;text-align:left}.mini-cqi-card small{font-size:.78rem;color:#567188}.mini-cqi-card b{font-size:.95rem}
@@ -3912,3 +3912,104 @@ body {
 #miniCqiDashboard [data-mini-panel][hidden]{display:none!important}
 
 .mini-cqi-year-options{display:flex;flex-wrap:wrap;gap:10px;align-items:center;width:100%;padding:10px;border:1px solid #d6e6f5;border-radius:12px;background:#f7fbff}.mini-cqi-year-options label{display:flex;align-items:center;gap:5px}.mini-cqi-presets{display:flex;flex-wrap:wrap;gap:6px}
+.mini-cqi-year-options label { display:inline-flex; align-items:center; flex:0 0 auto; gap:8px; width:auto; min-width:0; margin:0; padding:5px 8px; white-space:nowrap; }
+.mini-cqi-year-options input[type="checkbox"],.mini-cqi-checks input[type="checkbox"] { display:inline-block; width:17px; min-width:17px; height:17px; margin:0; accent-color:#238fcf; }
+
+/* v2.9.81: readable layout on desktop and small screens. Keep data tables scrollable. */
+body { font-size:16px; line-height:1.55; }
+.page-subline,.small-muted,.simple-kpi span,.simple-kpi small { color:#526c80; }
+.page-subline,.small-muted { font-size:14px; line-height:1.55; }
+.simple-page-head,.panel-heading-row { min-width:0; }
+.simple-page-head > *, .panel-heading-row > * { min-width:0; }
+.simple-page-head h1 { line-height:1.25; overflow-wrap:break-word; }
+.panel-heading-row { align-items:center; flex-wrap:wrap; }
+.panel-heading-row h3 { flex:1 1 360px; line-height:1.35; }
+.panel-heading-row > .no-print { display:flex; flex-wrap:wrap; gap:8px; }
+.simple-kpi { min-width:0; }
+.simple-kpi strong { overflow-wrap:anywhere; line-height:1.25; }
+.simple-kpi span { font-size:14px; }
+.simple-kpi small,.mini-cqi-card small { font-size:13px; line-height:1.5; }
+.simple-table thead th { color:#48647a; font-size:13px; }
+.simple-table td { font-size:14px; line-height:1.5; }
+.table-responsive { max-width:100%; -webkit-overflow-scrolling:touch; }
+.kpi-year-chart-scroll,.kpi-chart-scroll { -webkit-overflow-scrolling:touch; }
+.kpi-year-chart-scroll svg { min-width:1000px; }
+.mini-cqi-card { justify-content:flex-start; }
+.mini-cqi-card b { font-size:15px; }
+.mini-cqi-form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); align-items:end; }
+.mini-cqi-form-grid label { min-width:0; line-height:1.4; }
+.mini-cqi-form-grid input,.mini-cqi-form-grid textarea { max-width:100%; }
+.simple-panel .small-muted { max-width:110ch; }
+.mini-cqi-checks label { display:inline-flex; align-items:flex-start; gap:8px; line-height:1.4; }
+.mini-cqi-checks input,.mini-cqi-year-options input { flex:none; margin-top:4px; }
+
+@media (min-width:1100px) {
+  .app-layout { grid-template-columns:252px minmax(0,1fr); gap:20px; }
+  .side-menu { padding:13px; }
+  .side-brand strong { font-size:16px; }
+  .side-btn { font-size:15px; line-height:1.35; min-height:46px; padding:9px 10px; }
+  .side-tree-children .side-btn,.side-tree-child { font-size:14px; line-height:1.4; }
+  .side-tree-children { margin-left:30px; }
+  .side-nav-section-label { font-size:12px; }
+  .page-subline { font-size:14px; }
+  .simple-kpi span { font-size:14px; }
+  .simple-kpi small { font-size:13px; }
+}
+
+@media (min-width:900px) and (max-width:1399px) {
+  .kpi-inline-filter-panel .kpi-filter-grid,
+  .outreach-kpi-filter-panel .outreach-filter-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+
+@media (max-width:900px) {
+  /* This button belongs to the document flow, so it cannot cover a heading. */
+  .mobile-menu-btn {
+    display:block; position:sticky; top:0; left:auto; z-index:10001;
+    width:100%; min-height:48px; margin:0; padding:9px 16px;
+    text-align:left; border-radius:0; box-shadow:0 1px 0 #d7e8f4;
+    background:#eef8ff; color:#205779; font-size:16px;
+  }
+  .app-layout { display:block; width:100%; padding:12px 14px 24px; }
+  .side-menu { z-index:10002; }
+  .side-overlay { z-index:10000; }
+  .simple-page-head { align-items:flex-start; }
+}
+
+@media (max-width:700px) {
+  .app-layout { padding:12px 12px 24px; }
+  .simple-page-head { flex-direction:column; align-items:stretch; gap:12px; }
+  .simple-page-head h1 { font-size:clamp(24px,6.2vw,30px); }
+  .simple-page-head > .btn { align-self:stretch; white-space:normal; }
+  .panel-heading-row { display:flex; flex-direction:column; align-items:stretch; gap:10px; }
+  .panel-heading-row h3 { flex:none; width:100%; font-size:19px; }
+  .panel-heading-row > .no-print { width:100%; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .panel-heading-row > .no-print .btn { min-width:0; width:100%; white-space:normal; font-size:14px; }
+  .simple-panel,.kpi-inline-filter-panel,.outreach-kpi-filter-panel { padding:16px; }
+  .blood-kpi-main-grid { grid-template-columns:1fr; }
+  .simple-kpi strong { font-size:clamp(23px,6vw,28px); }
+  .date-action-box,.compact-actions { flex-wrap:wrap; }
+  .date-action-box input { min-width:0; }
+  .mini-cqi-filters,.mini-cqi-form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:stretch; gap:12px; }
+  .mini-cqi-filters label,.mini-cqi-form-grid label { min-width:0; }
+  .mini-cqi-filters input,.mini-cqi-form-grid input,.mini-cqi-form-grid textarea { min-width:0; width:100%; }
+  .mini-cqi-year-options { grid-column:1/-1; align-items:flex-start; }
+  .mini-cqi-year-options > b { flex-basis:100%; }
+  .mini-cqi-presets { grid-column:1/-1; }
+  .mini-cqi-filters > .btn-main,.mini-cqi-form-grid > .btn-main { grid-column:1/-1; }
+  .mini-cqi-checks label { width:100%; }
+  .mini-cqi-tabs { flex-wrap:nowrap; overflow-x:auto; padding-bottom:5px; -webkit-overflow-scrolling:touch; }
+  .mini-cqi-tabs button { flex:0 0 auto; white-space:nowrap; }
+  .mini-cqi-counts span { font-size:14px; line-height:1.4; }
+  .kpi-year-compare-row { gap:8px; }
+  .kpi-year-chart-scroll svg { min-width:1000px; }
+}
+
+@media (max-width:480px) {
+  .mini-cqi-filters,.mini-cqi-form-grid { grid-template-columns:1fr; }
+  .mini-cqi-year-options,.mini-cqi-presets,
+  .mini-cqi-filters > .btn-main,.mini-cqi-form-grid > .btn-main { grid-column:1; }
+  .mini-cqi-year-options label { min-width:0; }
+  .simple-kpi-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .blood-kpi-main-grid { grid-template-columns:1fr; }
+  .simple-panel { padding:14px; }
+}
