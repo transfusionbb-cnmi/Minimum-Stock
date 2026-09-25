@@ -2841,6 +2841,13 @@
     return data;
   }
 
+  async function archiveCqiPlan(id,reason) {
+    const {error}=await getClient().rpc('minimum_stock_cqi_archive_decision_v2988',{
+      p_id:id,p_reason:reason
+    });
+    if(error) throw new Error('ยกเลิกรายการ KPI 1 ไม่สำเร็จ: '+error.message);
+  }
+
   async function uploadCqiEvidence(file) {
     if (!file || !['image/jpeg','image/png','image/webp'].includes(file.type) || file.size>5*1024*1024) throw new Error('รูปต้องเป็น JPG, PNG หรือ WebP ขนาดไม่เกิน 5 MB');
     const {data:{user},error:authError}=await getClient().auth.getUser();
@@ -3511,6 +3518,7 @@
     getCqiPlans,
     registerCqiPlan,
     updateCqiPlan,
+    archiveCqiPlan,
     uploadCqiEvidence,
     attachCqiEvidence,
     discardCqiEvidenceUpload,
