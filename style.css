@@ -4083,3 +4083,6 @@ body { font-size:16px; line-height:1.55; }
 #miniCqiDashboard .mini-cqi-kpi1-chart svg{display:block;min-width:820px;width:100%}
 #miniCqiDashboard .mini-cqi-coverage{max-width:none;margin:12px 0}
 #miniCqiDashboard .mini-cqi-coverage .table-responsive{max-height:350px;overflow:auto}
+#miniCqiDashboard .mini-cqi-chart-toolbar{display:flex;justify-content:flex-end;margin:12px 0 8px}
+#miniCqiDashboard .mini-cqi-kpi1-chart svg{min-width:760px}
+#miniCqiDashboard .mini-cqi-coverage .table-responsive{max-height:300px}
