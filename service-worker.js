@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-92-kpi2-monthly-goal";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-94-cqi-exports-goal";
 const APP_SHELL = [
   "./",
   "./index.html",
