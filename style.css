@@ -4059,3 +4059,20 @@ body { font-size:16px; line-height:1.55; }
 #miniCqiDashboard .mini-cqi-forecast-table caption{caption-side:top;text-align:left;font-weight:650;color:#31576d;padding:9px 0}
 #miniCqiDashboard .mini-cqi-negative{color:#a85024;font-weight:700}
 @media print{#miniCqiDashboard .mini-cqi-decision{break-inside:avoid}#miniCqiDashboard .mini-cqi-forecast-graphic svg{min-width:0}}
+
+/* v2.9.84: keep the plan form readable when evidence has an image. */
+@media(min-width:1100px){#miniCqiDashboard .mini-cqi-form-grid{grid-template-columns:repeat(3,minmax(0,1fr))}#miniCqiDashboard .mini-cqi-form-actions{align-self:end}}
+@media(min-width:701px) and (max-width:1099px){#miniCqiDashboard .mini-cqi-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+#miniCqiDashboard .mini-cqi-form-grid input[type="file"]{width:100%;min-width:0}
+
+/* KPI 1: compact form, predictable field order and full-width photo picker. */
+#miniCqiDashboard .mini-cqi-form-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 16px;align-items:start;margin:16px 0 20px}
+#miniCqiDashboard .mini-cqi-form-grid label{min-width:0;align-content:start;gap:6px}
+#miniCqiDashboard .mini-cqi-form-grid input{width:100%;min-width:0;box-sizing:border-box}
+#miniCqiDashboard .mini-cqi-field-ref{grid-column:1/2}
+#miniCqiDashboard .mini-cqi-field-photo{grid-column:2/4}
+#miniCqiDashboard .mini-cqi-field-photo input[type=file]{min-height:42px;padding:7px 10px}
+#miniCqiDashboard .mini-cqi-field-photo small{font-size:12px;line-height:1.35}
+#miniCqiDashboard .mini-cqi-form-actions{grid-column:1/-1;justify-content:flex-end;margin-top:2px}
+@media(max-width:900px){#miniCqiDashboard .mini-cqi-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#miniCqiDashboard .mini-cqi-field-site{grid-column:1/-1}#miniCqiDashboard .mini-cqi-field-ref{grid-column:1/-1}#miniCqiDashboard .mini-cqi-field-photo{grid-column:1/-1}}
+@media(max-width:580px){#miniCqiDashboard .mini-cqi-form-grid{grid-template-columns:1fr}#miniCqiDashboard .mini-cqi-form-grid>*{grid-column:1/-1}#miniCqiDashboard .mini-cqi-form-actions{justify-content:stretch}#miniCqiDashboard .mini-cqi-form-actions button{width:100%}}
