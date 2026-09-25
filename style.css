@@ -4013,3 +4013,17 @@ body { font-size:16px; line-height:1.55; }
   .blood-kpi-main-grid { grid-template-columns:1fr; }
   .simple-panel { padding:14px; }
 }
+
+/* v2.9.82: concise CQI copy, compact controls, clear edit state. */
+#miniCqiDashboard .mini-cqi-filters{gap:10px;align-items:end}
+#miniCqiDashboard .mini-cqi-filters>label{min-width:190px}
+#miniCqiDashboard .mini-cqi-presets{align-self:end}
+#miniCqiDashboard .mini-cqi-hint{color:#365a75;font-weight:600;margin:10px 0}
+#miniCqiDashboard .mini-cqi-help{margin:9px 0 15px;color:#526c80;max-width:950px}
+#miniCqiDashboard .mini-cqi-help summary{cursor:pointer;color:#2570a5;font-weight:600}
+#miniCqiDashboard .mini-cqi-help p{margin:8px 0 0;line-height:1.55}
+#miniCqiDashboard .mini-cqi-edit-banner{padding:10px 14px;background:#eaf5ff;border:1px solid #b8dbf4;border-radius:10px;color:#245879;font-weight:600;margin-top:14px}
+#miniCqiDashboard .mini-cqi-form-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
+#miniCqiDashboard .mini-cqi-year-options[hidden],#miniCqiDashboard .mini-cqi-edit-banner[hidden],#miniCqiDashboard #miniCqiEditCancel[hidden],#miniCqiDashboard .mini-cqi-form-grid label[hidden]{display:none!important}
+@media(max-width:700px){#miniCqiDashboard .mini-cqi-filters>label{min-width:0}#miniCqiDashboard .mini-cqi-form-actions{flex-direction:column;align-items:stretch}}
+@media(min-width:1000px){#miniCqiDashboard .mini-cqi-tabs{display:none}}

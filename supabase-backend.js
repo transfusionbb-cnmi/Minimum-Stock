@@ -2833,6 +2833,14 @@
     return data;
   }
 
+  async function updateCqiPlan({id,decisionAt,evidenceRef,outingDate,site,reason}) {
+    const {data,error}=await getClient().rpc('minimum_stock_cqi_update_decision_v2982',{
+      p_id:id,p_decision_at:decisionAt,p_evidence_ref:evidenceRef,p_outing_date:outingDate,p_site:site,p_reason:reason
+    });
+    if(error) throw new Error('แก้ไขแผน CQI ไม่สำเร็จ: '+error.message);
+    return data;
+  }
+
   async function saveCqiOuting(payload) {
     const client=getClient();
     const fields=['outing_date','site','start_at','inspected_by_name','area_ok','ventilation_ok','workstations_ok','equipment_ok','donor_beds_ok','consumables_ok','emergency_kit_ok','cold_chain_ok','facilities_ok','issue_text','resolution_text'];
@@ -3472,6 +3480,7 @@
     getCqiOutings,
     getCqiPlans,
     registerCqiPlan,
+    updateCqiPlan,
     saveCqiOuting,
     confirmCqiOuting,
     getOutreachRows,
