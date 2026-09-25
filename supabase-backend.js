@@ -2841,6 +2841,36 @@
     return data;
   }
 
+  async function uploadCqiEvidence(file) {
+    if (!file || !['image/jpeg','image/png','image/webp'].includes(file.type) || file.size>5*1024*1024) throw new Error('รูปต้องเป็น JPG, PNG หรือ WebP ขนาดไม่เกิน 5 MB');
+    const {data:{user},error:authError}=await getClient().auth.getUser();
+    if(authError||!user)throw new Error('กรุณาเข้าสู่ระบบก่อนแนบรูป');
+    const extension={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'}[file.type];
+    const path=`${user.id}/${crypto.randomUUID()}.${extension}`;
+    const {error}=await getClient().storage.from('minimum-stock-cqi-evidence').upload(path,file,{contentType:file.type,upsert:false});
+    if(error)throw new Error('อัปโหลดรูปไม่ได้: '+error.message);
+    return path;
+  }
+
+  async function attachCqiEvidence(id,path,reason) {
+    const {data,error}=await getClient().rpc('minimum_stock_cqi_attach_evidence_v2983',{
+      p_id:id,p_path:path,p_reason:reason
+    });
+    if(error)throw new Error('ผูกรูปเข้ากับแผนไม่ได้: '+error.message);
+    return data;
+  }
+
+  async function discardCqiEvidenceUpload(path) {
+    if(!path)return;
+    await getClient().storage.from('minimum-stock-cqi-evidence').remove([path]);
+  }
+
+  async function getCqiEvidenceUrl(path) {
+    const {data,error}=await getClient().storage.from('minimum-stock-cqi-evidence').createSignedUrl(path,60);
+    if(error||!data?.signedUrl)throw new Error(error?.message||'ไม่พบรูปหลักฐาน');
+    return data.signedUrl;
+  }
+
   async function saveCqiOuting(payload) {
     const client=getClient();
     const fields=['outing_date','site','start_at','inspected_by_name','area_ok','ventilation_ok','workstations_ok','equipment_ok','donor_beds_ok','consumables_ok','emergency_kit_ok','cold_chain_ok','facilities_ok','issue_text','resolution_text'];
@@ -3481,6 +3511,10 @@
     getCqiPlans,
     registerCqiPlan,
     updateCqiPlan,
+    uploadCqiEvidence,
+    attachCqiEvidence,
+    discardCqiEvidenceUpload,
+    getCqiEvidenceUrl,
     saveCqiOuting,
     confirmCqiOuting,
     getOutreachRows,

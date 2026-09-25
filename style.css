@@ -4027,3 +4027,35 @@ body { font-size:16px; line-height:1.55; }
 #miniCqiDashboard .mini-cqi-year-options[hidden],#miniCqiDashboard .mini-cqi-edit-banner[hidden],#miniCqiDashboard #miniCqiEditCancel[hidden],#miniCqiDashboard .mini-cqi-form-grid label[hidden]{display:none!important}
 @media(max-width:700px){#miniCqiDashboard .mini-cqi-filters>label{min-width:0}#miniCqiDashboard .mini-cqi-form-actions{flex-direction:column;align-items:stretch}}
 @media(min-width:1000px){#miniCqiDashboard .mini-cqi-tabs{display:none}}
+
+/* v2.9.83: actionable forecast with four ABO comparisons. */
+#miniCqiDashboard .mini-cqi-decision{border:1px solid #c5dfed;border-left:5px solid #318fc4;border-radius:14px;padding:18px;margin:18px 0;background:#f5fbff;color:#264963}
+#miniCqiDashboard .mini-cqi-decision.is-risk{border-left-color:#e08b32;background:#fffaf2}
+#miniCqiDashboard .mini-cqi-decision.is-clear{border-left-color:#369678;background:#f4fcf8}
+#miniCqiDashboard .mini-cqi-decision.is-unknown{border-left-color:#8297a6}
+#miniCqiDashboard .mini-cqi-decision-top{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap}
+#miniCqiDashboard .mini-cqi-decision-top h4{font-size:21px;line-height:1.35;margin:4px 0 7px}
+#miniCqiDashboard .mini-cqi-decision-top label{min-width:230px;font-weight:600}
+#miniCqiDashboard .mini-cqi-eyebrow{font-size:13px;font-weight:700;color:#587084}
+#miniCqiDashboard .mini-cqi-abo-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:16px 0}
+#miniCqiDashboard .mini-cqi-abo{background:white;border:1px solid #d7e5ed;border-radius:10px;padding:12px;display:grid;gap:5px}
+#miniCqiDashboard .mini-cqi-abo.is-risk{border-color:#ecb673}
+#miniCqiDashboard .mini-cqi-abo strong{font-size:20px;color:#244c66}
+#miniCqiDashboard .mini-cqi-abo small{color:#5b7281}
+#miniCqiDashboard .mini-cqi-track{height:9px;background:#e9eff2;border-radius:10px;position:relative;margin:5px 0}
+#miniCqiDashboard .mini-cqi-track i{display:block;height:9px;background:#318fc4;border-radius:10px}
+#miniCqiDashboard .mini-cqi-abo.is-risk .mini-cqi-track i{background:#df923c}
+#miniCqiDashboard .mini-cqi-track em{height:17px;width:2px;background:#b34f4f;position:absolute;top:-4px}
+#miniCqiDashboard .mini-cqi-empty{background:#f6fbff;border:1px dashed #bcd8ea;border-radius:10px;padding:15px;color:#45637a}
+#miniCqiDashboard .mini-cqi-form-grid small{font-weight:400;color:#526c80}
+@media(max-width:940px){#miniCqiDashboard .mini-cqi-abo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){#miniCqiDashboard .mini-cqi-abo-grid{grid-template-columns:1fr}#miniCqiDashboard .mini-cqi-decision-top label{width:100%;min-width:0}}
+
+/* v2.9.83: presentation graph and numeric table for each plan. */
+#miniCqiDashboard .mini-cqi-presentation-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin:14px 0 6px}
+#miniCqiDashboard .mini-cqi-forecast-graphic{border:1px solid #e0edf3;border-radius:12px;background:#fff;padding:8px;overflow-x:auto;margin:10px 0}
+#miniCqiDashboard .mini-cqi-forecast-graphic svg{display:block;width:100%;min-width:540px;max-width:1100px;margin:auto;font-family:Arial,'Noto Sans Thai',sans-serif}
+#miniCqiDashboard .mini-cqi-forecast-table{background:#fff;min-width:720px}
+#miniCqiDashboard .mini-cqi-forecast-table caption{caption-side:top;text-align:left;font-weight:650;color:#31576d;padding:9px 0}
+#miniCqiDashboard .mini-cqi-negative{color:#a85024;font-weight:700}
+@media print{#miniCqiDashboard .mini-cqi-decision{break-inside:avoid}#miniCqiDashboard .mini-cqi-forecast-graphic svg{min-width:0}}
