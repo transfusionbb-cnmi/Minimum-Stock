@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-97-kpi1-count-bars";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-98-cqi-date-compare";
 const APP_SHELL = [
   "./",
   "./index.html",
