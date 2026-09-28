@@ -1346,8 +1346,16 @@ async function loadOutreachAnalysis(forceRefresh = false) {
   }
 }
 
+function selectableProductOptions(values) {
+  // This exact LIS name is not a product used by the unit. Keep similarly named
+  // LPRC/LDPRC variants selectable; historical LIS rows are left untouched.
+  return (Array.isArray(values) ? values : [])
+    .filter(value => String(value || '').trim().toLowerCase() !== 'packed red cell');
+}
+
 function renderProductMultiSelect(products, selectedProducts) {
-  const selected = Array.isArray(selectedProducts) ? Array.from(new Set(selectedProducts)) : [];
+  const availableProducts = selectableProductOptions(products);
+  const selected = Array.from(new Set(selectableProductOptions(selectedProducts)));
   const selectedSet = new Set(selected);
   const label = selected.length === 0 ? "กรุณาเลือก" : selected.length === 1 ? selected[0] : `เลือกแล้ว ${selected.length} ชนิด`;
   const preview = selected.length
@@ -1383,7 +1391,7 @@ function renderProductMultiSelect(products, selectedProducts) {
         </div>
 
         <div class="product-multi-list" id="outreachProductList">
-          ${(products || []).map((product) => `
+          ${availableProducts.map((product) => `
             <label class="product-check-row" data-product-search="${escapeOutreachHtml(String(product).toLowerCase())}">
               <input class="outreach-product-check" type="checkbox" value="${escapeOutreachHtml(product)}" ${selectedSet.has(product) ? "checked" : ""} onchange="handleOutreachProductChange()" />
               <span>${escapeOutreachHtml(product)}</span>
@@ -1812,7 +1820,7 @@ function commitOutreachProductSelection() {
 }
 
 function renderOutreachProductFamilyShortcuts(products = [], selected = []) {
-  const chosen = normalizeOutreachSelectedValues(selected);
+  const chosen = normalizeOutreachSelectedValues(selectableProductOptions(selected));
   const families = [['ทั้งหมด','all'],['เลือดแดง','RBC'],['เกล็ดเลือด','PLATELET'],['FFP','FFP'],['Cryo','CRYO']];
   const current = chosen.length === 0 ? 'all' : families.slice(1).find(([,family]) =>
     chosen.every(product => outreachProductMatchesFamily(product, family)))?.[1];
@@ -1829,7 +1837,7 @@ function outreachProductMatchesFamily(product, family) {
 }
 
 function chooseOutreachProductFamily(family) {
-  const options = currentOutreachAnalysisData?.filterOptions?.products || [];
+  const options = selectableProductOptions(currentOutreachAnalysisData?.filterOptions?.products);
   const matches = family === 'all' ? [] : options.filter(product => outreachProductMatchesFamily(product, family));
   if (family !== 'all' && !matches.length) return showModal('error','ไม่มีผลิตภัณฑ์กลุ่มนี้','กรุณาตรวจชนิดผลิตภัณฑ์ในข้อมูล LIS');
   document.querySelectorAll('.outreach-product-check').forEach(input => { input.checked = matches.includes(input.value); });
@@ -3613,7 +3621,8 @@ function normalizeKpiSelectedValues(values) {
 }
 
 function renderKpiMultiSelect(key, label, options, selectedValues, allLabel) {
-  const selected = normalizeKpiSelectedValues(selectedValues);
+  const availableOptions = key === 'product' ? selectableProductOptions(options) : (options || []);
+  const selected = normalizeKpiSelectedValues(key === 'product' ? selectableProductOptions(selectedValues) : selectedValues);
   const selectedSet = new Set(selected);
   const safeKey = String(key || '').replace(/[^a-zA-Z0-9_-]/g, '');
   const summary = selected.length === 0 ? 'กรุณาเลือก' : selected.length === 1 ? selected[0] : `เลือกแล้ว ${selected.length} รายการ`;
@@ -3633,7 +3642,7 @@ function renderKpiMultiSelect(key, label, options, selectedValues, allLabel) {
         <div class="product-multi-search-wrap"><span aria-hidden="true">⌕</span><input id="kpiMultiSearch-${safeKey}" class="product-multi-search" type="search" placeholder="ค้นหา" autocomplete="off" oninput="filterKpiMultiOptions('${safeKey}',this.value)" /></div>
         <div class="product-multi-actions"><button type="button" onclick="setAllKpiMulti('${safeKey}',true)">เลือกทั้งหมด</button><button type="button" onclick="setAllKpiMulti('${safeKey}',false)">ล้างทั้งหมด</button></div>
         <div class="product-multi-list" id="kpiMultiList-${safeKey}">
-          ${(options || []).map(option => `<label class="product-check-row kpi-multi-row-${safeKey}" data-filter-search="${escapeOutreachHtml(String(option).toLowerCase())}"><input class="kpi-multi-check" data-filter-key="${safeKey}" type="checkbox" value="${escapeOutreachHtml(option)}" ${selectedSet.has(option) ? 'checked' : ''} onchange="updateKpiMultiDraft('${safeKey}')" /><span>${escapeOutreachHtml(option)}</span></label>`).join('')}
+          ${availableOptions.map(option => `<label class="product-check-row kpi-multi-row-${safeKey}" data-filter-search="${escapeOutreachHtml(String(option).toLowerCase())}"><input class="kpi-multi-check" data-filter-key="${safeKey}" type="checkbox" value="${escapeOutreachHtml(option)}" ${selectedSet.has(option) ? 'checked' : ''} onchange="updateKpiMultiDraft('${safeKey}')" /><span>${escapeOutreachHtml(option)}</span></label>`).join('')}
           <div class="product-search-empty" id="kpiMultiEmpty-${safeKey}" hidden>ไม่พบรายการที่ค้นหา</div>
         </div>
         <div class="product-multi-footer"><button type="button" class="btn-product-cancel" onclick="cancelKpiMultiSelection('${safeKey}')">ยกเลิก</button><button type="button" class="btn-product-apply" id="kpiMultiApply-${safeKey}" onclick="commitKpiMultiSelection('${safeKey}')">${selected.length ? `ใช้ตัวกรอง (${selected.length})` : 'ใช้แบบไม่จำกัด'}</button></div>
@@ -3841,13 +3850,13 @@ function applyKpiYearCompare(route) {
 function renderKpiProductFamilyShortcuts(products = [], selected = []) {
   const families = [['ทั้งหมด','all'],['เลือดแดง','RBC'],['เกล็ดเลือด','PLATELET'],['FFP','FFP'],['Cryo','CRYO']];
   const group = products => products.map(p=>String(p));
-  const current = group(selected);
+  const current = group(selectableProductOptions(selected));
   const options = families.map(([label,key])=>`<button type="button" class="kpi-family-preset ${key==='all' && !current.length ? 'active':''}" onclick="chooseKpiProductFamily('${key}')">${label}</button>`).join('');
   return `<div class="kpi-product-family-presets"><span>เลือกกลุ่มผลิตภัณฑ์</span>${options}</div>`;
 }
 
 function chooseKpiProductFamily(family) {
-  const products = bloodKpiLazyCache.bootstrap?.filterOptions?.products || [];
+  const products = selectableProductOptions(bloodKpiLazyCache.bootstrap?.filterOptions?.products);
   const matches = family === 'all' ? [] : products.filter(product => {
     const name = String(product||'').toLowerCase();
     if (family === 'RBC') return isBloodKpiRbcDependencyProduct(product);
