@@ -34,13 +34,15 @@
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return String(value);
     try {
-      return new Intl.DateTimeFormat("th-TH", { dateStyle: "short", timeStyle: "short" }).format(d);
+      return new Intl.DateTimeFormat("th-TH", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Bangkok" }).format(d);
     } catch (_) {
       return d.toLocaleString("th-TH");
     }
   }
 
   function scrubProtectedData() {
+    auditRequestSeq += 1;
+    auditLoadedRows = [];
     ["topDashboard", "expiryRiskDashboard", "mobilePlanningDashboard", "outreachOutcomeDashboard", "dashboard", "adminUsersList", "adminAuditList", "adminSummary"].forEach(id => {
       const node = el(id);
       if (node) node.innerHTML = "";
@@ -131,6 +133,7 @@
     const app = el("protectedApp");
 
     if (!currentAccess.authenticated) {
+      scrubProtectedData();
       if (app) app.style.display = "none";
       if (authShell) authShell.style.display = "grid";
       if (!recoveryMode) showAuthPanel("login");
@@ -473,25 +476,72 @@ minimum.${username}@auth.cnmiblood.com
     }
   }
 
-  async function loadAuditPanel() {
-    if (currentAccess?.role !== "admin" || !currentAccess?.active) return;
+  function auditTodayYmd() {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit"
+    }).formatToParts(new Date()).map(part => [part.type, part.value]));
+    return `${parts.year}-${parts.month}-${parts.day}`;
+  }
+
+  function auditThaiDate(day) {
+    const [year, month, date] = String(day || "").split("-");
+    return `${date}/${month}/${Number(year) + 543}`;
+  }
+
+  let auditRequestSeq = 0;
+  let auditLoadedRows = [];
+
+  async function loadAuditPanel(options = {}) {
+    if (!currentAccess?.authenticated || !currentAccess?.active || currentAccess?.mustChangePassword) return;
     const auditBox = el("adminAuditList");
-    if (!auditBox) return;
-    auditBox.innerHTML = '<div class="small-muted">กำลังโหลด Log...</div>';
+    const fromInput = el("auditDateFrom");
+    const toInput = el("auditDateTo");
+    const summary = el("auditRangeSummary");
+    const loadMore = el("auditLoadMoreBtn");
+    if (!auditBox || !fromInput || !toInput) return;
+    const today = auditTodayYmd();
+    if (!fromInput.value) fromInput.value = today;
+    if (!toInput.value) toInput.value = today;
+    const dateFrom = fromInput.value;
+    const dateTo = toInput.value;
+    if (dateFrom > dateTo) {
+      if (summary) summary.textContent = "วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด";
+      if (loadMore) loadMore.hidden = true;
+      return;
+    }
+    const append = options.append === true;
+    const requestId = ++auditRequestSeq;
+    if (!append) {
+      auditLoadedRows = [];
+      auditBox.innerHTML = '<div class="small-muted">กำลังโหลดรายการ...</div>';
+      if (summary) summary.textContent = `ช่วง ${auditThaiDate(dateFrom)} ถึง ${auditThaiDate(dateTo)}`;
+    }
+    if (loadMore) { loadMore.disabled = true; loadMore.hidden = true; }
     try {
-      const logs = await backend.adminGetAuditLogs(200);
-      auditBox.innerHTML = logs.length ? logs.map(log => `
+      const result = await backend.getAuditLogs({ dateFrom, dateTo, offset: append ? auditLoadedRows.length : 0, limit: 100 });
+      if (requestId !== auditRequestSeq) return;
+      auditLoadedRows = append ? auditLoadedRows.concat(result.rows) : result.rows;
+      auditBox.innerHTML = auditLoadedRows.length ? auditLoadedRows.map(log => `
         <div class="audit-row">
           <div class="audit-dot"></div>
           <div class="audit-main">
             <div class="audit-title">${escapeHtml(auditActionLabel(log.action))}</div>
-            <div class="audit-meta">${escapeHtml(log.email || "-")} · ${formatDateTime(log.created_at)}</div>
+            <div class="audit-meta">${escapeHtml(log.email || "-")} · ${escapeHtml(formatDateTime(log.created_at))}</div>
             ${auditDetailText(log) ? `<div class="audit-detail">${escapeHtml(auditDetailText(log))}</div>` : ""}
           </div>
         </div>
-      `).join("") : '<div class="small-muted">ยังไม่มี Audit Log</div>';
+      `).join("") : '<div class="small-muted">ไม่มี Audit Log ในช่วงวันที่ที่เลือก</div>';
+      if (summary) summary.textContent = `ช่วง ${auditThaiDate(dateFrom)} ถึง ${auditThaiDate(dateTo)} · แสดง ${auditLoadedRows.length.toLocaleString()} จาก ${result.count.toLocaleString()} รายการ`;
+      if (loadMore) { loadMore.hidden = auditLoadedRows.length >= result.count; loadMore.disabled = false; }
     } catch (err) {
-      auditBox.innerHTML = `<div class="auth-message is-bad">${escapeHtml(err.message)}</div>`;
+      if (requestId !== auditRequestSeq) return;
+      const message = `โหลด Audit Log ไม่สำเร็จ: ${err.message} · ตรวจว่าได้รัน SQL-v2.9.100-AUDIT-STAFF-READ.sql แล้ว`;
+      if (append) {
+        if (summary) summary.textContent = message;
+        if (loadMore) { loadMore.hidden = false; loadMore.disabled = false; }
+      } else {
+        auditBox.innerHTML = `<div class="auth-message is-bad">${escapeHtml(message)}</div>`;
+      }
     }
   }
 
@@ -715,7 +765,15 @@ minimum.${username}@auth.cnmiblood.com
     el("changePasswordLogoutBtn")?.addEventListener("click", doLogout);
     el("pendingRefreshBtn")?.addEventListener("click", () => refreshAccess());
     el("adminRefreshBtn")?.addEventListener("click", loadAdminPanel);
-    el("adminAuditRefreshBtn")?.addEventListener("click", loadAuditPanel);
+    el("adminAuditRefreshBtn")?.addEventListener("click", () => loadAuditPanel());
+    el("auditApplyBtn")?.addEventListener("click", () => loadAuditPanel());
+    el("auditTodayBtn")?.addEventListener("click", () => {
+      const today = auditTodayYmd();
+      if (el("auditDateFrom")) el("auditDateFrom").value = today;
+      if (el("auditDateTo")) el("auditDateTo").value = today;
+      loadAuditPanel();
+    });
+    el("auditLoadMoreBtn")?.addEventListener("click", () => loadAuditPanel({ append: true }));
   }
 
   async function init() {

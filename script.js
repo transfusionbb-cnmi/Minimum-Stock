@@ -3157,7 +3157,7 @@ function navigateToPageRoute(page, btn = null) {
 }
 
 function isAdminRoutePage(page) {
-  return ['admin', 'admin-add', 'audit'].includes(page);
+  return ['admin', 'admin-add'].includes(page);
 }
 
 function handleAppHashRoute(force = false) {

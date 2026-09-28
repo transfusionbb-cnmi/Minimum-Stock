@@ -2825,6 +2825,7 @@
     return data||[];
   }
 
+
   async function registerCqiPlan({decisionAt,evidenceRef,outingDate,site}) {
     const {data,error}=await getClient().rpc('minimum_stock_cqi_register_decision_v2980',{
       p_decision_at:decisionAt,p_evidence_ref:evidenceRef,p_outing_date:outingDate,p_site:site
@@ -3466,17 +3467,35 @@
     return data || { ok: true, username };
   }
 
-  async function adminGetAuditLogs(limit = 100) {
+  function auditBangkokMidnight(day) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day || ""))) throw new Error("กรุณาเลือกวันที่ให้ถูกต้อง");
+    const midnight = new Date(`${day}T00:00:00+07:00`);
+    if (Number.isNaN(midnight.getTime()) ||
+        new Date(midnight.getTime() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10) !== day) {
+      throw new Error("วันที่ที่เลือกไม่ถูกต้อง");
+    }
+    return midnight;
+  }
+
+  async function getAuditLogs(options = {}) {
     const client = getClient();
     if (!client) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
-    const safeLimit = Math.max(1, Math.min(300, Number(limit || 100)));
-    const { data, error } = await client
+    const from = auditBangkokMidnight(options.dateFrom);
+    const to = auditBangkokMidnight(options.dateTo);
+    if (from > to) throw new Error("วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด");
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(options.limit) || 100)));
+    const offset = Math.max(0, Math.floor(Number(options.offset) || 0));
+    const endExclusive = new Date(to.getTime() + 24 * 60 * 60 * 1000);
+    const { data, error, count } = await client
       .from("minimum_stock_audit_logs")
-      .select("id,created_at,user_id,email,action,detail")
+      .select("id,created_at,user_id,email,action,detail", { count: "exact" })
+      .gte("created_at", from.toISOString())
+      .lt("created_at", endExclusive.toISOString())
       .order("created_at", { ascending: false })
-      .limit(safeLimit);
+      .order("id", { ascending: false })
+      .range(offset, offset + safeLimit - 1);
     if (error) throw new Error("โหลด Audit Log ไม่สำเร็จ: " + error.message);
-    return data || [];
+    return { rows: data || [], count: Number(count || 0) };
   }
 
 
@@ -3500,7 +3519,7 @@
     adminSetInitialPassword,
     adminCreateUser,
     adminUpdateUser,
-    adminGetAuditLogs,
+    getAuditLogs,
     uploadExcel,
     getDashboard,
     getMobilePlanning,
