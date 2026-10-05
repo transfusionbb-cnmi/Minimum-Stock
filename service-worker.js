@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-100-audit-date-range";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-101-desktop-idle-logout";
 const APP_SHELL = [
   "./",
   "./index.html",

@@ -7,6 +7,19 @@
   let accessTimer = null;
   let recoveryMode = /[?&]recovery=1\b/i.test(window.location.search) || /type=recovery/i.test(window.location.hash);
 
+  const DESKTOP_IDLE_LIMIT_MS = 15 * 60 * 1000;
+  const DESKTOP_LAST_ACTIVITY_KEY = "minimumStock.desktopLastActivityAt";
+  const DESKTOP_IDLE_EXPIRED_KEY = "minimumStock.desktopIdleExpired";
+  const isHandheld = Boolean(navigator.userAgentData?.mobile) ||
+    /Android|iPhone|iPad|iPod|Windows Phone|webOS|BlackBerry|Opera Mini|IEMobile/i.test(navigator.userAgent || "") ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); // iPadOS desktop-style user agent
+  let desktopLastActivityAt = 0;
+  let desktopLastSavedAt = 0;
+  let desktopIdleTimer = null;
+  let idleLogoutInProgress = false;
+  let idleLogoutRetryAt = 0;
+  let accessGeneration = 0;
+
   function el(id) { return document.getElementById(id); }
 
   function escapeHtml(value) {
@@ -55,7 +68,8 @@
       for (let i = 0; i < localStorage.length; i += 1) {
         const key = localStorage.key(i);
         if (key && (key.startsWith("minimumStock.") || key.startsWith("minstock.") || key.includes("minimum_stock"))) {
-          if (key !== "minimumStock.__appVersion") remove.push(key);
+          if (key !== "minimumStock.__appVersion" &&
+              key !== DESKTOP_LAST_ACTIVITY_KEY && key !== DESKTOP_IDLE_EXPIRED_KEY) remove.push(key);
         }
       }
       remove.forEach(key => localStorage.removeItem(key));
@@ -74,6 +88,101 @@
     box.classList.toggle("is-good", Boolean(good));
     box.classList.toggle("is-bad", !good);
     box.textContent = message;
+  }
+
+  function readDesktopActivity() {
+    let saved = 0;
+    try { saved = Number(localStorage.getItem(DESKTOP_LAST_ACTIVITY_KEY)) || 0; } catch (_) {}
+    const latest = Math.max(desktopLastActivityAt, saved);
+    return latest > Date.now() ? Date.now() : latest;
+  }
+
+  function desktopIdleExpired() {
+    if (isHandheld || !currentAccess?.authenticated) return false;
+    try { if (localStorage.getItem(DESKTOP_IDLE_EXPIRED_KEY)) return true; } catch (_) {}
+    const last = readDesktopActivity();
+    return last > 0 && Date.now() - last >= DESKTOP_IDLE_LIMIT_MS;
+  }
+
+  function clearDesktopIdleState() {
+    if (desktopIdleTimer) clearInterval(desktopIdleTimer);
+    desktopIdleTimer = null;
+    desktopLastActivityAt = 0;
+    desktopLastSavedAt = 0;
+    idleLogoutRetryAt = 0;
+    try {
+      localStorage.removeItem(DESKTOP_LAST_ACTIVITY_KEY);
+      localStorage.removeItem(DESKTOP_IDLE_EXPIRED_KEY);
+    } catch (_) {}
+  }
+
+  function startDesktopIdleTracking() {
+    if (isHandheld || !currentAccess?.authenticated) return false;
+    if (!readDesktopActivity()) {
+      desktopLastActivityAt = Date.now();
+      desktopLastSavedAt = desktopLastActivityAt;
+      try { localStorage.setItem(DESKTOP_LAST_ACTIVITY_KEY, String(desktopLastActivityAt)); } catch (_) {}
+    }
+    if (!desktopIdleTimer) desktopIdleTimer = setInterval(checkDesktopIdle, 5000);
+    return checkDesktopIdle();
+  }
+
+  function recordDesktopActivity(event) {
+    if (isHandheld || !currentAccess?.authenticated || idleLogoutInProgress || event?.isTrusted === false) return;
+    // Check first: the first mouse move after a long break must not renew an expired session.
+    if (checkDesktopIdle()) return;
+    desktopLastActivityAt = Date.now();
+    if (desktopLastActivityAt - desktopLastSavedAt >= 1000) {
+      desktopLastSavedAt = desktopLastActivityAt;
+      try { localStorage.setItem(DESKTOP_LAST_ACTIVITY_KEY, String(desktopLastActivityAt)); } catch (_) {}
+    }
+  }
+
+  function checkDesktopIdle() {
+    if (isHandheld || !currentAccess?.authenticated) return false;
+    if (!desktopIdleExpired()) return false;
+    if (!idleLogoutInProgress && Date.now() >= idleLogoutRetryAt) expireDesktopSession();
+    return true;
+  }
+
+  function hideForDesktopIdle() {
+    if (el("protectedApp")) el("protectedApp").style.display = "none";
+    if (el("authShell")) el("authShell").style.display = "grid";
+    if (el("loginPassword")) el("loginPassword").value = "";
+    window.MinimumStockAccess = null;
+    appStarted = false;
+    scrubProtectedData();
+    showAuthPanel("login");
+    setAuthMessage("ไม่มีการใช้งานบนคอมพิวเตอร์ 15 นาที กรุณาเข้าสู่ระบบใหม่", false);
+  }
+
+  async function expireDesktopSession() {
+    if (idleLogoutInProgress || isHandheld) return;
+    idleLogoutInProgress = true;
+    accessGeneration += 1;
+    try { localStorage.setItem(DESKTOP_IDLE_EXPIRED_KEY, String(Date.now())); } catch (_) {}
+    hideForDesktopIdle();
+    try {
+      try {
+        await Promise.race([
+          backend.logAudit("LOGOUT", { page: location.pathname, reason: "desktop_idle_15min" }),
+          new Promise(resolve => setTimeout(resolve, 2000))
+        ]);
+      } catch (_) {}
+      await backend.authSignOut();
+      clearMinimumStockCaches();
+      scrubProtectedData();
+      appStarted = false;
+      recoveryMode = false;
+      await applyAccess({ authenticated: false, active: false, role: "" });
+      setAuthMessage("ไม่มีการใช้งานบนคอมพิวเตอร์ 15 นาที กรุณาเข้าสู่ระบบใหม่", false);
+    } catch (err) {
+      idleLogoutRetryAt = Date.now() + 30000;
+      hideForDesktopIdle();
+      setAuthMessage("ไม่มีการใช้งานบนคอมพิวเตอร์ 15 นาที และยังออกจากระบบไม่สำเร็จ กรุณาเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่", false);
+    } finally {
+      idleLogoutInProgress = false;
+    }
   }
 
   function showAuthPanel(mode) {
@@ -133,11 +242,22 @@
     const app = el("protectedApp");
 
     if (!currentAccess.authenticated) {
+      clearDesktopIdleState();
       scrubProtectedData();
+      if (el("loginPassword")) el("loginPassword").value = "";
       if (app) app.style.display = "none";
       if (authShell) authShell.style.display = "grid";
       if (!recoveryMode) showAuthPanel("login");
       toggleAdminUI(false);
+      return;
+    }
+
+    if (idleLogoutInProgress) {
+      hideForDesktopIdle();
+      return;
+    }
+    if (startDesktopIdleTracking()) {
+      hideForDesktopIdle();
       return;
     }
 
@@ -192,11 +312,16 @@
   }
 
   async function refreshAccess(options = {}) {
+    if (idleLogoutInProgress || checkDesktopIdle()) return null;
+    const generation = accessGeneration;
     try {
       const access = await backend.getCurrentUserAccess();
+      if (generation !== accessGeneration || idleLogoutInProgress) return null;
       await applyAccess(access);
       return access;
     } catch (err) {
+      if (generation !== accessGeneration || idleLogoutInProgress) return null;
+      if (checkDesktopIdle()) return null;
       const session = await backend.authGetSession().catch(() => ({ session: null }));
       if (session?.session) {
         if (el("authShell")) el("authShell").style.display = "grid";
@@ -213,6 +338,7 @@
   }
 
   async function doLogout() {
+    accessGeneration += 1;
     const buttons = [el("logoutBtn"), el("pendingLogoutBtn"), el("changePasswordLogoutBtn")].filter(Boolean);
     buttons.forEach(btn => setBusy(btn, true, "กำลังออกจากระบบ..."));
     try {
@@ -241,6 +367,7 @@
 
   async function handleLogin(event) {
     event.preventDefault();
+    if (idleLogoutInProgress) return;
     const button = el("loginBtn");
     const username = normalizeUsername(el("loginUsername")?.value || "");
     const password = String(el("loginPassword")?.value || "");
@@ -258,6 +385,14 @@
     setAuthMessage("", true);
     try {
       await backend.authSignIn(username, password);
+      if (el("loginPassword")) el("loginPassword").value = "";
+      accessGeneration += 1;
+      if (!isHandheld) {
+        clearDesktopIdleState();
+        desktopLastActivityAt = Date.now();
+        desktopLastSavedAt = desktopLastActivityAt;
+        try { localStorage.setItem(DESKTOP_LAST_ACTIVITY_KEY, String(desktopLastActivityAt)); } catch (_) {}
+      }
       try { await backend.logAudit("LOGIN", { device: navigator.userAgent.slice(0, 180) }); } catch (_) {}
       await refreshAccess();
     } catch (err) {
@@ -355,6 +490,7 @@ minimum.${username}@auth.cnmiblood.com
 
   function auditDetailText(log) {
     const d = log?.detail || {};
+    if (log.action === "LOGOUT" && d.reason === "desktop_idle_15min") return "ไม่มีการใช้งานบนคอมพิวเตอร์ 15 นาที";
     if (log.action === "LIS_UPLOAD") {
       return `${d.fileName || "ไฟล์ LIS"}${d.upserted != null ? ` · ${Number(d.upserted).toLocaleString()} รายการ` : ""}`;
     }
@@ -784,14 +920,28 @@ minimum.${username}@auth.cnmiblood.com
     bindUI();
     showAuthPanel(recoveryMode ? "password" : "login");
 
+    if (!isHandheld) {
+      ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"].forEach(type => {
+        document.addEventListener(type, recordDesktopActivity, { passive: true });
+      });
+      window.addEventListener("storage", (event) => {
+        if (event.key === DESKTOP_IDLE_EXPIRED_KEY || event.key === DESKTOP_LAST_ACTIVITY_KEY) checkDesktopIdle();
+      });
+      window.addEventListener("online", () => {
+        idleLogoutRetryAt = 0;
+        checkDesktopIdle();
+      });
+    }
+
     backend.onAuthStateChange?.((event) => {
       if (event === "PASSWORD_RECOVERY") {
         recoveryMode = true;
         setTimeout(() => refreshAccess({ silent: true }), 0);
       } else if (event === "SIGNED_OUT") {
+        accessGeneration += 1;
         appStarted = false;
         recoveryMode = false;
-          applyAccess({ authenticated: false, active: false, role: "" });
+        applyAccess({ authenticated: false, active: false, role: "" });
       }
     });
 
@@ -799,7 +949,7 @@ minimum.${username}@auth.cnmiblood.com
     accessTimer = window.setInterval(() => refreshAccess({ silent: true }), 60000);
 
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) refreshAccess({ silent: true });
+      if (!document.hidden && !checkDesktopIdle()) refreshAccess({ silent: true });
     });
   }
 
@@ -813,5 +963,6 @@ minimum.${username}@auth.cnmiblood.com
   document.addEventListener("DOMContentLoaded", init);
   window.addEventListener("beforeunload", () => {
     if (accessTimer) clearInterval(accessTimer);
+    if (desktopIdleTimer) clearInterval(desktopIdleTimer);
   });
 })();
