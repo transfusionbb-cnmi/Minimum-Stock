@@ -4285,11 +4285,12 @@ function renderKpiTrcMethodYearChart(months=[],options={}){
  const colors=['#3a84c4','#ef9148','#54a984','#946bc0','#ae6c70','#659fbd','#b17c3e','#638c68'];
  const legendItems=years.flatMap((year,index)=>[{year,index,method:'overall',label:'พึ่งพากาชาด (รวมเลือดหายาก)',legend:`พึ่งพากาชาด ${year+543} (รวมเลือดหายาก)`,dash:''},...(ready?[{year,index,method:'adjusted',label:'พึ่งพากาชาด (ไม่รวมเลือดหายาก)',legend:`พึ่งพากาชาด ${year+543} (ไม่รวมเลือดหายาก)`,dash:'8 5'}]:[])]);
  const legendRows=Math.ceil(legendItems.length/2),extra=Math.max(0,legendRows-1)*30;
- const w=1100,h=492+extra,left=78,right=50,top=155+extra,base=424+extra;
+ const warningExtra=ready?0:18;
+ const w=1100,h=460+extra+warningExtra,left=78,right=50,top=132+extra+warningExtra,base=393+extra+warningExtra;
  const values=months.flatMap(row=>{const v=kpiTrcMethodValues(row,ready);return [v.overall,v.adjusted]}).filter(Number.isFinite);
  const yMax=Math.max(100,Math.ceil(Math.max(0,...values)/25)*25),x=month=>left+(month-1)*(w-left-right)/11,y=value=>base-(base-top)*Number(value)/yMax;
  const grid=[0,.25,.5,.75,1].map(f=>{const value=yMax*f,yy=y(value);return `<line x1="${left}" x2="${w-right}" y1="${yy}" y2="${yy}" stroke="#e7eff5"/><text x="${left-12}" y="${yy+4}" text-anchor="end" font-size="12" fill="#60798c">${Number(value.toFixed(1))}%</text>`}).join('');
- const legend=legendItems.map((item,i)=>{const xx=left+(i%2)*505,yy=109+Math.floor(i/2)*30,color=colors[item.index%colors.length];return `<g transform="translate(${xx},${yy})"><line x1="0" x2="26" y1="0" y2="0" stroke="${color}" stroke-width="4" ${item.dash?`stroke-dasharray="${item.dash}"`:''}/><text x="33" y="4" font-size="13" fill="#38546a">${item.legend}</text></g>`}).join('');
+ const legend=legendItems.map((item,i)=>{const xx=left+(i%2)*505,yy=78+Math.floor(i/2)*30,color=colors[item.index%colors.length];return `<g transform="translate(${xx},${yy})"><line x1="0" x2="26" y1="0" y2="0" stroke="${color}" stroke-width="4" ${item.dash?`stroke-dasharray="${item.dash}"`:''}/><text x="33" y="4" font-size="13" fill="#38546a">${item.legend}</text></g>`}).join('');
  const series=legendItems.map(item=>{
   const color=colors[item.index%colors.length],monthMap=byYear.get(item.year);
   let connected=false;
@@ -4305,7 +4306,7 @@ function renderKpiTrcMethodYearChart(months=[],options={}){
   return `<path d="${path}" fill="none" stroke="${color}" stroke-width="${item.method==='overall'?3.2:2.7}" ${item.dash?`stroke-dasharray="${item.dash}"`:''}/>${dots}`;
  }).join('');
  const xLabels=labels.slice(1).map((label,i)=>`<text x="${x(i+1)}" y="${base+35}" text-anchor="middle" font-size="12" fill="#647c91">${label}</text>`).join('');
- return `<div class="kpi-year-chart-scroll kpi-trc-method-chart"><svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="เทียบอัตราพึ่งพากาชาดรายเดือนแยกปี เส้นทึบรวมเลือดหายาก เส้นประไม่รวมเลือดหายาก"><rect x="5" y="5" width="${w-10}" height="${h-10}" rx="20" fill="#fff" stroke="#e7eff5"/><text x="${left}" y="37" font-size="19" font-weight="700" fill="#234969">อัตราพึ่งพากาชาดรายเดือน (%)</text><text x="${left}" y="61" font-size="12" fill="#526b7d">สีแทนปี · เส้นทึบ: รวมเลือดหายาก · เส้นประ: ไม่รวมเลือดหายาก</text>${ready?'':`<text x="${left}" y="85" font-size="12" fill="#b15252">ยังแยกเลือดหายากไม่ได้ จึงแสดงเฉพาะอัตรารวม</text>`}${legend}${grid}<line x1="${left}" x2="${w-right}" y1="${y(20)}" y2="${y(20)}" stroke="#d96865" stroke-width="2" stroke-dasharray="7 6"/><text x="${w-right-3}" y="${y(20)-8}" text-anchor="end" font-size="12" font-weight="700" fill="#b94646">เกณฑ์ KPI (ไม่รวมเลือดหายาก) &lt; 20%</text>${series}${xLabels}<text x="${left}" y="${h-17}" font-size="12" fill="#657a8b">รับเข้าจริงใน LIS · เส้นซ้อนกัน = อัตราเท่ากัน · เดือนที่ไม่มีข้อมูลเว้นว่าง · KPI ใช้เส้นประ</text></svg></div>`;
+ return `<div class="kpi-year-chart-scroll kpi-trc-method-chart"><svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="เทียบอัตราพึ่งพากาชาดรายเดือนแยกปี เส้นทึบรวมเลือดหายาก เส้นประไม่รวมเลือดหายาก"><rect x="5" y="5" width="${w-10}" height="${h-10}" rx="20" fill="#fff" stroke="#e7eff5"/><text x="${left}" y="37" font-size="19" font-weight="700" fill="#234969">อัตราพึ่งพากาชาดรายเดือน (%)</text><text x="${w-right-3}" y="37" text-anchor="end" font-size="12" font-weight="700" fill="#b94646">เกณฑ์ KPI 20%</text>${legend}${ready?'':`<text x="${left}" y="116" font-size="12" fill="#b15252">ยังแยกเลือดหายากไม่ได้ จึงแสดงเฉพาะอัตรารวม</text>`}${grid}<line x1="${left}" x2="${w-right}" y1="${y(20)}" y2="${y(20)}" stroke="#d96865" stroke-width="2" stroke-dasharray="7 6"/>${series}${xLabels}</svg></div>`;
 }
 function renderKpiTrcMethodTable(months=[],trackingReady=true){
  if(!months.length)return '';
