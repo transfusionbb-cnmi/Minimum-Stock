@@ -4095,3 +4095,10 @@ body { font-size:16px; line-height:1.55; }
 #miniCqiDashboard .mini-cqi-chart-toolbar{display:flex;justify-content:flex-end;margin:12px 0 8px}
 #miniCqiDashboard .mini-cqi-kpi1-chart svg{min-width:760px}
 #miniCqiDashboard .mini-cqi-coverage .table-responsive{max-height:300px}
+
+/* v2.9.107: separate rare-blood work queue from successfully matched history */
+.trc-list-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+.trc-list-count { display:inline-block; font-size:.78em; padding:2px 9px; border-radius:100px; background:#e5f3fc; color:#245e84; vertical-align:middle; }
+.trc-history-btn { background:#fff; border:1px solid #cce1f1; color:#255b80; font-weight:650; border-radius:12px; padding:9px 14px; white-space:normal; }
+.trc-history-btn:hover { background:#eaf6ff; color:#184968; }
+@media(max-width:640px) { .trc-history-btn { width:100%; } }

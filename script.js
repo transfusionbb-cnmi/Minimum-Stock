@@ -6049,11 +6049,24 @@ function trcRareSummaryIcon(kind) {
   return icons[kind] || icons.registered;
 }
 
+let trcRareShowHistory = false;
+
+function toggleTrcRareHistory() {
+  trcRareShowHistory = !trcRareShowHistory;
+  if (currentTrcRareData) renderTrcRarePage(currentTrcRareData);
+}
+
 function renderTrcRarePage(data) {
   const box = document.getElementById("trcRareDashboard");
   if (!box) return;
   const rows = Array.isArray(data?.rows) ? data.rows : [];
   const summary = data?.summary || {};
+  // A confirmed TRC match is complete work; retain it in history for audit.
+  // Non-TRC matches still need manual review and must remain visible.
+  const historyRows = rows.filter(row => row.matched && row.sourceGroup === OUTREACH_GROUP_TRC);
+  const actionRows = rows.filter(row => !(row.matched && row.sourceGroup === OUTREACH_GROUP_TRC));
+  const visibleRows = trcRareShowHistory ? historyRows : actionRows;
+  const outstandingTotal = Number(summary.pending || 0) + Number(summary.nonTrc || 0);
   box.innerHTML = `
     <div class="trc-rare-shell">
       <div class="simple-page-head trc-page-head mt-2">
@@ -6134,9 +6147,12 @@ function renderTrcRarePage(data) {
       </div>
 
       <div class="simple-panel trc-recent-panel">
-        <div class="panel-heading-row mb-2"><div><h3>รายการล่าสุด</h3><div class="small-muted">ยิงซ้ำ = อัปเดตรายการเดิม</div></div></div>
+        <div class="panel-heading-row mb-2 trc-list-head">
+          <div><h3>${trcRareShowHistory ? "ประวัติที่จับคู่แล้ว" : "รายการรอดำเนินการ"} <span class="trc-list-count">${(trcRareShowHistory ? Number(summary.matchedTrc || 0) : outstandingTotal).toLocaleString()}</span></h3><div class="small-muted">${trcRareShowHistory ? "เก็บข้อมูลเดิมไว้สำหรับตรวจสอบย้อนหลัง" : "เฉพาะรอ LIS และต้องตรวจสอบ · จับคู่สำเร็จแล้วจะย้ายไปประวัติอัตโนมัติ"}</div></div>
+          <button type="button" class="btn trc-history-btn no-print" aria-pressed="${trcRareShowHistory}" onclick="toggleTrcRareHistory()">${trcRareShowHistory ? "← กลับไปงานค้าง" : `ดูประวัติที่จับคู่แล้ว (${Number(summary.matchedTrc || 0).toLocaleString()})`}</button>
+        </div>
         <div class="trc-rare-list">
-          ${rows.length ? rows.map(row => `
+          ${visibleRows.length ? visibleRows.map(row => `
             <div class="trc-rare-row">
               <div class="trc-rare-main">
                 <div class="trc-rare-bag">${escapeOutreachHtml(row.bagNumber || "-")}</div>
