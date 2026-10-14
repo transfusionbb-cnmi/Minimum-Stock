@@ -3946,8 +3946,14 @@ async function renderBloodKpiYearComparison(route, selection, filters, data) {
     rows = (data.rows||[]).map(r=>({year:r.year,month:r.month,value:r.rate,base:r.base}));
     note = 'จุดที่ยอดแยกแหล่งไม่ตรงยอดรวมจะเว้นว่าง';
   } else if (route === 'trc') {
-    title = 'พึ่งกาชาด Routine';
-    rows = (data.months||[]).map(r=>({year:r.year,month:r.month,value:Number(r.adjustedTotalRbc||0)>0?Number(r.adjustedRate):null}));
+    const compareDependencies=await Promise.all(years.map(year=>ensureBloodKpiDependency(year)));
+    const from=String(filters.dateFrom||''),to=String(filters.dateTo||'');
+    const firstMonth=Number(from.slice(5,7))||1,lastMonth=Number(to.slice(5,7))||12;
+    const span=from&&to?(Number(to.slice(0,4))-Number(from.slice(0,4)))*12+lastMonth-firstMonth+1:12;
+    const comparableMonth=month=>span>=12|| (firstMonth<=lastMonth?month>=firstMonth&&month<=lastMonth:month>=firstMonth||month<=lastMonth);
+    const compareMonths=compareDependencies.flatMap((result,index)=>(result?.months||[]).filter(row=>comparableMonth(Number(row.month))).map(row=>({...row,year:years[index]})));
+    const ready=compareDependencies.every(result=>result?.specialTrackingReady!==false);
+    return `<div class="simple-panel kpi-executive-panel mt-3"><div class="panel-heading-row"><h3>เทียบปี · กาชาดทั้งหมดกับ Routine</h3></div>${renderKpiTrcMethodYearChart(compareMonths,{trackingReady:ready})}${renderKpiTrcMethodTable(compareMonths,ready)}<div class="small-muted">เส้นรวมแสดงเลือดแดงจากกาชาดทุกถุง; เส้น Routine ตัดถุงหายากที่ลงทะเบียนออกจากตัวตั้งและตัวหาร · ใช้เส้น Routine ตัดสิน KPI</div></div>`;
   } else if (route === 'trc-monthly') {
     title = 'รับเข้ากาชาด Routine';unit = ' ถุง';
     rows = (data.planningMonths||[]).map(r=>({year:r.year,month:r.month,value:Number(r.totalRbc||0)>0?Number(r.routineTrc):null}));
@@ -4206,7 +4212,7 @@ function getKpiTrcCore(dependency = {}, sourceRange = null) {
 function renderKpiTrc({ dependency, year }) {
   const core = getKpiTrcCore(dependency, null);
   const { months, adjusted, rare, routine, routineBase } = core;
-  currentBloodKpiRouteData = { route:'trc', year, adjusted, rare, routine, routineBase, months, planningMonths:[] };
+  currentBloodKpiRouteData = { route:'trc', year, adjusted, rare, routine, routineBase, months, trackingReady:dependency?.specialTrackingReady!==false, planningMonths:[] };
   return `${kpiPageHeader('ภาพรวมกาชาด Routine','เลือดหายาก / Ag-matched / Rh Negative แยกออกจาก Routine KPI',year,dependency?.years||[])}
     ${renderKpiQuickCards([
       { label:'พึ่งกาชาด Routine', value:`${adjusted.toFixed(1)}%`, note:`${routine.toLocaleString()} / ${routineBase.toLocaleString()} ถุง`, tone:'is-good' },
@@ -4241,7 +4247,7 @@ function renderKpiYearOverlayChart(rows = [], key = 'rate', options = {}) {
   const values = rows.map(r => r[key]).filter(v => v !== null && v !== undefined && Number.isFinite(Number(v))).map(Number);
   const max = Math.max(Number(options.yMax || 0), Number(options.target || 0), ...values, 1);
   const yMax = options.yMax || Math.ceil(max * 1.1 / 10) * 10;
-  const w = Math.max(1000, 90 + years.length * 125), h = 445, left = 70, right = 45, top = 85, bottom = 60;
+  const w = Math.max(1000, 90 + years.length * 155), h = 445, left = 70, right = 45, top = 85, bottom = 60;
   const x = m => left + (m - 1) * (w-left-right) / 11;
   const y = v => top + (h-top-bottom) * (1 - Math.max(0, Math.min(yMax, Number(v))) / yMax);
   const grid = [0,.25,.5,.75,1].map(f => { const v=yMax*f; return `<line x1="${left}" y1="${y(v)}" x2="${w-right}" y2="${y(v)}" stroke="#e7eff5"/><text x="${left-10}" y="${y(v)+4}" text-anchor="end" font-size="12" fill="#60798c">${Number(v.toFixed(1))}${options.unit||''}</text>`; }).join('');
@@ -4252,8 +4258,10 @@ function renderKpiYearOverlayChart(rows = [], key = 'rate', options = {}) {
     const paths = pts.map((r,j)=>`${j && Number(r.month)===Number(pts[j-1].month)+1 ? 'L':'M'}${x(Number(r.month))},${y(r[key])}`).join(' ');
     const dots = pts.map(r => {
       const pointY = y(r[key]);
-      const labelY = Math.max(top + 17, Math.min(h - bottom - 8, pointY + (i % 2 ? 24 : -14)));
-      const label = years.length > 2 ? '' : `<text x="${x(Number(r.month))}" y="${labelY}" text-anchor="middle" font-size="13" font-weight="700" fill="${color}" style="paint-order:stroke;stroke:#fff;stroke-width:4px">${Number(r[key]).toFixed(1)}${options.unit||''}</text>`;
+      const labelOffsets = [-14,24,-28,35];
+      const labelY = Math.max(top + 17, Math.min(h - bottom - 8, pointY + labelOffsets[i % labelOffsets.length]));
+      const showLabel = years.length <= 2 || (options.showMultiYearLabels && (years.length <= 4 || i === years.length - 1));
+      const label = showLabel ? `<text x="${x(Number(r.month))}" y="${labelY}" text-anchor="middle" font-size="${years.length > 2 ? 11 : 13}" font-weight="700" fill="${color}" style="paint-order:stroke;stroke:#fff;stroke-width:4px">${Number(r[key]).toFixed(1)}${options.unit||''}</text>` : '';
       return `<circle cx="${x(Number(r.month))}" cy="${pointY}" r="5" fill="#fff" stroke="${color}" stroke-width="3"><title>${names[Number(r.month)]} ${year+543}: ${Number(r[key]).toFixed(1)}${options.unit||''}</title></circle>${label}`;
     }).join('');
     return `<path d="${paths}" fill="none" stroke="${color}" stroke-width="3.5"/>${dots}<g transform="translate(${left+i*155},57)"><line x1="0" y1="0" x2="25" y2="0" stroke="${color}" stroke-width="4"/><text x="32" y="4" font-size="13" fill="#3a536b">${year+543}</text></g>`;
@@ -4263,6 +4271,47 @@ function renderKpiYearOverlayChart(rows = [], key = 'rate', options = {}) {
   return `<div class="kpi-year-chart-scroll"><svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeOutreachHtml(options.title||'เปรียบเทียบรายเดือนแยกปี')}"><rect x="5" y="5" width="${w-10}" height="${h-10}" rx="20" fill="#fff" stroke="#e7eff5"/><text x="${left}" y="34" font-size="17" font-weight="700" fill="#234969">${escapeOutreachHtml(options.title||'เปรียบเทียบรายเดือนแยกปี')}</text>${grid}${goal}${series}${labels}</svg></div><div class="small-muted mt-2">จุดที่ไม่มีข้อมูลจะเว้นว่าง ไม่มีการแทนค่าเป็น 0</div>`;
 }
 
+function kpiTrcMethodValues(row,trackingReady=true){
+ const total=Number(row?.totalRbc||0),trc=Number(row?.trcRbc||0),rare=Number(row?.rareTrcRbc||0);
+ const routine=Number(row?.routineTrcRbc??Math.max(0,trc-rare));
+ const routineBase=Number(row?.adjustedTotalRbc??Math.max(0,total-rare));
+ return {total,trc,rare,routine,routineBase,overall:total>0?100*trc/total:null,adjusted:trackingReady&&routineBase>0?100*routine/routineBase:null};
+}
+function renderKpiTrcMethodYearChart(months=[],options={}){
+ const years=[...new Set(months.map(row=>Number(row.year)).filter(Number.isInteger))].sort((a,b)=>a-b);
+ if(!years.length)return '<div class="small-muted py-4">ไม่มีข้อมูลกาชาดในปีที่เลือก</div>';
+ const ready=options.trackingReady!==false,byYear=new Map(years.map(year=>[year,new Map(months.filter(row=>Number(row.year)===year).map(row=>[Number(row.month),row]))]));
+ const labels=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+ const colors=['#3a84c4','#ef9148','#54a984','#946bc0','#ae6c70','#659fbd','#b17c3e','#638c68'];
+ const legendItems=years.flatMap((year,index)=>[{year,index,method:'overall',label:'รวมกาชาด',dash:''},...(ready?[{year,index,method:'adjusted',label:'Routine',dash:'8 5'}]:[])]);
+ const legendRows=Math.ceil(legendItems.length/4),extra=Math.max(0,legendRows-1)*25;
+ const w=1100,h=492+extra,left=78,right=50,top=155+extra,base=424+extra;
+ const values=months.flatMap(row=>{const v=kpiTrcMethodValues(row,ready);return [v.overall,v.adjusted]}).filter(Number.isFinite);
+ const yMax=Math.max(100,Math.ceil(Math.max(0,...values)/25)*25),x=month=>left+(month-1)*(w-left-right)/11,y=value=>base-(base-top)*Number(value)/yMax;
+ const grid=[0,.25,.5,.75,1].map(f=>{const value=yMax*f,yy=y(value);return `<line x1="${left}" x2="${w-right}" y1="${yy}" y2="${yy}" stroke="#e7eff5"/><text x="${left-12}" y="${yy+4}" text-anchor="end" font-size="12" fill="#60798c">${Number(value.toFixed(1))}%</text>`}).join('');
+ const legend=legendItems.map((item,i)=>{const xx=left+(i%4)*245,yy=109+Math.floor(i/4)*25,color=colors[item.index%colors.length];return `<g transform="translate(${xx},${yy})"><line x1="0" x2="26" y1="0" y2="0" stroke="${color}" stroke-width="4" ${item.dash?`stroke-dasharray="${item.dash}"`:''}/><text x="33" y="4" font-size="12" fill="#38546a">${item.year+543} · ${item.label}</text></g>`}).join('');
+ const series=legendItems.map(item=>{
+  const color=colors[item.index%colors.length],monthMap=byYear.get(item.year);
+  let connected=false;
+  const path=Array.from({length:12},(_,index)=>{const v=kpiTrcMethodValues(monthMap.get(index+1),ready)[item.method];if(v===null){connected=false;return ''}const command=connected?'L':'M';connected=true;return `${command}${x(index+1)},${y(v)}`}).join(' ');
+  const dots=[...monthMap].filter(([month])=>month>=1&&month<=12).map(([month,row])=>{
+   const v=kpiTrcMethodValues(row,ready),value=v[item.method];if(value===null)return '';
+   const cx=x(month),cy=y(value),display=years.length<=2||item.index===years.length-1;
+   const offset=item.method==='overall'?(-15-item.index%2*12):(21+item.index%2*10);
+   const labelY=Math.max(top+12,Math.min(base+16,cy+offset));
+   const detail=item.method==='overall'?`${v.trc} / ${v.total}`:`${v.routine} / ${v.routineBase}`;
+   return `<circle cx="${cx}" cy="${cy}" r="${item.method==='overall'?5:4}" fill="${item.method==='overall'?color:'#fff'}" stroke="${color}" stroke-width="2.5"><title>${labels[month]} ${item.year+543} · ${item.label} ${value.toFixed(1)}% (${detail} ถุง)</title></circle>${display?`<text x="${cx+(years.length===1?0:item.index===years.length-1?8:-8)}" y="${labelY}" text-anchor="middle" font-size="11" font-weight="700" fill="${color}" style="paint-order:stroke;stroke:#fff;stroke-width:4px">${value.toFixed(1)}%</text>`:''}`;
+  }).join('');
+  return `<path d="${path}" fill="none" stroke="${color}" stroke-width="${item.method==='overall'?3.2:2.7}" ${item.dash?`stroke-dasharray="${item.dash}"`:''}/>${dots}`;
+ }).join('');
+ const xLabels=labels.slice(1).map((label,i)=>`<text x="${x(i+1)}" y="${base+35}" text-anchor="middle" font-size="12" fill="#647c91">${label}</text>`).join('');
+ return `<div class="kpi-year-chart-scroll kpi-trc-method-chart"><svg class="kpi-exec-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="เทียบเปอร์เซ็นต์รับเลือดแดงจากกาชาดทั้งหมดกับ Routine ที่ไม่รวมเลือดหายาก ตามเดือนและปี"><rect x="5" y="5" width="${w-10}" height="${h-10}" rx="20" fill="#fff" stroke="#e7eff5"/><text x="${left}" y="37" font-size="19" font-weight="700" fill="#234969">อัตราพึ่งกาชาด · รวมทั้งหมดเทียบ Routine (%)</text><text x="${left}" y="61" font-size="12" fill="#526b7d">เส้นทึบ: กาชาดทั้งหมด ÷ รับเข้าทุกแหล่ง · เส้นประ: กาชาด Routine ÷ รับเข้า Routine</text>${ready?'':`<text x="${left}" y="85" font-size="12" fill="#b15252">ยังแยกเลือดหายากไม่ได้ จึงแสดงเฉพาะอัตรารวม</text>`}${legend}${grid}<line x1="${left}" x2="${w-right}" y1="${y(20)}" y2="${y(20)}" stroke="#d96865" stroke-width="2" stroke-dasharray="7 6"/><text x="${w-right-3}" y="${y(20)-8}" text-anchor="end" font-size="12" font-weight="700" fill="#b94646">เป้าหมาย Routine 20%</text>${series}${xLabels}<text x="${left}" y="${h-17}" font-size="12" fill="#657a8b">นับถุงเลือดแดงรับเข้าจริงใน LIS · เดือนที่ไม่มีข้อมูลเว้นว่าง · ตัดสิน KPI จาก Routine</text></svg></div>`;
+}
+function renderKpiTrcMethodTable(months=[],trackingReady=true){
+ if(!months.length)return '';
+ const rows=[...months].sort((a,b)=>Number(a.year)-Number(b.year)||Number(a.month)-Number(b.month));
+ return `<details class="mini-cqi-help"><summary>ดูตัวตั้ง ตัวหาร และอัตราทั้งสองวิธีรายเดือน</summary><div class="table-responsive"><table class="table simple-table"><thead><tr><th>เดือน</th><th>กาชาดทั้งหมด / รับเข้าทั้งหมด</th><th>อัตรารวม</th><th>กาชาด Routine / รับเข้า Routine</th><th>อัตรา Routine</th></tr></thead><tbody>${rows.map(row=>{const v=kpiTrcMethodValues(row,trackingReady),month=`${String(row.month).padStart(2,'0')}/${Number(row.year)+543}`;return `<tr><td>${month}</td><td>${v.overall===null?'—':`${v.trc} / ${v.total}`}</td><td>${v.overall===null?'—':v.overall.toFixed(1)+'%'}</td><td>${v.adjusted===null?'—':`${v.routine} / ${v.routineBase}`}</td><td>${v.adjusted===null?'—':v.adjusted.toFixed(1)+'%'}</td></tr>`}).join('')}</tbody></table></div></details>`;
+}
 function switchKpiYearBarDirection(button, direction) {
   const wrapper = button.closest('.kpi-selectable-bars');
   if (!wrapper) return;
