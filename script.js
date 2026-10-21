@@ -3013,7 +3013,7 @@ document.addEventListener("DOMContentLoaded", bindOutreachDetailModal);
 let currentBloodKpiInsights = null;
 
 
-const KPI_SUBROUTES = new Set(['overview','utilization','expiry','trc','cqi','trc-monthly','trc-minimum','trc-bags','turnaround','aging','outreach','minimum']);
+const KPI_SUBROUTES = new Set(['overview','utilization','expiry','trc','cqi','trc-monthly','trc-minimum','trc-bags','turnaround','aging','outreach','minimum','wastage']);
 let currentBloodKpiRoute = 'overview';
 let currentBloodKpiRouteData = null;
 const bloodKpiFilterSelections = new Map();
@@ -3046,7 +3046,7 @@ function getKpiSidebarLandingRoute(route) {
   if (['utilization','turnaround','aging'].includes(route)) return 'utilization';
   if (route === 'trc-monthly') return 'trc';
   if (route === 'trc-bags') return 'trc-minimum';
-  if (['expiry','outreach','minimum','trc-minimum','trc','cqi'].includes(route)) return route;
+  if (['expiry','outreach','minimum','trc-minimum','trc','cqi','wastage'].includes(route)) return route;
   return 'utilization';
 }
 
@@ -4520,6 +4520,10 @@ async function loadBloodKpiPage(year = null, route = null, options = {}) {
       const bootstrap = await ensureBloodKpiBootstrap();
       const preset = bloodKpiFilterSelections.get(currentBloodKpiRoute) || bloodKpiFilterSelections.get('overview') || {};
       box.innerHTML = renderKpiFilterGate(currentBloodKpiRoute, bootstrap, preset);
+      return;
+    }
+    if (currentBloodKpiRoute === 'wastage') {
+      await window.CNMIWastage.load();
       return;
     }
     if (currentBloodKpiRoute === 'minimum') {

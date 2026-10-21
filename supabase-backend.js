@@ -3027,6 +3027,66 @@
     return { rows, count: rows.length };
   }
 
+  // v2.9.108 — read existing LIS master rows (no duplicate dataset) for calendar-month events.
+  // Paginate to avoid Supabase/PostgREST's default 1,000-row cap.
+  async function getWastageSourceRows(onProgress = null) {
+    if (!isConfigured()) throw new Error("รายงาน Wastage ต้องเชื่อมต่อ Supabase");
+    const client = getClient();
+    const columns = "component_key,bag_number,product_type,source_group,date_stock_in,expire_date,date_stock_out,status,outcome_code,aggregate_eligible";
+    const rows = [];
+    const chunk = 1000;
+    for (let from = 0; ; from += chunk) {
+      const { data, error } = await client.from("minimum_stock_outreach_master")
+        .select(columns)
+        .eq("aggregate_eligible", true)
+        .order("component_key", { ascending: true })
+        .range(from, from + chunk - 1);
+      if (error) throw new Error("อ่านประวัติถุงจาก LIS ไม่สำเร็จ: " + error.message);
+      const batch = (data || []).map(fromOutreachDbRow);
+      rows.push(...batch);
+      if (typeof onProgress === "function") onProgress(rows.length);
+      if (batch.length < chunk) break;
+    }
+    return rows;
+  }
+
+  // A separately recorded actual count is necessary for an honest discrepancy.
+  // The report works even before the optional v2.9.108 table has been installed.
+  async function getWastageActualStock(year) {
+    if (!isConfigured()) return {schemaReady:false,rows:[]};
+    const y=Number(year);
+    if(!Number.isInteger(y)||y<2000||y>2100)throw new Error("ปีไม่ถูกต้อง");
+    const {data,error}=await getClient().from("minimum_stock_monthly_inventory_checks")
+      .select("month_start,product_family,actual_ending,updated_at")
+      .gte("month_start",`${y}-01-01`).lte("month_start",`${y}-12-01`);
+    if(error) {
+      if(/42P01|PGRST205|Could not find the table|does not exist|schema cache/i.test(String(error.code||'')+' '+String(error.message||'')))
+        return {schemaReady:false,rows:[]};
+      throw new Error("อ่านผลตรวจนับจริงไม่สำเร็จ: "+error.message);
+    }
+    return {schemaReady:true,rows:(data||[]).map(row=>({
+      monthStart:row.month_start, productFamily:row.product_family,
+      actualEnding:row.actual_ending, updatedAt:row.updated_at
+    }))};
+  }
+
+  async function saveWastageActualStock(monthStart, productFamily, actualEnding) {
+    const access = await getCurrentUserAccess();
+    if (!access?.active || access?.role !== 'admin') throw new Error("เฉพาะ Admin สามารถบันทึกยอดตรวจนับจริง");
+    if (!/^\d{4}-(0[1-9]|1[0-2])-01$/.test(String(monthStart||''))) throw new Error("เดือนที่เลือกไม่ถูกต้อง");
+    if (!['RBC','PLASMA','PLATELET','CRYO'].includes(productFamily)) throw new Error("ชนิดผลิตภัณฑ์ไม่ถูกต้อง");
+    if (!Number.isSafeInteger(actualEnding) || actualEnding < 0 || actualEnding > 99999999) throw new Error("จำนวนยูนิตไม่ถูกต้อง");
+    const {data:{user},error:userError}=await getClient().auth.getUser();
+    if(userError||!user) throw new Error("กรุณาเข้าสู่ระบบอีกครั้ง");
+    const {error}=await getClient().from('minimum_stock_monthly_inventory_checks').upsert({
+      month_start:monthStart, product_family:productFamily, actual_ending:actualEnding,
+      updated_by:user.id, updated_at:new Date().toISOString()
+    },{onConflict:'month_start,product_family'});
+    if(error) throw new Error("บันทึกผลตรวจนับไม่สำเร็จ: "+error.message);
+    try { await logAudit('monthly_inventory_count_save',{monthStart,productFamily,actualEnding}); } catch(e) {console.warn('monthly count audit:',e.message);}
+    return {ok:true};
+  }
+
   async function getOutreachRows(options = {}) {
     if (!isConfigured()) throw new Error("รายงานวิเคราะห์ออกหน่วยต้องใช้ Supabase");
     const client = getClient();
@@ -3545,6 +3605,10 @@
     saveCqiOuting,
     confirmCqiOuting,
     getOutreachRows,
+    getLatestLisUpload,
+    getWastageSourceRows,
+    getWastageActualStock,
+    saveWastageActualStock,
     adminClearAllData,
     clearAllOutreachBatches,
     ensureOutreachSchema,

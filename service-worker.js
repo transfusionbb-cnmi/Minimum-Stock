@@ -1,11 +1,12 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-107-trc-matched-history";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-108-monthly-wastage";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./style.css",
   "./script.js",
+  "./wastage-kpi.js",
   "./cqi-mini.js",
   "./supabase-config.js",
   "./supabase-backend.js",
