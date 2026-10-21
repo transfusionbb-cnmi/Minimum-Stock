@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-109-fast-wastage";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-110-wastage-timeout";
 const APP_SHELL = [
   "./",
   "./index.html",

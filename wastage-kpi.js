@@ -1,4 +1,4 @@
-/* CNMI Wastage KPI v2.9.109 — calculation uses existing eligible LIS bag rows. */
+/* CNMI Wastage KPI v2.9.110 — calculation uses existing eligible LIS bag rows. */
 (function () {
   'use strict';
   const GROUPS = [

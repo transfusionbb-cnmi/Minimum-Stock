@@ -3027,15 +3027,18 @@
     return { rows, count: rows.length };
   }
 
-  // v2.9.109 — summarize on the server; never download the entire LIS history.
+  // v2.9.110 — O(N) event summary on the server; never download the entire LIS history.
   async function getWastageMonthlySummary(year) {
     if (!isConfigured()) throw new Error("รายงาน Wastage ต้องเชื่อมต่อ Supabase");
     const y = Number(year);
     if (!Number.isInteger(y) || y < 2000 || y > 2100) throw new Error("ปีไม่ถูกต้อง");
-    const { data, error } = await getClient().rpc("minimum_stock_wastage_monthly_v29109", { p_year: y });
+    const { data, error } = await getClient().rpc("minimum_stock_wastage_monthly_v29110", { p_year: y });
     if (error) {
       if (/PGRST202|42883|Could not find the function|does not exist|schema cache/i.test(String(error.code || '') + ' ' + String(error.message || ''))) {
-        throw new Error("ต้องติดตั้งฟังก์ชันสรุป KPI บน Supabase ก่อน: รัน SQL-v2.9.109-WASTAGE-SERVER-SUMMARY.sql หนึ่งครั้ง (ไม่มีการแก้ไขข้อมูล LIS เดิม)");
+        throw new Error("ต้องติดตั้งฟังก์ชันสรุป KPI บน Supabase ก่อน: รัน SQL-v2.9.110-WASTAGE-TIMEOUT-FIX.sql หนึ่งครั้ง (ไม่มีการแก้ไขข้อมูล LIS เดิม)");
+      }
+      if (/statement timeout|canceling statement due to statement timeout/i.test(String(error.message || ""))) {
+        throw new Error("Supabase ใช้เวลาคำนวณเกินกำหนด (statement timeout) แม้ใช้ SQL v2.9.110 แล้ว กรุณาแจ้งโนอาเพื่อวิเคราะห์ขนาดฐานและแผนการประมวลผล โดยไม่ต้องเพิ่ม timeout เอง");
       }
       throw new Error("สรุป KPI จาก Supabase ไม่สำเร็จ: " + error.message);
     }
