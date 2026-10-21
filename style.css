@@ -4165,3 +4165,6 @@ body { font-size:16px; line-height:1.55; }
 .waste-table thead th{min-width:84px}
 .waste-toolbar label{min-width:155px}
 @media print{.waste-table .waste-annual{background:#e4f2ff!important;color:#173f62!important}}
+
+/* v2.9.112 — make stale cache clearly distinguishable without changing other KPI pages. */
+.waste-cache-stale { border-left: 4px solid #bb5d25; background: #fff4e5; color: #633800; }

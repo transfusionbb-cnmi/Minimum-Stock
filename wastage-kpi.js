@@ -1,4 +1,4 @@
-/* CNMI Wastage KPI v2.9.111 — SQL SELECT-only monthly summaries, fiscal/calendar year views. */
+/* CNMI Wastage KPI v2.9.112 — Fast cached monthly summary, fiscal/calendar year views. */
 (function () {
   'use strict';
   const GROUPS = [
@@ -228,7 +228,21 @@
     }
     return result;
   }
-  function snapshot(){return reportFromSummary(state.summary||[],state.year,state.actual,state.latest?.source_end_date||state.maxDate||'',state.minDate||'',state.fiscal);}
+  function cacheRefreshedAt(){return state.summary?.[0]?.refreshed_at || '';}
+  function cacheIsStale(){
+    const refreshed=Date.parse(cacheRefreshedAt()),uploaded=Date.parse(state.latest?.created_at||'');
+    return Number.isFinite(refreshed)&&Number.isFinite(uploaded)&&uploaded>refreshed;
+  }
+  function cacheAgeLabel(){
+    const at=cacheRefreshedAt();
+    return at && !Number.isNaN(Date.parse(at)) ? new Date(at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'}) : 'ไม่ทราบเวลา';
+  }
+  function snapshot(){
+    const result=reportFromSummary(state.summary||[],state.year,state.actual,state.latest?.source_end_date||state.maxDate||'',state.minDate||'',state.fiscal);
+    result.cacheStale=cacheIsStale();
+    if(result.cacheStale)for(const g of GROUPS)for(const row of result.months[g.key])row.provisional=true;
+    return result;
+  }
   function annualSummary(rows,g) {
     const sum=key=>rows.reduce((n,r)=>n+Number(r[key]||0),0);
     const out={};
@@ -254,7 +268,9 @@
     const report=snapshot(),wb=XLSX.utils.book_new();
     const definition=[
       ['CNMI Blood Stock • KPI ลดความสูญเสียรายเดือน',`${report.fiscal?'ปีงบประมาณ':'ปีปฏิทิน'} พ.ศ. ${report.year+543}`],
-      ['สถานะ','รายงานจาก LIS · ต้องตรวจสอบความครบถ้วนก่อนรับรอง KPI'],
+      ['สถานะ',report.cacheStale?'ข้อมูลสรุปยังไม่อัปเดตหลังการนำเข้า LIS ครั้งล่าสุด':'รายงานจาก LIS · ต้องตรวจสอบความครบถ้วนก่อนรับรอง KPI'],
+      ['วันที่คำนวณสถิติ Cache',cacheAgeLabel()],
+      ['อัปเดตหลังนำเข้า','รัน SQL-v2.9.112-02-REFRESH-FY2569.sql หรือ REFRESH-OTHER-YEARS.sql ใน Supabase SQL Editor'],
       ['สูตร KPI ตามตาราง','Expired ÷ (Internal CNMI + TRC + Ending Inventory) × 100; Cryo ไม่มี Internal ในตัวหาร'],
       ['สูตร Utilization Rate รายเดือน','Used ÷ (Beginning + Internal + TRC + Other Hospital + Unclassified) × 100'],
       ['สูตร Utilization Rate รวมปี','รวม Used ทุกเดือน ÷ รวม (Beginning + รับเข้าทุกแหล่ง) ทุกเดือน × 100 (ถ่วงน้ำหนักรายเดือน)'],
@@ -280,7 +296,7 @@
       sheet['!cols']=[{wch:43},{wch:29},...Array.from({length:12},()=>({wch:15})),{wch:16}];
       XLSX.utils.book_append_sheet(wb,sheet,g.en);
     }
-    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.111.xlsx`);
+    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.112.xlsx`);
   }
   async function saveActual(g) {
     if(state.busy)return;
@@ -328,10 +344,12 @@
     const warning=report.issues;
     box.innerHTML=`<div class="waste-dashboard">
       <div class="simple-page-head mt-2"><div><h1>ประสิทธิภาพการลดความสูญเสีย</h1><div class="page-subline">สถิติรายเดือน · 4 กลุ่มผลิตภัณฑ์ · นับ Bag family ไม่ซ้ำ</div></div>
-        <div class="waste-actions no-print"><button class="btn btn-light" type="button" onclick="CNMIWastage.retry()">รีเฟรช LIS</button><button class="btn btn-light" type="button" onclick="CNMIWastage.exportExcel()">ส่งออก Excel</button><button class="btn btn-light" type="button" onclick="window.print()">พิมพ์ / PDF</button></div></div>
+        <div class="waste-actions no-print"><button class="btn btn-light" type="button" onclick="CNMIWastage.retry()">อ่านสรุปล่าสุด</button><button class="btn btn-light" type="button" onclick="CNMIWastage.exportExcel()">ส่งออก Excel</button><button class="btn btn-light" type="button" onclick="window.print()">พิมพ์ / PDF</button></div></div>
       <div class="simple-panel waste-toolbar no-print"><label>รูปแบบปี <select class="form-select" onchange="CNMIWastage.chooseMode(this.value)"><option value="fiscal" ${state.fiscal?'selected':''}>ปีงบประมาณ (ต.ค.–ก.ย.)</option><option value="calendar" ${!state.fiscal?'selected':''}>ปีปฏิทิน (ม.ค.–ธ.ค.)</option></select></label>
         <label>${state.fiscal?'ปีงบประมาณ':'ปีปฏิทิน'} พ.ศ. <select id="waste-year" class="form-select" onchange="CNMIWastage.chooseYear(this.value)">${years.map(y=>`<option value="${y}" ${y===state.year?'selected':''}>${y+543}</option>`).join('')}</select></label>
         <label>เลือกเดือนที่เน้น <select class="form-select" onchange="CNMIWastage.chooseMonth(this.value)">${report.months.RBC.map((r,i)=>`<option value="${i+1}" ${i+1===state.month?'selected':''}>${monthLabel(r.begin)}</option>`).join('')}</select></label><span>ช่วงข้อมูล LIS ล่าสุดถึง: <strong>${html(state.latest?.source_end_date||state.maxDate||'ไม่พบวันที่ครอบคลุมไฟล์')}</strong></span></div>
+      <div class="waste-notice"><strong>ข้อมูลสรุปคำนวณล่าสุด: ${html(cacheAgeLabel())}</strong><span>หน้านี้อ่านผลรวมที่เก็บไว้ จึงไม่ต้องคำนวณประวัติหลายปีทุกครั้ง หากอัปโหลด LIS ใหม่ ให้รัน SQL รีเฟรชปีที่เกี่ยวข้องบน Supabase เพื่ออัปเดตตัวเลข</span></div>
+      ${report.cacheStale?`<div class="waste-notice waste-cache-stale"><strong>ข้อมูลสรุปยังไม่รวม LIS ที่อัปโหลดล่าสุด</strong><span>โปรดรีเฟรช Cache ใน Supabase SQL Editor ก่อนนำรายงานไปใช้ ผู้ใช้ทั่วไปไม่สามารถกดคำนวณหนักจากหน้าเว็บได้</span></div>`:''}
       <div class="waste-target-grid">${GROUPS.map(g=>{const at=report.months[g.key][state.month-1];return `<div class="waste-target-card"><span>${html(g.label)}</span><strong>${scalar(at.kpi,true)}</strong><div><small>เป้าหมาย ≤ ${g.target}%</small>${statusHtml(at,g)}</div></div>`;}).join('')}</div>
       ${(warning.missingExit||warning.noArrival||warning.conflict||warning.estimatedExpiry||warning.unclassified)?`<div class="waste-notice"><strong>คุณภาพข้อมูลที่ต้องทบทวน</strong><span>ไม่พบวันจ่าย/ออก ${fmt(warning.missingExit)} family · Expired อนุมานจากวันหมดอายุ ${fmt(warning.estimatedExpiry)} · ไม่มีวันรับเข้า ${fmt(warning.noArrival)} · ข้อมูลขัดแย้ง ${fmt(warning.conflict)} · แหล่งรับเข้าไม่ชัด ${fmt(warning.unclassified)}</span></div>`:''}
       <p class="waste-formula"><strong>สูตร KPI:</strong> หมดอายุ ÷ (ผลิตภายใน CNMI + รับจาก TRC + คงคลังปลายเดือน) × 100 (Cryo: ใช้ TRC + ปลายเดือน) · Utilization รายเดือน = จ่ายใช้ ÷ (คงคลังต้นเดือน + รับเข้าทุกแหล่ง) × 100 · รวมปีใช้ผลรวมตัวตั้งและตัวหารรายเดือน ไม่เฉลี่ยร้อยละโดยตรง</p>
@@ -347,14 +365,14 @@
     if(!box||currentBloodKpiRoute!=='wastage')return;
     const request=++state.request;
     state.summary=null;
-    box.innerHTML=`<div class="simple-panel">กำลังคำนวณ KPI ${state.fiscal?'ปีงบประมาณ':'ปีปฏิทิน'} ${state.year+543} บน Supabase... (ไม่โหลดประวัติถุงเลือดทั้งหมด)</div>`;
+    box.innerHTML=`<div class="simple-panel">กำลังอ่านสรุป KPI ${state.fiscal?'ปีงบประมาณ':'ปีปฏิทิน'} ${state.year+543} จาก Cache ใน Supabase...</div>`;
     try {
       const [summary,actual]=await Promise.all([
         MinimumStockBackend.getWastageMonthlySummary(state.year,state.fiscal),
         MinimumStockBackend.getWastageActualStock(state.year,state.fiscal)
       ]);
       if(request!==state.request||currentBloodKpiRoute!=='wastage'||!box.isConnected)return;
-      if(!Array.isArray(summary)||summary.length!==48)throw new Error('ข้อมูลสรุปรายเดือนไม่ครบ 48 รายการ กรุณาตรวจสอบ SQL และสิทธิ์ข้อมูล');
+      if(!Array.isArray(summary)||summary.length!==48)throw new Error(`ยังไม่มีสรุป KPI ปี${state.fiscal?'งบประมาณ':'ปฏิทิน'} ${state.year+543} ใน Cache หรือไม่มีสิทธิ์อ่านข้อมูล: กรุณารัน SQL รีเฟรชปีนี้บน Supabase SQL Editor (ใช้ปี ค.ศ. ${state.year})`);
       state.summary=summary;state.actual=actual.rows;state.schemaReady=actual.schemaReady;
       render();
     }catch(err){
