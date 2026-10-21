@@ -3027,27 +3027,19 @@
     return { rows, count: rows.length };
   }
 
-  // v2.9.108 — read existing LIS master rows (no duplicate dataset) for calendar-month events.
-  // Paginate to avoid Supabase/PostgREST's default 1,000-row cap.
-  async function getWastageSourceRows(onProgress = null) {
+  // v2.9.109 — summarize on the server; never download the entire LIS history.
+  async function getWastageMonthlySummary(year) {
     if (!isConfigured()) throw new Error("รายงาน Wastage ต้องเชื่อมต่อ Supabase");
-    const client = getClient();
-    const columns = "component_key,bag_number,product_type,source_group,date_stock_in,expire_date,date_stock_out,status,outcome_code,aggregate_eligible";
-    const rows = [];
-    const chunk = 1000;
-    for (let from = 0; ; from += chunk) {
-      const { data, error } = await client.from("minimum_stock_outreach_master")
-        .select(columns)
-        .eq("aggregate_eligible", true)
-        .order("component_key", { ascending: true })
-        .range(from, from + chunk - 1);
-      if (error) throw new Error("อ่านประวัติถุงจาก LIS ไม่สำเร็จ: " + error.message);
-      const batch = (data || []).map(fromOutreachDbRow);
-      rows.push(...batch);
-      if (typeof onProgress === "function") onProgress(rows.length);
-      if (batch.length < chunk) break;
+    const y = Number(year);
+    if (!Number.isInteger(y) || y < 2000 || y > 2100) throw new Error("ปีไม่ถูกต้อง");
+    const { data, error } = await getClient().rpc("minimum_stock_wastage_monthly_v29109", { p_year: y });
+    if (error) {
+      if (/PGRST202|42883|Could not find the function|does not exist|schema cache/i.test(String(error.code || '') + ' ' + String(error.message || ''))) {
+        throw new Error("ต้องติดตั้งฟังก์ชันสรุป KPI บน Supabase ก่อน: รัน SQL-v2.9.109-WASTAGE-SERVER-SUMMARY.sql หนึ่งครั้ง (ไม่มีการแก้ไขข้อมูล LIS เดิม)");
+      }
+      throw new Error("สรุป KPI จาก Supabase ไม่สำเร็จ: " + error.message);
     }
-    return rows;
+    return data || [];
   }
 
   // A separately recorded actual count is necessary for an honest discrepancy.
@@ -3606,7 +3598,7 @@
     confirmCqiOuting,
     getOutreachRows,
     getLatestLisUpload,
-    getWastageSourceRows,
+    getWastageMonthlySummary,
     getWastageActualStock,
     saveWastageActualStock,
     adminClearAllData,
