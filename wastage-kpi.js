@@ -1,4 +1,4 @@
-/* CNMI Wastage KPI v2.9.112 — Fast cached monthly summary, fiscal/calendar year views. */
+/* CNMI Wastage KPI v2.9.114 — Historical month-start stock + fast cached monthly summary, fiscal/calendar year views. */
 (function () {
   'use strict';
   const GROUPS = [
@@ -79,16 +79,25 @@
       // The Released member wins over an Expired parent even if the parent had a .S split.
       const winningRows=types.filter(x=>x.code===winningCode);
       const dated=winningRows.map(x=>ymd(x.row.dateStockOut)).filter(Boolean).sort();
-      let exit=dated[0]||'',estimated=false;
-      if(winningCode==='expired'&&!exit) {
-        const expires=winningRows.map(x=>ymd(x.row.expireDate)).filter(Boolean).sort();
-        if(expires.length) {exit=expires[0];estimated=true;issues.estimatedExpiry++;}
+      const expires=winningRows.map(x=>ymd(x.row.expireDate)).filter(Boolean).sort();
+      const fallbackExpiry=f.records.map(x=>ymd(x.expireDate)).filter(Boolean).sort()[0]||'';
+      const shelfExpiry=expires[0]||fallbackExpiry;
+      let exit=dated[0]||'',estimated=false,terminalMissingExit=false;
+      let eventOutcome=winningCode;
+      if(winningCode==='expired'&&shelfExpiry&&(!exit||shelfExpiry<exit)) {
+        exit=shelfExpiry;estimated=true;issues.estimatedExpiry++;
+      } else if(['open','transformed'].includes(winningCode)&&shelfExpiry){
+        // No final LIS action, but a past shelf-life date cannot remain Available forever.
+        exit=shelfExpiry;estimated=true;eventOutcome='expired';issues.estimatedExpiry++;
       }
-      if(['used','expired','rejected','other'].includes(winningCode)&&!exit)issues.missingExit++;
+      if(['used','expired','rejected','other'].includes(winningCode)&&!exit){
+        issues.missingExit++;terminalMissingExit=true;
+      }
       if(winningCode==='conflict')issues.conflict++;
+      if(winningCode==='used'&&dated[0]&&shelfExpiry&&dated[0]>shelfExpiry)issues.conflict++;
       const arrival=arrivals[0];
-      if(exit&&exit<arrival){issues.conflict++;exit='';}
-      result.push({key:f.key,group:f.group,source,arrival,exit,outcome:winningCode,estimated});
+      if(exit&&exit<arrival){issues.conflict++;terminalMissingExit=true;}
+      result.push({key:f.key,group:f.group,source,arrival,exit,outcome:eventOutcome,estimated,terminalMissingExit,shelfExpiry});
     }
     return {families:result,issues};
   }
@@ -98,7 +107,7 @@
     const obj={year,month,begin,end,beginning:0,internal:0,trc:0,otherHospital:0,unclassified:0,used:0,expired:0,rejected:0,otherDiscard:0,ending:0,unknownExit:0,estimatedExpiry:0,stale:0,discrepancy:null,actual:actualValue,covered:!!latestDate&&latestDate>=end&&(!historyStart||historyStart<begin),availability:0};
     for(const f of families) {
       if(f.arrival>end)continue;
-      if(f.exit && f.exit<f.arrival)continue;
+      if(f.terminalMissingExit || (f.exit && f.exit<f.arrival) || (!f.exit && !f.shelfExpiry))continue;
       const hasExit=!!f.exit;
       const aliveAtStart=f.arrival<begin && (!hasExit||f.exit>=begin);
       const aliveAtEnd=!hasExit||f.exit>end;
@@ -142,14 +151,16 @@
   }
   const metricRows = [
     {key:'expired',name:'จำนวนที่หมดอายุ',hint:'ตัวตั้ง'},
-    {key:'beginning',name:'คงคลังต้นเดือน (จาก LIS)',hint:'สนับสนุน'},
+    {key:'beginning',name:'คงคลัง ณ ต้นเดือน (จาก LIS)',hint:'ก่อน Action วันที่ 1'},
     {key:'internal',name:'ผลิตภายใน CNMI (ใน รพ. + ออกหน่วย)',hint:'ตัวหาร'},
     {key:'trc',name:'รับจากสภากาชาดไทย',hint:'ตัวหาร'},
     {key:'otherHospital',name:'รับจากโรงพยาบาลอื่น',hint:'ข้อมูลประกอบ'},
     {key:'used',name:'จ่ายใช้ / ส่งต่อ',hint:'สนับสนุน'},
+    {key:'estimatedExpiry',name:'ใช้ ExpireDate อนุมานวันออก',hint:'ยังไม่ยืนยัน · ตรวจสอบ'},
+    {key:'unknownExit',name:'รายการวันที่ไม่พอคำนวณ Stock',hint:'รอตรวจสอบ · ไม่รวม Stock'},
     {key:'rejected',name:'Rejected / ไม่เหมาะสม',hint:'แยก ไม่ใช่ Expired'},
     {key:'otherDiscard',name:'ทำลายเหตุอื่น',hint:'แยก ไม่ใช่ Expired'},
-    {key:'ending',name:'คงคลังปลายเดือน (จาก LIS)',hint:'ตัวหาร'},
+    {key:'ending',name:'คงคลัง ณ สิ้นเดือน (จาก LIS)',hint:'หลัง Action เดือนนั้น'},
     {key:'kpiDenominator',name:'ตัวหาร KPI ตามตาราง',hint:'ภายใน + กาชาด + ปลายเดือน'},
     {key:'kpi',name:'Wastage reduction (%)',hint:'KPI หลัก',percent:true},
     {key:'result',name:'ผลลัพธ์ตามเกณฑ์',hint:'ผ่าน / เกินเกณฑ์ / รอตรวจสอบ',isResult:true},
@@ -222,7 +233,7 @@
         row.utilization=pct(row.used,row.availability);
         row.discrepancy=Number.isInteger(row.actual)&&row.actual>=0?row.actual-row.ending:null;
         row.checkBalance=row.availability-row.used-row.expired-row.rejected-row.otherDiscard-row.ending;
-        row.provisional=!row.covered||row.unknownExit>0||row.estimatedExpiry>0||row.checkBalance!==0;
+        row.provisional=!row.covered||row.unknownExit>0||row.estimatedExpiry>0||row.checkBalance!==0||issues.missingExit>0||issues.conflict>0||issues.noArrival>0;
         return row;
       });
     }
@@ -250,15 +261,20 @@
       if(['actual','discrepancy','kpi','utilization','result'].includes(metric.key))continue;
       out[metric.key]=sum(metric.key);
     }
-    // Match the annual formulas in the CNMI spreadsheet: sum expired / sum monthly KPI denominators.
-    out.kpi=pct(sum('expired'),sum('kpiDenominator'));
-    // Weighted annual utilization uses the same denominator as EACH monthly row.
-    // The reference spreadsheet uses inconsistent annual utilization formulas across products;
-    // prefer a single auditable calculation rather than reproducing a spreadsheet inconsistency.
-    out.utilization=pct(sum('used'),sum('availability'));
+    // Stock is a point-in-time balance, NOT a flow: do not sum the same bags 12 times.
+    out.beginning=rows[0]?.beginning??0;
+    out.ending=rows[rows.length-1]?.ending??0;
+    out.unknownExit=rows[rows.length-1]?.unknownExit??0;
+    out.estimatedExpiry=sum('estimatedExpiry'); // events during this fiscal year
+    out.kpiDenominator=(g.key==='CRYO'?0:sum('internal'))+sum('trc')+out.ending;
+    out.kpi=pct(sum('expired'),out.kpiDenominator);
+    // Year-wide utilization: same opening inventory + receipt basis as a month, once per year.
+    out.availability=out.beginning+sum('internal')+sum('trc')+sum('otherHospital')+sum('unclassified');
+    out.utilization=pct(sum('used'),out.availability);
+    out.checkBalance=out.availability-sum('used')-sum('expired')-sum('rejected')-sum('otherDiscard')-out.ending;
     out.actual=null;out.discrepancy=null;
     out.covered=rows.every(r=>r.covered);
-    out.provisional=rows.some(r=>r.provisional);
+    out.provisional=rows.some(r=>r.provisional)||out.checkBalance!==0;
     out.result=!out.covered?'LIS ไม่ครบ':out.provisional?'ตรวจสอบ':out.kpi===null?'ไม่มีตัวหาร':out.kpi<=g.target?'ผ่าน':'เกินเกณฑ์';
     return out;
   }
@@ -270,10 +286,13 @@
       ['CNMI Blood Stock • KPI ลดความสูญเสียรายเดือน',`${report.fiscal?'ปีงบประมาณ':'ปีปฏิทิน'} พ.ศ. ${report.year+543}`],
       ['สถานะ',report.cacheStale?'ข้อมูลสรุปยังไม่อัปเดตหลังการนำเข้า LIS ครั้งล่าสุด':'รายงานจาก LIS · ต้องตรวจสอบความครบถ้วนก่อนรับรอง KPI'],
       ['วันที่คำนวณสถิติ Cache',cacheAgeLabel()],
-      ['อัปเดตหลังนำเข้า','รัน SQL-v2.9.112-02-REFRESH-FY2569.sql หรือ REFRESH-OTHER-YEARS.sql ใน Supabase SQL Editor'],
+      ['อัปเดตหลังนำเข้า','รัน SQL-v2.9.114-03-REFRESH-FY2569.sql หรือ SQL-v2.9.112-03-REFRESH-OTHER-YEARS.sql ใน Supabase SQL Editor'],
       ['สูตร KPI ตามตาราง','Expired ÷ (Internal CNMI + TRC + Ending Inventory) × 100; Cryo ไม่มี Internal ในตัวหาร'],
       ['สูตร Utilization Rate รายเดือน','Used ÷ (Beginning + Internal + TRC + Other Hospital + Unclassified) × 100'],
-      ['สูตร Utilization Rate รวมปี','รวม Used ทุกเดือน ÷ รวม (Beginning + รับเข้าทุกแหล่ง) ทุกเดือน × 100 (ถ่วงน้ำหนักรายเดือน)'],
+      ['สูตร KPI รวมปี','Expired รวมปี ÷ (Internal รวมปี + TRC รวมปี + คงคลัง ณ สิ้นปี) × 100; Cryo ไม่รวม Internal'],
+      ['สูตร Utilization Rate รวมปี','Used รวมปี ÷ (คงคลังต้นปี + รับเข้าตลอดปีทุกแหล่ง) × 100'],
+      ['นิยามคงคลัง','ต้นเดือน = ถุงที่รับเข้าก่อนวันที่ 1 และยังไม่มี Action สิ้นสุดก่อนวันที่ 1; สิ้นเดือน = ยอดหลัง Action เดือนนั้น; แยกประมาณจากวันหมดอายุ'],
+      ['หมายเหตุจำนวน Expired','มีส่วนที่อนุมานจาก ExpireDate เมื่อ LIS ไม่มี Action ชัดเจน; ทุกเดือนที่มีค่าประมาณต้องตรวจสอบก่อนรับรอง'],
       ['ผลต่างทางบัญชี','Stock ตรวจนับจริง − Stock ปลายเดือนตาม LIS (ห้ามตั้งเป็น 0 เมื่อไม่มีการตรวจนับ)'],
       ['ขอบเขต','นับ Bag family (ถุงหลัก + .S1/.S2) 1 ครั้งต่อกลุ่มผลิตภัณฑ์'],
       ['หมายเหตุ','Dedicated นับใช้, Rejected และทำลายเหตุอื่นไม่นับหมดอายุ, Transform เป็นขั้นตอนกลาง'],
@@ -296,7 +315,7 @@
       sheet['!cols']=[{wch:43},{wch:29},...Array.from({length:12},()=>({wch:15})),{wch:16}];
       XLSX.utils.book_append_sheet(wb,sheet,g.en);
     }
-    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.112.xlsx`);
+    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.114.xlsx`);
   }
   async function saveActual(g) {
     if(state.busy)return;
@@ -332,7 +351,7 @@
         <div class="waste-section-head"><div><h3>${html(g.label)}</h3><span class="small-muted">${html(g.en)} · เป้าหมาย ≤ ${g.target}%</span></div><div class="waste-kpi-figure"><strong>${scalar(at.kpi,true)}</strong>${statusHtml(at,g)}</div></div>
         <div class="waste-table-scroll" tabindex="0" aria-label="ตารางสถิติรายเดือน ${html(g.label)}"><table class="waste-table"><thead><tr><th>รายการ (ยูนิต)</th>${months.map((r,i)=>`<th class="${i+1===state.month?'waste-selected':''}">${monthLabel(r.begin)}</th>`).join('')}<th class="waste-annual">รวมปี</th></tr></thead><tbody>${body}</tbody></table></div>
         <div class="waste-bottom-row"><span>รายงานเดือน ${monthLabel(at.begin)} · ใช้ ${fmt(at.used)} · หมดอายุ ${fmt(at.expired)} · ปลายเดือน LIS ${fmt(at.ending)}</span>
-        <span>${!at.covered?'ต้องตรวจสอบข้อมูล LIS ต้นช่วงหรือปลายเดือนนี้':at.unknownExit?`พบ ${fmt(at.unknownExit)} family ที่ไม่มีวันจ่าย/ออก`:at.estimatedExpiry?`อนุมานวันหมดอายุ ${fmt(at.estimatedExpiry)} ถุง`:at.checkBalance!==0?'ยอดเคลื่อนไหวไม่สมดุล':'สมดุลรายการ LIS = 0 (ไม่ใช่ผลตรวจนับจริง)'}</span></div>
+        <span>${!at.covered?'ต้องตรวจสอบข้อมูล LIS ต้นช่วงหรือปลายเดือนนี้':at.unknownExit?`พบ ${fmt(at.unknownExit)} family ที่ไม่มีวันจ่าย/ออก`:at.estimatedExpiry?`อนุมานวันที่จาก ExpireDate ${fmt(at.estimatedExpiry)} ถุง · ตรวจสอบก่อนรับรอง`:at.checkBalance!==0?'ยอดเคลื่อนไหวไม่สมดุล':'สมดุลรายการ LIS = 0 (ไม่ใช่ผลตรวจนับจริง)'}</span></div>
       </section>`;
     }).join('');
     const actualInputs=GROUPS.map(g=>{
@@ -351,13 +370,13 @@
       <div class="waste-notice"><strong>ข้อมูลสรุปคำนวณล่าสุด: ${html(cacheAgeLabel())}</strong><span>หน้านี้อ่านผลรวมที่เก็บไว้ จึงไม่ต้องคำนวณประวัติหลายปีทุกครั้ง หากอัปโหลด LIS ใหม่ ให้รัน SQL รีเฟรชปีที่เกี่ยวข้องบน Supabase เพื่ออัปเดตตัวเลข</span></div>
       ${report.cacheStale?`<div class="waste-notice waste-cache-stale"><strong>ข้อมูลสรุปยังไม่รวม LIS ที่อัปโหลดล่าสุด</strong><span>โปรดรีเฟรช Cache ใน Supabase SQL Editor ก่อนนำรายงานไปใช้ ผู้ใช้ทั่วไปไม่สามารถกดคำนวณหนักจากหน้าเว็บได้</span></div>`:''}
       <div class="waste-target-grid">${GROUPS.map(g=>{const at=report.months[g.key][state.month-1];return `<div class="waste-target-card"><span>${html(g.label)}</span><strong>${scalar(at.kpi,true)}</strong><div><small>เป้าหมาย ≤ ${g.target}%</small>${statusHtml(at,g)}</div></div>`;}).join('')}</div>
-      ${(warning.missingExit||warning.noArrival||warning.conflict||warning.estimatedExpiry||warning.unclassified)?`<div class="waste-notice"><strong>คุณภาพข้อมูลที่ต้องทบทวน</strong><span>ไม่พบวันจ่าย/ออก ${fmt(warning.missingExit)} family · Expired อนุมานจากวันหมดอายุ ${fmt(warning.estimatedExpiry)} · ไม่มีวันรับเข้า ${fmt(warning.noArrival)} · ข้อมูลขัดแย้ง ${fmt(warning.conflict)} · แหล่งรับเข้าไม่ชัด ${fmt(warning.unclassified)}</span></div>`:''}
-      <p class="waste-formula"><strong>สูตร KPI:</strong> หมดอายุ ÷ (ผลิตภายใน CNMI + รับจาก TRC + คงคลังปลายเดือน) × 100 (Cryo: ใช้ TRC + ปลายเดือน) · Utilization รายเดือน = จ่ายใช้ ÷ (คงคลังต้นเดือน + รับเข้าทุกแหล่ง) × 100 · รวมปีใช้ผลรวมตัวตั้งและตัวหารรายเดือน ไม่เฉลี่ยร้อยละโดยตรง</p>
+      ${(warning.missingExit||warning.noArrival||warning.conflict||warning.estimatedExpiry||warning.unclassified)?`<div class="waste-notice"><strong>คุณภาพข้อมูลที่ต้องทบทวน</strong><span>ไม่พบวันจ่าย/ออก ${fmt(warning.missingExit)} family · ประมาณวันออก/หมดอายุจาก ExpireDate ${fmt(warning.estimatedExpiry)} · ไม่มีวันรับเข้า ${fmt(warning.noArrival)} · ข้อมูลขัดแย้ง ${fmt(warning.conflict)} · แหล่งรับเข้าไม่ชัด ${fmt(warning.unclassified)}</span></div>`:''}
+      <p class="waste-formula"><strong>สูตร KPI:</strong> หมดอายุ ÷ (ผลิตภายใน CNMI + รับจาก TRC + คงคลังปลายเดือน) × 100 (Cryo: ใช้ TRC + ปลายเดือน) · Utilization รายเดือน = จ่ายใช้ ÷ (คงคลังต้นเดือน + รับเข้าทุกแหล่ง) × 100 · รวมปี = หมดอายุทั้งปี ÷ (ผลิตใน CNMI ทั้งปี + TRC ทั้งปี + คงคลังสิ้นปี) · คงคลังต้น/ปลายปีไม่นำ 12 เดือนมาบวกกัน</p>
       ${sections}
       <section class="simple-panel waste-real-inventory"><div class="panel-heading-row"><div><h3>ตรวจสอบผลต่างทางบัญชี · ${monthLabel(report.months.RBC[state.month-1].begin)}</h3><div class="small-muted">ใช้ยอดตรวจนับจริงมาเทียบกับยอดคงคลังจาก LIS · ไม่มีผลตรวจนับจะแสดง “—” ไม่ใช่ศูนย์</div></div></div>
         ${state.schemaReady?`<div class="waste-check-grid">${actualInputs}</div>`:`<div class="waste-notice"><strong>ยังไม่ได้ติดตั้งตารางตรวจนับจริง</strong><span>รายงานจาก LIS ใช้งานได้ แต่หากต้องการบันทึกสต๊อกตรวจนับและคำนวณ Discrepancy ให้รัน SQL-v2.9.108-MONTHLY-WASTAGE-CHECK.sql ที่ Supabase หนึ่งครั้ง</span></div>`}
         ${state.schemaReady&&!isAdmin?'<p class="small-muted">อ่านข้อมูลได้ตามสิทธิ์ผู้ใช้ · การบันทึกยอดตรวจนับสำหรับ Admin เท่านั้น</p>':''}</section>
-      <details class="simple-panel waste-method"><summary>นิยามและข้อจำกัดการตรวจสอบข้อมูล</summary><p>Expired เท่านั้นที่เป็นตัวตั้ง; Rejected และทำลายด้วยเหตุอื่นแยกต่างหาก; Dedicated นับเป็นจ่ายใช้; Be Transformed ไม่ใช่ผลลัพธ์ปลายทาง หากถุง .S ถูกใช้ จะไม่คิดถุงหลักที่หมดอายุซ้ำ</p><p>วันที่จ่าย/ออกใช้ DateStockOut ถ้า Expired ไม่มีวันที่ออก จะอนุมานวันที่จาก ExpireDate และเตือนให้ตรวจสอบ หากไม่มีวันที่ออกของสถานะอื่น จะไม่สร้างวันที่ขึ้นเอง</p><p>ยอดคงคลังต้น/ปลายเป็นยอดคำนวณย้อนหลังจาก LIS ไม่ใช่ผลตรวจนับจริง; ปริมาณรับจากโรงพยาบาลอื่นแยกแสดงเพื่อทวนสมดุล และไม่อยู่ในตัวหาร KPI ตามตารางต้นฉบับ</p><p>เดือนแรกของประวัติ LIS อาจมีเลือดคงคลังที่รับเข้าก่อนช่วงข้อมูล จึงยังไม่รับรองผลอัตโนมัติ เมื่อไม่มีประวัติ LIS ก่อนเดือนที่เลือกครบถ้วน หรือข้อมูลเดือนล่าสุดยังไม่ครบ ต้องตรวจสอบก่อนรับรอง KPI. การแสดง 0 หมายถึงนับได้ 0; เครื่องหมาย — หมายถึงยังไม่มีค่าหรือคำนวณไม่ได้</p></details>
+      <details class="simple-panel waste-method"><summary>นิยามและข้อจำกัดการตรวจสอบข้อมูล</summary><p>Expired เท่านั้นที่เป็นตัวตั้ง; Rejected และทำลายด้วยเหตุอื่นแยกต่างหาก; Dedicated นับเป็นจ่ายใช้; Be Transformed ไม่ใช่ผลลัพธ์ปลายทาง หากถุง .S ถูกใช้ จะไม่คิดถุงหลักที่หมดอายุซ้ำ</p><p>คงคลังต้นเดือนนับก่อน Action ของวันที่ 1; DateStockIn คือวันรับเข้าจริง และ DateStockOut คือวันจ่าย/Action จริง ถ้า LIS ยังแสดง Available/Be Transformed แต่พ้น ExpireDate จะไม่ค้างเป็น Stock ตลอดไป: อนุมานวันสิ้นสุดตาม ExpireDate และแสดงรอตรวจสอบ ไม่ใช่ Expired ที่ยืนยันแล้ว; รายการออกจริงแต่ไม่มีวันที่ออกต้องตรวจสอบ</p><p>ยอดคงคลังต้น/ปลายเป็นยอดคำนวณย้อนหลังจาก LIS ไม่ใช่ผลตรวจนับจริง; ช่องรวมปีสำหรับคงคลังแสดงยอดต้นปีและสิ้นปี (ไม่ใช่ผลบวก 12 เดือน); ปริมาณรับจากโรงพยาบาลอื่นแยกแสดงเพื่อทวนสมดุล และไม่อยู่ในตัวหาร KPI ตามตารางต้นฉบับ</p><p>เดือนแรกของประวัติ LIS อาจมีเลือดคงคลังที่รับเข้าก่อนช่วงข้อมูล จึงยังไม่รับรองผลอัตโนมัติ เมื่อไม่มีประวัติ LIS ก่อนเดือนที่เลือกครบถ้วน หรือข้อมูลเดือนล่าสุดยังไม่ครบ ต้องตรวจสอบก่อนรับรอง KPI. การอนุมาน ExpireDate เป็นเพียงข้อเสนอแก้ความคลาดเคลื่อน ไม่รับรองว่า Status จริงเป็น Expired; การแสดง 0 หมายถึงนับได้ 0; เครื่องหมาย — หมายถึงยังไม่มีค่าหรือคำนวณไม่ได้</p></details>
     </div>`;
   }
   async function loadYear(){
