@@ -4158,3 +4158,10 @@ body { font-size:16px; line-height:1.55; }
 @media(max-width:1000px){.waste-target-grid,.waste-check-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.waste-target-grid,.waste-check-grid{grid-template-columns:1fr 1fr;gap:8px}.waste-target-card{padding:11px}.waste-target-card>strong{font-size:21px}.waste-check-grid{grid-template-columns:1fr}.waste-toolbar>span{margin-left:0}.waste-section-head{padding:12px}.waste-table th:first-child{min-width:200px;width:200px}}
 @media print{.waste-actions,.waste-toolbar,.waste-check-controls{display:none!important}.waste-table-scroll{overflow:visible}.waste-table{min-width:0;font-size:8px}.waste-table th,.waste-table td{padding:4px}.waste-table th:first-child{width:170px;min-width:170px}.waste-dashboard{gap:10px}.waste-section{break-inside:avoid}}
+
+/* v2.9.111 — annual totals and readable fiscal-year columns */
+.waste-table .waste-annual{background:#e4f2ff;color:#173f62;font-weight:800;border-left:2px solid #adcfe8;min-width:84px}
+.waste-table .waste-main-row .waste-annual{background:#bfdef5}
+.waste-table thead th{min-width:84px}
+.waste-toolbar label{min-width:155px}
+@media print{.waste-table .waste-annual{background:#e4f2ff!important;color:#173f62!important}}

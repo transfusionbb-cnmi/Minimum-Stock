@@ -1,4 +1,4 @@
-/* CNMI Wastage KPI v2.9.110 — calculation uses existing eligible LIS bag rows. */
+/* CNMI Wastage KPI v2.9.111 — SQL SELECT-only monthly summaries, fiscal/calendar year views. */
 (function () {
   'use strict';
   const GROUPS = [
@@ -9,7 +9,14 @@
   ];
   const TH_MONTH = ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
   const KEY = 'minimumStock.wastage.year';
-  const state = { year:new Date().getFullYear(), month:new Date().getMonth()+1, summary:null, initialized:false, latest:null, actual:[], schemaReady:false, busy:false, request:0, maxDate:null, minDate:null };
+  const MODE_KEY = 'minimumStock.wastage.periodMode';
+  const today = new Date();
+  // In October the last COMPLETE fiscal year is usually the most useful report.
+  const initialYear = today.getFullYear();
+  const periodMonths = (year,fiscal) => Array.from({length:12},(_,i)=>
+    new Date(Date.UTC(year-(fiscal?1:0),(fiscal?9:0)+i,1)).toISOString().slice(0,10));
+  const monthLabel = begin => `${TH_MONTH[Number(begin.slice(5,7))]} ${Number(begin.slice(0,4))+543}`;
+  const state = { year:initialYear, fiscal:true, month:1, summary:null, initialized:false, latest:null, actual:[], schemaReady:false, busy:false, request:0, maxDate:null, minDate:null };
   const fmt = (v) => Number(v || 0).toLocaleString('th-TH');
   const pct = (num,den) => den > 0 ? +(num*100/den).toFixed(2) : null;
   const html = (value) => String(value ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -160,7 +167,11 @@
     return row.kpi<=g.target?'<span class="waste-status is-good">ผ่านเกณฑ์</span>':'<span class="waste-status is-bad">เกินเกณฑ์</span>';
   }
   function selected() {
-    try {const y=Number(sessionStorage.getItem(KEY));if(y>=2000&&y<=2100)state.year=y;}catch(e){}
+    try {
+      const y=Number(sessionStorage.getItem(KEY));if(y>=2000&&y<=2100)state.year=y;
+      // Existing saved year is preserved. New reports default to fiscal years.
+      state.fiscal=sessionStorage.getItem(MODE_KEY)!=='calendar';
+    }catch(e){}
   }
   function chooseYear(year){
     const y=Number(year);if(!Number.isInteger(y)||y<2000||y>2100||y===state.year)return;
@@ -168,11 +179,17 @@
     try{sessionStorage.setItem(KEY,String(y));}catch(e){}
     loadYear();
   }
+  function chooseMode(mode){
+    const fiscal=mode!=='calendar';if(fiscal===state.fiscal)return;
+    state.fiscal=fiscal;state.month=1;
+    try{sessionStorage.setItem(MODE_KEY,fiscal?'fiscal':'calendar');}catch(e){}
+    loadYear();
+  }
   function chooseMonth(month){const m=Number(month);if(m<1||m>12)return;state.month=m;render();}
 
   // Supabase returns 48 aggregated rows (not tens of thousands of LIS records).
   // Calculated percentages use the same formulas as v2.9.108; actual stock is separate.
-  function reportFromSummary(summary,year,actual=[],latestDate='',historyStart='') {
+  function reportFromSummary(summary,year,actual=[],latestDate='',historyStart='',fiscal=true) {
     const first=summary?.[0]||{};
     const issues={
       noArrival:Number(first.issue_no_arrival||0),
@@ -181,11 +198,12 @@
       estimatedExpiry:Number(first.issue_estimated_expiry||0),
       unclassified:Number(first.issue_unclassified||0)
     };
-    const result={year,issues,months:{},familyCount:Number(first.family_count||0)};
+    const result={year,fiscal,issues,months:{},familyCount:Number(first.family_count||0)};
+    const starts=periodMonths(year,fiscal);
     for(const g of GROUPS){
       result.months[g.key]=Array.from({length:12},(_,i)=>{
-        const month=i+1, begin=`${year}-${String(month).padStart(2,'0')}-01`;
-        const end=new Date(Date.UTC(year,month,0)).toISOString().slice(0,10);
+        const month=i+1, begin=starts[i];
+        const end=new Date(Date.UTC(Number(begin.slice(0,4)),Number(begin.slice(5,7)),0)).toISOString().slice(0,10);
         const src=summary.find(r=>r.product_family===g.key&&Number(r.month_no)===month)||{};
         const found=actual.find(x=>x.monthStart===begin&&x.productFamily===g.key);
         const count=k=>Number(src[k]||0);
@@ -210,21 +228,42 @@
     }
     return result;
   }
-  function snapshot(){return reportFromSummary(state.summary||[],state.year,state.actual,state.latest?.source_end_date||'',state.minDate||'');}
+  function snapshot(){return reportFromSummary(state.summary||[],state.year,state.actual,state.latest?.source_end_date||state.maxDate||'',state.minDate||'',state.fiscal);}
+  function annualSummary(rows,g) {
+    const sum=key=>rows.reduce((n,r)=>n+Number(r[key]||0),0);
+    const out={};
+    for(const metric of metricRows){
+      if(['actual','discrepancy','kpi','utilization','result'].includes(metric.key))continue;
+      out[metric.key]=sum(metric.key);
+    }
+    // Match the annual formulas in the CNMI spreadsheet: sum expired / sum monthly KPI denominators.
+    out.kpi=pct(sum('expired'),sum('kpiDenominator'));
+    // Weighted annual utilization uses the same denominator as EACH monthly row.
+    // The reference spreadsheet uses inconsistent annual utilization formulas across products;
+    // prefer a single auditable calculation rather than reproducing a spreadsheet inconsistency.
+    out.utilization=pct(sum('used'),sum('availability'));
+    out.actual=null;out.discrepancy=null;
+    out.covered=rows.every(r=>r.covered);
+    out.provisional=rows.some(r=>r.provisional);
+    out.result=!out.covered?'LIS ไม่ครบ':out.provisional?'ตรวจสอบ':out.kpi===null?'ไม่มีตัวหาร':out.kpi<=g.target?'ผ่าน':'เกินเกณฑ์';
+    return out;
+  }
   function exportReport() {
     if(!state.summary) return;
     if(!window.XLSX){window.showModal?.('error','ส่งออกไม่ได้','ไม่พบไลบรารี Excel');return;}
     const report=snapshot(),wb=XLSX.utils.book_new();
     const definition=[
-      ['CNMI Blood Stock • KPI ลดความสูญเสียรายเดือน',`ปี พ.ศ. ${report.year+543}`],
+      ['CNMI Blood Stock • KPI ลดความสูญเสียรายเดือน',`${report.fiscal?'ปีงบประมาณ':'ปีปฏิทิน'} พ.ศ. ${report.year+543}`],
       ['สถานะ','รายงานจาก LIS · ต้องตรวจสอบความครบถ้วนก่อนรับรอง KPI'],
       ['สูตร KPI ตามตาราง','Expired ÷ (Internal CNMI + TRC + Ending Inventory) × 100; Cryo ไม่มี Internal ในตัวหาร'],
-      ['สูตร Utilization Rate','Used ÷ (Beginning + Internal + TRC + Other Hospital + Unclassified) × 100'],
+      ['สูตร Utilization Rate รายเดือน','Used ÷ (Beginning + Internal + TRC + Other Hospital + Unclassified) × 100'],
+      ['สูตร Utilization Rate รวมปี','รวม Used ทุกเดือน ÷ รวม (Beginning + รับเข้าทุกแหล่ง) ทุกเดือน × 100 (ถ่วงน้ำหนักรายเดือน)'],
       ['ผลต่างทางบัญชี','Stock ตรวจนับจริง − Stock ปลายเดือนตาม LIS (ห้ามตั้งเป็น 0 เมื่อไม่มีการตรวจนับ)'],
       ['ขอบเขต','นับ Bag family (ถุงหลัก + .S1/.S2) 1 ครั้งต่อกลุ่มผลิตภัณฑ์'],
       ['หมายเหตุ','Dedicated นับใช้, Rejected และทำลายเหตุอื่นไม่นับหมดอายุ, Transform เป็นขั้นตอนกลาง'],
       ['การจัดกลุ่ม','เม็ดเลือดแดง, พลาสมา, เกล็ดเลือด, Cryo; Whole Blood ไม่รวม'],
       ['ความครอบคลุม LIS',state.latest?.source_end_date||state.maxDate||'ยังไม่ยืนยัน'],
+      ['ช่วงเดือนที่รายงาน',`${periodMonths(report.year,report.fiscal)[0]} ถึง ${periodMonths(report.year,report.fiscal)[11]}`],
       ['รายการที่วันจ่ายหายไป',report.issues.missingExit],
       ['Expired ที่อนุมานจากวันหมดอายุ',report.issues.estimatedExpiry],
       ['ถุงที่ไม่มีวันรับเข้า',report.issues.noArrival],
@@ -233,14 +272,15 @@
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(definition),'คำอธิบาย');
     for(const g of GROUPS){
       const rows=report.months[g.key];
-      const header=['รายการ','เกณฑ์ / บทบาท',...TH_MONTH.slice(1)];
-      const body=metricRows.map(metric=>[metric.name,metric.hint,...rows.map(r=>metric.isResult ? (!r.covered?'LIS ไม่ครบช่วง':r.provisional?'รอตรวจสอบ':r.kpi===null?'ไม่มีตัวหาร':r.kpi<=g.target?'ผ่าน':'เกินเกณฑ์') : (r[metric.key]??null))]);
-      const checks=['สถานะข้อมูล','',...rows.map(r=>!r.covered?'LIS ไม่ครบช่วง':r.provisional?'รอตรวจสอบ':r.kpi===null?'ไม่มีตัวหาร':r.kpi<=g.target?'ผ่าน':'เกินเกณฑ์')];
+      const annual=annualSummary(rows,g);
+      const header=['รายการ','เกณฑ์ / บทบาท',...rows.map(r=>monthLabel(r.begin)),'รวมปี'];
+      const body=metricRows.map(metric=>[metric.name,metric.hint,...rows.map(r=>metric.isResult ? (!r.covered?'LIS ไม่ครบช่วง':r.provisional?'รอตรวจสอบ':r.kpi===null?'ไม่มีตัวหาร':r.kpi<=g.target?'ผ่าน':'เกินเกณฑ์') : (r[metric.key]??null)),metric.isResult?annual.result:(annual[metric.key]??null)]);
+      const checks=['สถานะข้อมูล','',...rows.map(r=>!r.covered?'LIS ไม่ครบช่วง':r.provisional?'รอตรวจสอบ':r.kpi===null?'ไม่มีตัวหาร':r.kpi<=g.target?'ผ่าน':'เกินเกณฑ์'),annual.result];
       const sheet=XLSX.utils.aoa_to_sheet([[`KPI ลดความสูญเสีย ${g.label} • เป้าหมาย ≤ ${g.target}%`],header,...body,checks]);
-      sheet['!cols']=[{wch:43},{wch:29},...Array.from({length:12},()=>({wch:15}))];
+      sheet['!cols']=[{wch:43},{wch:29},...Array.from({length:12},()=>({wch:15})),{wch:16}];
       XLSX.utils.book_append_sheet(wb,sheet,g.en);
     }
-    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.year+543}-v2.9.109.xlsx`);
+    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.111.xlsx`);
   }
   async function saveActual(g) {
     if(state.busy)return;
@@ -251,11 +291,11 @@
     if(!input||!/^\d+$/.test(input.value.trim())||!Number.isSafeInteger(Number(input.value))) {
       input?.classList.add('is-invalid'); input?.focus();return;
     }
-    const value=Number(input.value),date=`${state.year}-${String(state.month).padStart(2,'0')}-01`;
+    const value=Number(input.value),date=periodMonths(state.year,state.fiscal)[state.month-1];
     state.busy=true;
     try {
       await MinimumStockBackend.saveWastageActualStock(date,g,value);
-      const next=await MinimumStockBackend.getWastageActualStock(state.year);
+      const next=await MinimumStockBackend.getWastageActualStock(state.year,state.fiscal);
       state.actual=next.rows; state.schemaReady=next.schemaReady;
       render();
       window.showModal?.('success','บันทึกแล้ว',`ยอดตรวจนับจริง ${fmt(value)} ยูนิต ถูกบันทึกไว้ใน Supabase`);
@@ -264,18 +304,18 @@
   }
   function render(){
     const box=document.getElementById('bloodKpiDashboard');if(!box||!state.summary||currentBloodKpiRoute!=='wastage')return;
-    const report=snapshot(),minYear=Number((state.minDate||'').slice(0,4))||state.year,maxYear=Math.max(Number((state.maxDate||'').slice(0,4))||state.year,new Date().getFullYear());
+    const report=snapshot(),minYear=Number((state.minDate||'').slice(0,4))||state.year,maxYear=Math.max(Number((state.maxDate||'').slice(0,4))+(state.fiscal&&Number((state.maxDate||'').slice(5,7))>=10?1:0)||state.year,state.year,new Date().getFullYear());
     const years=Array.from({length:Math.max(1,maxYear-minYear+1)},(_,i)=>minYear+i).filter(y=>y>=2000&&y<=2100);
     const isAdmin=window.MinimumStockAuthUI?.getCurrentAccess?.()?.role==='admin';
     const sections=GROUPS.map(g=>{
-      const months=report.months[g.key],at=months[state.month-1];
+      const months=report.months[g.key],at=months[state.month-1],annual=annualSummary(months,g);
       const body=metricRows.map(metric=>`<tr class="${metric.key==='kpi'?'waste-main-row':metric.key==='discrepancy'?'waste-audit-row':''}">
         <th scope="row"><span>${html(metric.name)}</span><small>${html(metric.hint)}</small></th>
-        ${months.map((r,i)=>`<td class="${i+1===state.month?'waste-selected':''}">${metric.isResult?(!r.covered?'LIS ไม่ครบ':r.provisional?'ตรวจสอบ':r.kpi===null?'ไม่มีตัวหาร':r.kpi<=g.target?'ผ่าน':'เกินเกณฑ์'):scalar(r[metric.key],metric.percent)}</td>`).join('')}</tr>`).join('');
+        ${months.map((r,i)=>`<td class="${i+1===state.month?'waste-selected':''}">${metric.isResult?(!r.covered?'LIS ไม่ครบ':r.provisional?'ตรวจสอบ':r.kpi===null?'ไม่มีตัวหาร':r.kpi<=g.target?'ผ่าน':'เกินเกณฑ์'):scalar(r[metric.key],metric.percent)}</td>`).join('')}<td class="waste-annual">${metric.isResult?annual.result:scalar(annual[metric.key],metric.percent)}</td></tr>`).join('');
       return `<section class="simple-panel waste-section" aria-label="KPI ${html(g.label)}">
         <div class="waste-section-head"><div><h3>${html(g.label)}</h3><span class="small-muted">${html(g.en)} · เป้าหมาย ≤ ${g.target}%</span></div><div class="waste-kpi-figure"><strong>${scalar(at.kpi,true)}</strong>${statusHtml(at,g)}</div></div>
-        <div class="waste-table-scroll" tabindex="0" aria-label="ตารางสถิติรายเดือน ${html(g.label)}"><table class="waste-table"><thead><tr><th>รายการ (ยูนิต)</th>${months.map((r,i)=>`<th class="${i+1===state.month?'waste-selected':''}">${TH_MONTH[i+1]}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>
-        <div class="waste-bottom-row"><span>รายงานเดือน ${TH_MONTH[state.month]} ${state.year+543} · ใช้ ${fmt(at.used)} · หมดอายุ ${fmt(at.expired)} · ปลายเดือน LIS ${fmt(at.ending)}</span>
+        <div class="waste-table-scroll" tabindex="0" aria-label="ตารางสถิติรายเดือน ${html(g.label)}"><table class="waste-table"><thead><tr><th>รายการ (ยูนิต)</th>${months.map((r,i)=>`<th class="${i+1===state.month?'waste-selected':''}">${monthLabel(r.begin)}</th>`).join('')}<th class="waste-annual">รวมปี</th></tr></thead><tbody>${body}</tbody></table></div>
+        <div class="waste-bottom-row"><span>รายงานเดือน ${monthLabel(at.begin)} · ใช้ ${fmt(at.used)} · หมดอายุ ${fmt(at.expired)} · ปลายเดือน LIS ${fmt(at.ending)}</span>
         <span>${!at.covered?'ต้องตรวจสอบข้อมูล LIS ต้นช่วงหรือปลายเดือนนี้':at.unknownExit?`พบ ${fmt(at.unknownExit)} family ที่ไม่มีวันจ่าย/ออก`:at.estimatedExpiry?`อนุมานวันหมดอายุ ${fmt(at.estimatedExpiry)} ถุง`:at.checkBalance!==0?'ยอดเคลื่อนไหวไม่สมดุล':'สมดุลรายการ LIS = 0 (ไม่ใช่ผลตรวจนับจริง)'}</span></div>
       </section>`;
     }).join('');
@@ -289,13 +329,14 @@
     box.innerHTML=`<div class="waste-dashboard">
       <div class="simple-page-head mt-2"><div><h1>ประสิทธิภาพการลดความสูญเสีย</h1><div class="page-subline">สถิติรายเดือน · 4 กลุ่มผลิตภัณฑ์ · นับ Bag family ไม่ซ้ำ</div></div>
         <div class="waste-actions no-print"><button class="btn btn-light" type="button" onclick="CNMIWastage.retry()">รีเฟรช LIS</button><button class="btn btn-light" type="button" onclick="CNMIWastage.exportExcel()">ส่งออก Excel</button><button class="btn btn-light" type="button" onclick="window.print()">พิมพ์ / PDF</button></div></div>
-      <div class="simple-panel waste-toolbar no-print"><label>ปี พ.ศ. <select id="waste-year" class="form-select" onchange="CNMIWastage.chooseYear(this.value)">${years.map(y=>`<option value="${y}" ${y===state.year?'selected':''}>${y+543}</option>`).join('')}</select></label>
-        <label>เลือกเดือนที่เน้น <select class="form-select" onchange="CNMIWastage.chooseMonth(this.value)">${TH_MONTH.slice(1).map((m,i)=>`<option value="${i+1}" ${i+1===state.month?'selected':''}>${m}</option>`).join('')}</select></label><span>ช่วงข้อมูล LIS ล่าสุดถึง: <strong>${html(state.latest?.source_end_date||'ไม่พบวันที่ครอบคลุมไฟล์')}</strong></span></div>
+      <div class="simple-panel waste-toolbar no-print"><label>รูปแบบปี <select class="form-select" onchange="CNMIWastage.chooseMode(this.value)"><option value="fiscal" ${state.fiscal?'selected':''}>ปีงบประมาณ (ต.ค.–ก.ย.)</option><option value="calendar" ${!state.fiscal?'selected':''}>ปีปฏิทิน (ม.ค.–ธ.ค.)</option></select></label>
+        <label>${state.fiscal?'ปีงบประมาณ':'ปีปฏิทิน'} พ.ศ. <select id="waste-year" class="form-select" onchange="CNMIWastage.chooseYear(this.value)">${years.map(y=>`<option value="${y}" ${y===state.year?'selected':''}>${y+543}</option>`).join('')}</select></label>
+        <label>เลือกเดือนที่เน้น <select class="form-select" onchange="CNMIWastage.chooseMonth(this.value)">${report.months.RBC.map((r,i)=>`<option value="${i+1}" ${i+1===state.month?'selected':''}>${monthLabel(r.begin)}</option>`).join('')}</select></label><span>ช่วงข้อมูล LIS ล่าสุดถึง: <strong>${html(state.latest?.source_end_date||state.maxDate||'ไม่พบวันที่ครอบคลุมไฟล์')}</strong></span></div>
       <div class="waste-target-grid">${GROUPS.map(g=>{const at=report.months[g.key][state.month-1];return `<div class="waste-target-card"><span>${html(g.label)}</span><strong>${scalar(at.kpi,true)}</strong><div><small>เป้าหมาย ≤ ${g.target}%</small>${statusHtml(at,g)}</div></div>`;}).join('')}</div>
       ${(warning.missingExit||warning.noArrival||warning.conflict||warning.estimatedExpiry||warning.unclassified)?`<div class="waste-notice"><strong>คุณภาพข้อมูลที่ต้องทบทวน</strong><span>ไม่พบวันจ่าย/ออก ${fmt(warning.missingExit)} family · Expired อนุมานจากวันหมดอายุ ${fmt(warning.estimatedExpiry)} · ไม่มีวันรับเข้า ${fmt(warning.noArrival)} · ข้อมูลขัดแย้ง ${fmt(warning.conflict)} · แหล่งรับเข้าไม่ชัด ${fmt(warning.unclassified)}</span></div>`:''}
-      <p class="waste-formula"><strong>สูตรตามตารางที่กำหนด:</strong> หมดอายุ ÷ (ผลิตภายใน CNMI + รับจาก TRC + คงคลังปลายเดือน) × 100 (Cryo: ใช้ TRC + ปลายเดือน) · อัตราใช้ประโยชน์ = จ่ายใช้ ÷ (คงคลังต้นเดือน + รับเข้าทุกแหล่ง) × 100</p>
+      <p class="waste-formula"><strong>สูตร KPI:</strong> หมดอายุ ÷ (ผลิตภายใน CNMI + รับจาก TRC + คงคลังปลายเดือน) × 100 (Cryo: ใช้ TRC + ปลายเดือน) · Utilization รายเดือน = จ่ายใช้ ÷ (คงคลังต้นเดือน + รับเข้าทุกแหล่ง) × 100 · รวมปีใช้ผลรวมตัวตั้งและตัวหารรายเดือน ไม่เฉลี่ยร้อยละโดยตรง</p>
       ${sections}
-      <section class="simple-panel waste-real-inventory"><div class="panel-heading-row"><div><h3>ตรวจสอบผลต่างทางบัญชี · ${TH_MONTH[state.month]} ${state.year+543}</h3><div class="small-muted">ใช้ยอดตรวจนับจริงมาเทียบกับยอดคงคลังจาก LIS · ไม่มีผลตรวจนับจะแสดง “—” ไม่ใช่ศูนย์</div></div></div>
+      <section class="simple-panel waste-real-inventory"><div class="panel-heading-row"><div><h3>ตรวจสอบผลต่างทางบัญชี · ${monthLabel(report.months.RBC[state.month-1].begin)}</h3><div class="small-muted">ใช้ยอดตรวจนับจริงมาเทียบกับยอดคงคลังจาก LIS · ไม่มีผลตรวจนับจะแสดง “—” ไม่ใช่ศูนย์</div></div></div>
         ${state.schemaReady?`<div class="waste-check-grid">${actualInputs}</div>`:`<div class="waste-notice"><strong>ยังไม่ได้ติดตั้งตารางตรวจนับจริง</strong><span>รายงานจาก LIS ใช้งานได้ แต่หากต้องการบันทึกสต๊อกตรวจนับและคำนวณ Discrepancy ให้รัน SQL-v2.9.108-MONTHLY-WASTAGE-CHECK.sql ที่ Supabase หนึ่งครั้ง</span></div>`}
         ${state.schemaReady&&!isAdmin?'<p class="small-muted">อ่านข้อมูลได้ตามสิทธิ์ผู้ใช้ · การบันทึกยอดตรวจนับสำหรับ Admin เท่านั้น</p>':''}</section>
       <details class="simple-panel waste-method"><summary>นิยามและข้อจำกัดการตรวจสอบข้อมูล</summary><p>Expired เท่านั้นที่เป็นตัวตั้ง; Rejected และทำลายด้วยเหตุอื่นแยกต่างหาก; Dedicated นับเป็นจ่ายใช้; Be Transformed ไม่ใช่ผลลัพธ์ปลายทาง หากถุง .S ถูกใช้ จะไม่คิดถุงหลักที่หมดอายุซ้ำ</p><p>วันที่จ่าย/ออกใช้ DateStockOut ถ้า Expired ไม่มีวันที่ออก จะอนุมานวันที่จาก ExpireDate และเตือนให้ตรวจสอบ หากไม่มีวันที่ออกของสถานะอื่น จะไม่สร้างวันที่ขึ้นเอง</p><p>ยอดคงคลังต้น/ปลายเป็นยอดคำนวณย้อนหลังจาก LIS ไม่ใช่ผลตรวจนับจริง; ปริมาณรับจากโรงพยาบาลอื่นแยกแสดงเพื่อทวนสมดุล และไม่อยู่ในตัวหาร KPI ตามตารางต้นฉบับ</p><p>เดือนแรกของประวัติ LIS อาจมีเลือดคงคลังที่รับเข้าก่อนช่วงข้อมูล จึงยังไม่รับรองผลอัตโนมัติ เมื่อไม่มีประวัติ LIS ก่อนเดือนที่เลือกครบถ้วน หรือข้อมูลเดือนล่าสุดยังไม่ครบ ต้องตรวจสอบก่อนรับรอง KPI. การแสดง 0 หมายถึงนับได้ 0; เครื่องหมาย — หมายถึงยังไม่มีค่าหรือคำนวณไม่ได้</p></details>
@@ -306,11 +347,11 @@
     if(!box||currentBloodKpiRoute!=='wastage')return;
     const request=++state.request;
     state.summary=null;
-    box.innerHTML=`<div class="simple-panel">กำลังคำนวณ KPI ปี ${state.year+543} บน Supabase... (ไม่โหลดประวัติถุงเลือดทั้งหมด)</div>`;
+    box.innerHTML=`<div class="simple-panel">กำลังคำนวณ KPI ${state.fiscal?'ปีงบประมาณ':'ปีปฏิทิน'} ${state.year+543} บน Supabase... (ไม่โหลดประวัติถุงเลือดทั้งหมด)</div>`;
     try {
       const [summary,actual]=await Promise.all([
-        MinimumStockBackend.getWastageMonthlySummary(state.year),
-        MinimumStockBackend.getWastageActualStock(state.year)
+        MinimumStockBackend.getWastageMonthlySummary(state.year,state.fiscal),
+        MinimumStockBackend.getWastageActualStock(state.year,state.fiscal)
       ]);
       if(request!==state.request||currentBloodKpiRoute!=='wastage'||!box.isConnected)return;
       if(!Array.isArray(summary)||summary.length!==48)throw new Error('ข้อมูลสรุปรายเดือนไม่ครบ 48 รายการ กรุณาตรวจสอบ SQL และสิทธิ์ข้อมูล');
@@ -344,5 +385,5 @@
     }
   }
   function retry(){state.summary=null;state.actual=[];state.minDate=null;state.maxDate=null;load();}
-  window.CNMIWastage={load,chooseYear,chooseMonth,exportExcel:exportReport,saveActual,retry,_test:{familiesFromRows,sumMonth,buildReport,reportFromSummary,group,outcome}};
+  window.CNMIWastage={load,chooseYear,chooseMode,chooseMonth,exportExcel:exportReport,saveActual,retry,_test:{familiesFromRows,sumMonth,buildReport,reportFromSummary,annualSummary,periodMonths,group,outcome}};
 })();

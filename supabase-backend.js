@@ -3027,18 +3027,21 @@
     return { rows, count: rows.length };
   }
 
-  // v2.9.110 — O(N) event summary on the server; never download the entire LIS history.
-  async function getWastageMonthlySummary(year) {
+  // v2.9.111 — SELECT-only stable SQL RPC. Returns 48 rows for a fiscal/calendar year.
+  async function getWastageMonthlySummary(year, fiscal = true) {
     if (!isConfigured()) throw new Error("รายงาน Wastage ต้องเชื่อมต่อ Supabase");
     const y = Number(year);
     if (!Number.isInteger(y) || y < 2000 || y > 2100) throw new Error("ปีไม่ถูกต้อง");
-    const { data, error } = await getClient().rpc("minimum_stock_wastage_monthly_v29110", { p_year: y });
+    const { data, error } = await getClient().rpc("minimum_stock_wastage_monthly_v29111", { p_year: y, p_fiscal: Boolean(fiscal) });
     if (error) {
       if (/PGRST202|42883|Could not find the function|does not exist|schema cache/i.test(String(error.code || '') + ' ' + String(error.message || ''))) {
-        throw new Error("ต้องติดตั้งฟังก์ชันสรุป KPI บน Supabase ก่อน: รัน SQL-v2.9.110-WASTAGE-TIMEOUT-FIX.sql หนึ่งครั้ง (ไม่มีการแก้ไขข้อมูล LIS เดิม)");
+        throw new Error("ต้องติดตั้งฟังก์ชันสรุป KPI บน Supabase ก่อน: รัน SQL-v2.9.111-WASTAGE-READONLY-FISCAL.sql หนึ่งครั้ง (ไม่มีการแก้ไขข้อมูล LIS เดิม)");
       }
       if (/statement timeout|canceling statement due to statement timeout/i.test(String(error.message || ""))) {
-        throw new Error("Supabase ใช้เวลาคำนวณเกินกำหนด (statement timeout) แม้ใช้ SQL v2.9.110 แล้ว กรุณาแจ้งโนอาเพื่อวิเคราะห์ขนาดฐานและแผนการประมวลผล โดยไม่ต้องเพิ่ม timeout เอง");
+        throw new Error("Supabase ใช้เวลาคำนวณเกินกำหนด (statement timeout) แม้ใช้ SQL v2.9.111 แล้ว กรุณาแจ้งโนอาเพื่อวิเคราะห์ขนาดฐานและแผนการประมวลผล โดยไม่ต้องเพิ่ม timeout เอง");
+      }
+      if (/read-only transaction|cannot execute UPDATE/i.test(String(error.message || ""))) {
+        throw new Error("Supabase กำลังเรียกคำสั่งที่พยายามแก้ไขข้อมูลในโหมดอ่านอย่างเดียว: กรุณารัน SQL v2.9.111 ก่อน แล้วรีโหลดเว็บ (ไม่ต้องลบ LIS)");
       }
       throw new Error("สรุป KPI จาก Supabase ไม่สำเร็จ: " + error.message);
     }
@@ -3047,13 +3050,15 @@
 
   // A separately recorded actual count is necessary for an honest discrepancy.
   // The report works even before the optional v2.9.108 table has been installed.
-  async function getWastageActualStock(year) {
+  async function getWastageActualStock(year, fiscal = true) {
     if (!isConfigured()) return {schemaReady:false,rows:[]};
     const y=Number(year);
     if(!Number.isInteger(y)||y<2000||y>2100)throw new Error("ปีไม่ถูกต้อง");
+    const start=fiscal?`${y-1}-10-01`:`${y}-01-01`;
+    const end=fiscal?`${y}-09-01`:`${y}-12-01`;
     const {data,error}=await getClient().from("minimum_stock_monthly_inventory_checks")
       .select("month_start,product_family,actual_ending,updated_at")
-      .gte("month_start",`${y}-01-01`).lte("month_start",`${y}-12-01`);
+      .gte("month_start",start).lte("month_start",end);
     if(error) {
       if(/42P01|PGRST205|Could not find the table|does not exist|schema cache/i.test(String(error.code||'')+' '+String(error.message||'')))
         return {schemaReady:false,rows:[]};
