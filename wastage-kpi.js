@@ -1,4 +1,4 @@
-/* CNMI Wastage KPI v2.9.120 — status-confirmed expired parent only; family-level one-unit outcome; product filter. */
+/* CNMI Wastage KPI v2.9.121 — status-confirmed expired parent only; family-level one-unit outcome; product filter. */
 (function () {
   'use strict';
   const GROUPS = [
@@ -486,7 +486,7 @@
       detailSheet['!cols']=[{wch:43},{wch:29},...Array.from({length:12},()=>({wch:15})),{wch:16}];
       XLSX.utils.book_append_sheet(wb,detailSheet,g.en+' Detail');
     }
-    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.120.xlsx`);
+    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.121.xlsx`);
   }
   async function saveActual(g) {
     if(state.busy)return;
@@ -527,7 +527,6 @@
       const qaWarning=needsAudit ? `<div class="waste-audit-alert"><strong>ยังไม่รับรองค่า ${html(g.label)} จาก Cache</strong><span>${g.key==='PLATELET'?'ต้องตรวจยอดผลิตเองเฉพาะ 4 ชื่อผลิตภัณฑ์จาก LIS และคงคลังตามวันจริง':'ต้องตรวจรายการคงคลัง Cryo กับ ExpireDate / DateStockOut / Be Transformed ตาม Bag Family'} ก่อนใช้ตัวเลขเป็น KPI ทางการ · ตัวเลขด้านล่างยังแสดงค่าเดิมเพื่อ Audit</span></div>`:'';
       return `<section class="simple-panel waste-section" aria-label="KPI ${html(g.label)}">
         <div class="waste-section-head"><div><h3>${html(g.label)}</h3><span class="small-muted">${html(g.en)} · เป้าหมาย ≤ ${g.target}%</span></div><div class="waste-kpi-figure"><strong>${at.covered?scalar(at.kpi,true):'—'}</strong>${statusHtml(at,g)}</div></div>
-        ${qaWarning}
         <div class="waste-table-scroll" tabindex="0" aria-label="ตารางสถิติรายเดือน ${html(g.label)}"><table class="waste-table"><thead><tr><th>รายการ / หน่วย</th>${months.map((r,i)=>`<th class="${i+1===state.month?'waste-selected':''}">${monthLabel(r.begin)}</th>`).join('')}<th class="waste-annual">รวมปี</th></tr></thead><tbody>${body}</tbody></table></div>
         <details class="waste-detail-panel"><summary>ข้อมูลประกอบ LIS และรายการอื่น ๆ <span>เปิดดูเพิ่มเติม</span></summary>
           <div class="waste-table-scroll"><table class="waste-table waste-extra-table"><thead><tr><th>รายการเพิ่มเติม</th>${months.map(r=>`<th>${monthLabel(r.begin)}</th>`).join('')}<th class="waste-annual">รวมปี</th></tr></thead><tbody>${detailBody}</tbody></table></div>
@@ -547,22 +546,27 @@
         <div class="waste-actions no-print"><button class="btn btn-light" type="button" onclick="CNMIWastage.retry()">อ่านสรุปล่าสุด</button><button class="btn btn-light" type="button" onclick="CNMIWastage.exportExcel()">ส่งออก Excel</button><button class="btn btn-light" type="button" onclick="window.print()">พิมพ์ / PDF</button></div></div>
       <div class="simple-panel waste-toolbar no-print"><label>รูปแบบปี <select class="form-select" onchange="CNMIWastage.chooseMode(this.value)"><option value="fiscal" ${state.fiscal?'selected':''}>ปีงบประมาณ (ต.ค.–ก.ย.)</option><option value="calendar" ${!state.fiscal?'selected':''}>ปีปฏิทิน (ม.ค.–ธ.ค.)</option></select></label>
         <label>${state.fiscal?'ปีงบประมาณ':'ปีปฏิทิน'} พ.ศ. <select id="waste-year" class="form-select" onchange="CNMIWastage.chooseYear(this.value)">${years.map(y=>`<option value="${y}" ${y===state.year?'selected':''}>${y+543}</option>`).join('')}</select></label>
-        <label>เลือกเดือนที่เน้น <select class="form-select" onchange="CNMIWastage.chooseMonth(this.value)">${report.months.RBC.map((r,i)=>`<option value="${i+1}" ${i+1===state.month?'selected':''}>${monthLabel(r.begin)}</option>`).join('')}</select></label><span>ช่วงข้อมูล LIS ล่าสุดถึง: <strong>${html(state.latest?.source_end_date||state.maxDate||'ไม่พบวันที่ครอบคลุมไฟล์')}</strong></span></div>
-      <div class="waste-notice"><strong>ข้อมูลสรุปคำนวณล่าสุด: ${html(cacheAgeLabel())}</strong><span>หน้านี้อ่านผลรวมที่เก็บไว้ จึงไม่ต้องคำนวณประวัติหลายปีทุกครั้ง หากอัปโหลด LIS ใหม่ ให้รัน SQL รีเฟรชปีที่เกี่ยวข้องบน Supabase เพื่ออัปเดตตัวเลข</span></div>
-      ${report.cacheStale?`<div class="waste-notice waste-cache-stale"><strong>ข้อมูลสรุปยังไม่รวม LIS ที่อัปโหลดล่าสุด</strong><span>โปรดรีเฟรช Cache ใน Supabase SQL Editor ก่อนนำรายงานไปใช้ ผู้ใช้ทั่วไปไม่สามารถกดคำนวณหนักจากหน้าเว็บได้</span></div>`:''}
-      ${!state.summary.every(r=>r.platelet_internal_four_types_verified===true)?`<div class="waste-notice waste-cache-stale"><strong>รับเข้าเกล็ดเลือด: ยังไม่ได้ยืนยันชื่อผลิตเองทั้ง 4 รายการ</strong><span>ต้องตรวจสอบ/ปรับ SQL ให้ CNMI Internal นับเฉพาะ 4 ชื่อที่ระบุ และไม่รวม LDPC; รายการใช้งาน/หมดอายุยังคงนับตามสถานะ ก่อนนำผลเกล็ดเลือดไปอ้างอิงเป็นตัวชี้วัดทางการ</span></div>`:''}
+        <label>เลือกเดือนที่เน้น <select class="form-select" onchange="CNMIWastage.chooseMonth(this.value)">${report.months.RBC.map((r,i)=>`<option value="${i+1}" ${i+1===state.month?'selected':''}>${monthLabel(r.begin)}</option>`).join('')}</select></label></div>
+      ${!state.summary.every(r=>r.platelet_internal_four_types_verified===true)||report.cacheStale
+        ? '<div class="kpi-unverified-inline" role="status">ข้อมูลบางกลุ่มอยู่ระหว่างตรวจสอบ</div>':''}
       <div class="waste-target-grid">${GROUPS.map(g=>{const at=report.months[g.key][state.month-1];return `<div class="waste-target-card"><span>${html(g.label)}</span><strong>${at.covered?scalar(at.kpi,true):'—'}</strong><div><small>เป้าหมาย ≤ ${g.target}%</small>${statusHtml(at,g)}</div></div>`;}).join('')}</div>
-      ${(warning.missingExit||warning.noArrival||warning.conflict||warning.estimatedExpiry||warning.unclassified)?`<details class="simple-panel waste-method"><summary>ข้อมูลประกอบจาก LIS (ไม่รวมเป็นจำนวน Expired)</summary><p>ไม่พบวันจ่าย/ออก ${fmt(warning.missingExit)} family · วันสิ้นสุดอนุมาน / ปรับ Stock ${fmt(warning.estimatedExpiry)} · ไม่มีวันรับเข้า ${fmt(warning.noArrival)} · ข้อมูลขัดแย้ง ${fmt(warning.conflict)} · แหล่งรับเข้าไม่ชัด ${fmt(warning.unclassified)}</p></details>`:''}
-      <details class="simple-panel waste-method"><summary>สูตรที่ใช้คำนวณ KPI</summary><p class="waste-formula"><strong>สูตร KPI:</strong> หมดอายุ ÷ (ผลิตภายใน CNMI + รับจาก TRC + คงคลังปลายเดือน) × 100 (Cryo: ใช้ TRC + ปลายเดือน) · Utilization รายเดือน = จ่ายใช้ ÷ (คงคลังต้นเดือน + รับเข้าทุกแหล่ง) × 100 · รวมปี = หมดอายุทั้งปี ÷ (ผลิตใน CNMI ทั้งปี + TRC ทั้งปี + คงคลังสิ้นปี) · คงคลังต้น/ปลายปีไม่นำ 12 เดือนมาบวกกัน</p></details>
       <div class="simple-panel waste-toolbar no-print"><label for="waste-group-filter">แสดงตารางผลิตภัณฑ์
         <select id="waste-group-filter" class="form-select" onchange="CNMIWastage.chooseGroup(this.value)"><option value="ALL" ${state.visibleGroup==='ALL'?'selected':''}>ทั้งหมด 4 กลุ่ม</option>
         ${GROUPS.map(g=>`<option value="${g.key}" ${state.visibleGroup===g.key?'selected':''}>${html(g.label)}</option>`).join('')}
-        </select></label><span class="small-muted">จำนวน Expired = ถุงหลัก Status Expired และไม่มีถุงใดในครอบครัวจ่ายใช้แล้ว (นับครั้งเดียว)</span></div>
+        </select></label></div>
       ${sections}
-      <details class="simple-panel waste-real-inventory"><summary>บันทึกยอดตรวจนับจริงและผลต่างทางบัญชี (เพิ่มเติม)</summary><div class="panel-heading-row"><div><h3>ผลต่างทางบัญชี · ${monthLabel(report.months.RBC[state.month-1].begin)}</h3><div class="small-muted">ใช้ยอดตรวจนับจริงมาเทียบกับยอดคงคลังจาก LIS · ไม่มีผลตรวจนับจะแสดง “—” ไม่ใช่ศูนย์</div></div></div>
-        ${state.schemaReady?`<div class="waste-check-grid">${actualInputs}</div>`:`<div class="waste-notice"><strong>ยังไม่ได้ติดตั้งตารางตรวจนับจริง</strong><span>รายงานจาก LIS ใช้งานได้ แต่หากต้องการบันทึกสต๊อกตรวจนับและคำนวณ Discrepancy ให้รัน SQL-v2.9.108-MONTHLY-WASTAGE-CHECK.sql ที่ Supabase หนึ่งครั้ง</span></div>`}
-        ${state.schemaReady&&!isAdmin?'<p class="small-muted">อ่านข้อมูลได้ตามสิทธิ์ผู้ใช้ · การบันทึกยอดตรวจนับสำหรับ Admin เท่านั้น</p>':''}</details>
-      <details class="simple-panel waste-method"><summary>นิยามและวิธีนับถุงเลือด</summary><p><strong>ตัวตั้ง Expired:</strong> ต้องมี Status=Expired ที่ถุงหลักและไม่มีสมาชิกถุงใดในครอบครัวที่ Released หรือ Dedicated; ถุง .S1/.S.1/.S2/.S.2 ที่หมดอายุลำพังไม่นับ. หนึ่งครอบครัวนับได้มากสุดหนึ่งถุงต่อกลุ่มผลิตภัณฑ์; Be Transformed ไม่ใช่ผลลัพธ์ปลายทาง</p><p>คงคลังต้นเดือนนับก่อน Action ของวันที่ 1; DateStockIn คือวันรับเข้าจริง และ DateStockOut คือวันจ่าย/Action จริง ถ้า LIS ยังแสดง Available/Be Transformed แต่พ้น ExpireDate จะไม่ค้างเป็น Stock ตลอดไป: ใช้เป็นการปรับยอดคงคลังตามวันสิ้นสุดแยกต่างหาก <strong>ไม่ใช่จำนวน Expired ใน KPI</strong>; รายการออกจริงแต่ไม่มีวันที่ออกต้องตรวจสอบ</p><p>ยอดคงคลังต้น/ปลายเป็นยอดคำนวณย้อนหลังจาก LIS ไม่ใช่ผลตรวจนับจริง; ช่องรวมปีสำหรับคงคลังแสดงยอดต้นปีและสิ้นปี (ไม่ใช่ผลบวก 12 เดือน); ปริมาณรับจากโรงพยาบาลอื่นแยกแสดงเพื่อทวนสมดุล และไม่อยู่ในตัวหาร KPI ตามตารางต้นฉบับ</p><p>เดือนแรกของประวัติ LIS อาจมีเลือดคงคลังที่รับเข้าก่อนช่วงข้อมูล ต้องมีข้อมูลเพียงพอในช่วงเดือนนั้นจึงแสดงผล KPI; รายการอนุมานจาก ExpireDate จัดเป็นข้อมูลประกอบ LIS ไม่ใช่เกณฑ์ตัดสิน KPI; การแสดง 0 หมายถึงนับได้ 0; เครื่องหมาย — หมายถึงยังไม่มีค่าหรือคำนวณไม่ได้; รอตรวจสอบ = ยังไม่ยืนยันข้อกำหนดผลิตเองและ/หรือคงคลังจาก LIS</p></details>
+      ${isAdmin?`<details class="simple-panel kpi-admin-audit-panel no-print"><summary>ตรวจสอบข้อมูลและบันทึกสต๊อก (Admin)</summary>
+        <div class="kpi-admin-audit-inner">
+          <p>Cache ล่าสุด: ${html(cacheAgeLabel())}${report.cacheStale?' · อาจเก่ากว่าข้อมูล LIS':''}</p>
+          <p>รายการ LIS: วันจ่ายออกไม่ครบ ${fmt(warning.missingExit)} · วันสิ้นสุดอนุมาน ${fmt(warning.estimatedExpiry)} · วันรับเข้าไม่ครบ ${fmt(warning.noArrival)} · ข้อมูลขัดแย้ง ${fmt(warning.conflict)} · แหล่งรับเข้าไม่ชัด ${fmt(warning.unclassified)}</p>
+          <p>เกล็ดเลือดผลิตเองต้องนับเฉพาะ 4 ชนิด และคงคลัง Platelet/Cryo ต้องตรวจระดับ Bag Family ใน Supabase ก่อนรับรองรายงาน</p>
+          ${state.schemaReady?`<div class="waste-check-grid">${actualInputs}</div>`:'<p>ยังไม่มีตารางตรวจนับจริงใน Supabase</p>'}
+          <details class="waste-method"><summary>สูตรและนิยามการคำนวณ</summary>
+            <p>Expired ต้องเป็นถุงหลักที่มีสถานะ Expired และไม่มีการใช้สมาชิกถุงใดในครอบครัวซ้ำ. ถุง .S/.U เป็นสมาชิก Bag Family เดียวกัน; Be Transformed ไม่ใช่สถานะ Used/Expired</p>
+            <p>ตัวหาร KPI = ผลิตภายใน CNMI + กาชาด + คงคลังสิ้นเดือน (Cryo ไม่รวมผลิตภายใน); ใช้ประโยชน์ = ใช้/จ่าย ÷ คงคลังต้นเดือนและรับเข้าทุกแหล่ง</p>
+          </details>
+        </div>
+      </details>`:''}
     </div>`;
   }
   async function loadYear(){

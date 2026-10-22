@@ -3157,7 +3157,7 @@ function navigateToPageRoute(page, btn = null) {
 }
 
 function isAdminRoutePage(page) {
-  return ['admin', 'admin-add'].includes(page);
+  return ['admin', 'admin-add', 'audit'].includes(page);
 }
 
 function handleAppHashRoute(force = false) {
@@ -4182,7 +4182,7 @@ function renderAlignedWastageKpi({route, yearReports, filters, year}) {
     const row=latestComplete(g), metric=row?(isExpiry?row.kpi:row.utilization):null;
     return `<button type="button" class="kpi-aligned-group ${g.key===selected.key?'is-selected':''}" onclick="changeKpiAlignedGroup('${g.key}')" aria-pressed="${g.key===selected.key}">
       <span>${escapeOutreachHtml(g.label)}</span><strong>${formatRate(metric)}</strong>
-      <small>${row?formatThaiMonthYear(row.begin):'ยังไม่มีข้อมูลครบ'}${['PLATELET','CRYO'].includes(g.key)?' · ตรวจสอบ LIS':''}${isExpiry?' · เป้าหมาย ≤ '+g.target+'%':''}</small>
+      <small>${row?formatThaiMonthYear(row.begin):'ยังไม่มีข้อมูลครบ'}${['PLATELET','CRYO'].includes(g.key)?' · รอยืนยัน':''}${isExpiry?' · เป้าหมาย ≤ '+g.target+'%':''}</small>
     </button>`;
   }).join('');
   const verified = yearReports.every(item=>item.plateletFourTypesVerified);
@@ -4198,19 +4198,26 @@ function renderAlignedWastageKpi({route, yearReports, filters, year}) {
        <td class="text-end">${covered?formatRate(row.kpi):'—'}</td>
     </tr>`;
   }).join('');
+  // Keep the result view quiet. Internal cache reconciliation belongs to Admin.
+  const isAdmin = window.MinimumStockAuthUI?.getCurrentAccess?.()?.role === 'admin';
   const latestStale = yearReports.some(item=>item.cacheStale || !Number.isFinite(Date.parse(item.refreshedAt)));
   const conflictingSnapshots = yearReports.reduce((n,item)=>n+(item.cacheConflicts||0),0);
   const suppressedOldMonths = yearReports.reduce((n,item)=>n+(item.staleCalendarSuppressed||0),0);
   const outdatedFiscalMonths = yearReports.reduce((n,item)=>n+(item.fiscalNeedsRefresh||0),0);
+  const requiresVerification = ['PLATELET','CRYO'].includes(selected.key)
+    && yearReports.some(item=>selected.key==='CRYO'?!item.stockLedgerVerified:(!item.plateletFourTypesVerified||!item.stockLedgerVerified));
+  const adminAuditNotes = [
+    requiresVerification?`<li>กลุ่ม ${escapeOutreachHtml(selected.label)}: ยังต้องตรวจการคัดประเภท รับเข้า และคงคลังระดับ Bag Family</li>`:'',
+    conflictingSnapshots?`<li>Cache FY/CY ไม่ตรงกัน ${conflictingSnapshots.toLocaleString()} จุด</li>`:'',
+    suppressedOldMonths?`<li>เว้น Cache เก่า ${suppressedOldMonths.toLocaleString()} จุดข้อมูล</li>`:'',
+    outdatedFiscalMonths?`<li>FY ต้องรีเฟรช ${outdatedFiscalMonths.toLocaleString()} จุด</li>`:'',
+    latestStale?'<li>มี Cache ที่เก่ากว่าการนำเข้า LIS หรือไม่มีเวลารีเฟรช</li>':''
+  ].filter(Boolean).join('');
+  const adminAudit = isAdmin && adminAuditNotes
+    ? `<details class="simple-panel kpi-admin-audit-panel no-print"><summary>ตรวจสอบข้อมูล (Admin)</summary><ul>${adminAuditNotes}</ul><p>การแสดงผลไม่ใช่การยืนยันว่าข้อมูล LIS ผ่าน Audit แล้ว</p></details>`:'';
   currentBloodKpiRouteData={route,year,yearReports,filters,aligned:true};
-  return `${kpiPageHeader(title,'อ่านค่าจาก Cache เดียวกับ KPI ประสิทธิภาพการลดความสูญเสีย',year,yearReports.map(x=>x.year))}
-    <div class="simple-panel mb-3 kpi-aligned-scope"><strong>ฐานคำนวณเดียวกัน</strong><span>เทียบค่าแบบรายเดือนและแยก 4 กลุ่มผลิตภัณฑ์ รวมทุกแหล่งรับเข้า/หมู่เลือด/Rh · ไม่ใช้สูตร Used ÷ (Used + Expired)</span></div>
-    ${selected.key==='PLATELET' && !verified ? `<div class="waste-notice waste-cache-stale mb-3"><strong>เกล็ดเลือด: ยอดผลิตเองยังไม่ยืนยัน</strong><span>นับเฉพาะ 4 ชื่อผลิตภัณฑ์ตาม LIS และไม่นับ LDPC รวมในยอดรับเข้า ต้องตรวจ SQL Cache ก่อนรับรอง KPI</span></div>`:''}
-    ${['PLATELET','CRYO'].includes(selected.key)&&yearReports.some(item=>!item.stockLedgerVerified)?`<div class="waste-notice waste-cache-stale mb-3"><strong>คงคลัง ${escapeOutreachHtml(selected.label)} ยังต้อง Audit</strong><span>คงคลังจากประวัติ LIS เป็นค่าคำนวณ ไม่ใช่ยอดตรวจนับจริง โปรดตรวจ ExpireDate, DateStockOut และสถานะ Be Transformed ก่อนนำ KPI ไปใช้ทางการ</span></div>`:''}
-    ${conflictingSnapshots ? `<div class="waste-notice waste-cache-stale mb-3"><strong>พบ Cache ปีปฏิทินและปีงบประมาณไม่ตรงกัน</strong><span>มี ${conflictingSnapshots.toLocaleString()} คู่เดือน/ผลิตภัณฑ์ที่ยอดแตกต่าง · หน้านี้เลือกปีงบประมาณเป็นฐานเดียวกับหน้า KPI ลดความสูญเสียสำหรับเดือนที่มีข้อมูล · ยังต้องตรวจ SQL และ LIS ก่อนรับรอง KPI</span></div>`:''}
-    ${outdatedFiscalMonths ? `<div class="waste-notice waste-cache-stale mb-3"><strong>Cache ปีปฏิทินรีเฟรชใหม่กว่าปีงบประมาณบางเดือน</strong><span>มี ${outdatedFiscalMonths.toLocaleString()} คู่เดือน/ผลิตภัณฑ์ที่ควรรีเฟรชปีงบประมาณก่อนใช้รายงาน (ขณะนี้แสดง FY เพื่อให้ตรงกับ KPI ลดความสูญเสีย)</span></div>`:''}
-    ${suppressedOldMonths ? `<div class="waste-notice mb-3"><strong>ไม่แสดงเดือนที่มีเพียง Cache เก่า</strong><span>เว้นว่าง ${suppressedOldMonths.toLocaleString()} จุดข้อมูลที่มี Cache ปีปฏิทินเก่ากว่าปีงบประมาณที่มีอยู่ เพื่อไม่ให้แสดงยอดคงคลังสะสมผิดเป็นหมื่นถุง</span></div>`:''}
-    ${latestStale ? `<div class="waste-notice mb-3"><strong>ควรตรวจสอบรอบรีเฟรช Cache</strong><span>บางช่วงใช้ Snapshot ที่เก่าหรือยังไม่มีเวลารีเฟรช โปรดตรวจสอบกับ Supabase และ LIS</span></div>`:''}
+  return `${kpiPageHeader(title,'',year,yearReports.map(x=>x.year))}
+    ${requiresVerification?'<div class="kpi-unverified-inline" role="status">ข้อมูลกลุ่มนี้ยังอยู่ระหว่างตรวจสอบ</div>':''}
     <div class="kpi-aligned-groups" aria-label="เลือกกลุ่มผลิตภัณฑ์">${groupCards}</div>
     <div class="simple-panel kpi-aligned-focus mb-3">
       <div><span>${isExpiry?'หมดอายุ ÷ (ผลิตภายใน CNMI + กาชาด + คงคลังปลายเดือน)':'จ่ายใช้ ÷ (คงคลังต้นเดือน + รับเข้าทุกแหล่ง)'}</span><strong>${formatRate(latestRate)}</strong><small>${escapeOutreachHtml(selected.label)} · ${escapeOutreachHtml(latestLabel)}</small></div>
@@ -4218,12 +4225,13 @@ function renderAlignedWastageKpi({route, yearReports, filters, year}) {
     </div>
     <div class="simple-panel kpi-executive-panel mb-3"><div class="panel-heading-row"><h3>เทียบปี · ${escapeOutreachHtml(selected.label)} (${isExpiry?'หมดอายุ':'ใช้ประโยชน์'})</h3></div>
       ${renderKpiYearOverlayChart(chartRows,'value',{title:`${selected.label} · ${isExpiry?'อัตราหมดอายุ':'อัตราใช้ประโยชน์'}`,unit:'%',yMax:isExpiry?undefined:100,showMultiYearLabels:true,labelDecimals:2})}
-      <p class="small-muted mt-2">จุดกราฟแสดงเปอร์เซ็นต์จาก Cache 2 ตำแหน่ง · ค่าเกล็ดเลือดและ Cryo ที่ยังไม่ตรวจสอบเป็นข้อมูลเบื้องต้น · เดือนที่ข้อมูลไม่ครบเว้นว่าง</p>
+      <p class="small-muted mt-2">เดือนที่ไม่มีข้อมูลจะเว้นว่าง ไม่แทนด้วย 0%</p>
     </div>
     <details class="simple-panel kpi-aligned-table mb-3"><summary>ดูตัวตั้ง ตัวหาร และผลรายเดือน (${escapeOutreachHtml(selected.label)})</summary>
       <div class="table-responsive"><table class="table simple-table align-middle"><thead><tr><th>เดือน</th><th class="text-end">ใช้/จ่าย</th><th class="text-end">พร้อมใช้</th><th class="text-end">ใช้ประโยชน์</th><th class="text-end">หมดอายุ</th><th class="text-end">ตัวหาร KPI</th><th class="text-end">หมดอายุ (%)</th></tr></thead><tbody>${chosenTable||'<tr><td colspan="7">ไม่มีข้อมูลในช่วงนี้</td></tr>'}</tbody></table></div>
     </details>
-    ${renderKpiInfoDetails('สูตรเดียวกับ KPI ลดความสูญเสีย', 'หมดอายุ (%) = Expired ของ Bag Family ÷ (ผลิตภายใน CNMI + กาชาด + คงคลังปลายเดือน) × 100; Cryo ไม่รวมผลิตภายใน. ใช้ประโยชน์ (%) = จ่ายใช้ ÷ (คงคลังต้นเดือน + รับเข้าทุกแหล่ง) × 100. สูตรทั้งสองมีตัวหารต่างกัน จึงไม่จำเป็นต้องรวมได้ 100%.')}`;
+    ${adminAudit}
+    ${isAdmin?renderKpiInfoDetails('วิธีคำนวณ (Admin)', 'หมดอายุ (%) = Expired ÷ (ผลิตภายใน CNMI + กาชาด + คงคลังปลายเดือน) × 100; Cryo ไม่รวมผลิตภายใน. ใช้ประโยชน์ (%) = จ่ายใช้ ÷ (คงคลังต้นเดือน + รับเข้าทุกแหล่ง) × 100.'):''}`;
 }
 function changeKpiAlignedGroup(group) {
   if (!KPI_ALIGNED_GROUPS.some(g=>g.key===group)) return;
