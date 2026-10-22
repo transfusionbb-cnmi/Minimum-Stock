@@ -1,4 +1,4 @@
-/* CNMI Wastage KPI v2.9.116 — FY default, readable KPI status, Red Book-style summary, details on demand. */
+/* CNMI Wastage KPI v2.9.117 — status-confirmed expired parent only; family-level one-unit outcome; product filter. */
 (function () {
   'use strict';
   const GROUPS = [
@@ -16,7 +16,7 @@
   const periodMonths = (year,fiscal) => Array.from({length:12},(_,i)=>
     new Date(Date.UTC(year-(fiscal?1:0),(fiscal?9:0)+i,1)).toISOString().slice(0,10));
   const monthLabel = begin => `${TH_MONTH[Number(begin.slice(5,7))]} ${Number(begin.slice(0,4))+543}`;
-  const state = { year:initialYear, fiscal:true, month:1, summary:null, initialized:false, latest:null, actual:[], schemaReady:false, busy:false, request:0, maxDate:null, minDate:null };
+  const state = { year:initialYear, fiscal:true, month:1, visibleGroup:'ALL', summary:null, initialized:false, latest:null, actual:[], schemaReady:false, busy:false, request:0, maxDate:null, minDate:null };
   const fmt = (v) => Number(v || 0).toLocaleString('th-TH');
   const pct = (num,den) => den > 0 ? +(num*100/den).toFixed(2) : null;
   const html = (value) => String(value ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -57,49 +57,56 @@
     return 'unclassified';
   }
   // Families are grouped by parent Bag Number + category so an .S subunit cannot inflate counts.
+  // Lightweight JS parity helper for synthetic tests / fallback. The live web reads
+  // the authoritative monthly Supabase cache, rebuilt with SQL v2.9.117.
   function familiesFromRows(rows) {
     const m=new Map(), issues={noArrival:0,conflict:0,missingExit:0,estimatedExpiry:0,unclassified:0};
     for(const row of rows||[]) {
-      if (row.aggregateEligible===false) continue;
-      const g=group(row.productType),base=String(row.bagNumber||'').trim().toUpperCase().replace(/\.S\d+$/i,'');
-      if (!g || !base) continue;
+      if(row.aggregateEligible===false) continue;
+      const g=group(row.productType);
+      const id=String(row.bagNumber||'').trim().toUpperCase();
+      const base=id.replace(/\.S\.?\d+$/i,'');
+      if(!g||!base)continue;
       const key=base+'||'+g;
-      if(!m.has(key)) m.set(key,{key,group:g,records:[]});
-      m.get(key).records.push(row);
+      if(!m.has(key))m.set(key,{key,group:g,records:[]});
+      m.get(key).records.push({...row,_parent:id===base});
     }
-    const result=[];
-    for (const f of m.values()) {
+    const results=[];
+    for(const f of m.values()) {
       const arrivals=f.records.map(r=>ymd(r.dateStockIn)).filter(Boolean).sort();
-      if(!arrivals.length) {issues.noArrival++;continue;}
+      if(!arrivals.length){issues.noArrival++;continue;}
       const sourceValues=[...new Set(f.records.map(r=>classifySource(r.sourceGroup)))];
       const source=sourceValues.length===1?sourceValues[0]:'unclassified';
       if(source==='unclassified')issues.unclassified++;
-      const types=f.records.map(r=>({row:r,code:outcome(r)})).sort((a,b)=>priority[a.code]-priority[b.code]);
-      const winningCode=types[0]?.code||'open';
-      // The Released member wins over an Expired parent even if the parent had a .S split.
-      const winningRows=types.filter(x=>x.code===winningCode);
-      const dated=winningRows.map(x=>ymd(x.row.dateStockOut)).filter(Boolean).sort();
-      const expires=winningRows.map(x=>ymd(x.row.expireDate)).filter(Boolean).sort();
-      const fallbackExpiry=f.records.map(x=>ymd(x.expireDate)).filter(Boolean).sort()[0]||'';
-      const shelfExpiry=expires[0]||fallbackExpiry;
-      let exit=dated[0]||'',estimated=false,terminalMissingExit=false;
-      let eventOutcome=winningCode;
-      if(winningCode==='expired'&&shelfExpiry&&(!exit||shelfExpiry<exit)) {
-        exit=shelfExpiry;estimated=true;issues.estimatedExpiry++;
-      } else if(['open','transformed'].includes(winningCode)&&shelfExpiry){
-        // No final LIS action, but a past shelf-life date cannot remain Available forever.
-        exit=shelfExpiry;estimated=true;eventOutcome='expired';issues.estimatedExpiry++;
-      }
-      if(['used','expired','rejected','other'].includes(winningCode)&&!exit){
-        issues.missingExit++;terminalMissingExit=true;
-      }
-      if(winningCode==='conflict')issues.conflict++;
-      if(winningCode==='used'&&dated[0]&&shelfExpiry&&dated[0]>shelfExpiry)issues.conflict++;
-      const arrival=arrivals[0];
-      if(exit&&exit<arrival){issues.conflict++;terminalMissingExit=true;}
-      result.push({key:f.key,group:f.group,source,arrival,exit,outcome:eventOutcome,estimated,terminalMissingExit,shelfExpiry});
+      const selectRows=pred=>f.records.filter(pred);
+      const dateMin=(rs,field)=>rs.map(r=>ymd(r[field])).filter(Boolean).sort()[0]||'';
+      const dateMax=(rs,field)=>rs.map(r=>ymd(r[field])).filter(Boolean).sort().slice(-1)[0]||'';
+      const used=selectRows(r=>outcome(r)==='used');
+      const parentsExpired=selectRows(r=>r._parent&&String(r.status||'').trim().toUpperCase()==='EXPIRED');
+      const rejected=selectRows(r=>outcome(r)==='rejected');
+      const discarded=selectRows(r=>outcome(r)==='other');
+      const childrenExpired=selectRows(r=>!r._parent&&String(r.status||'').trim().toUpperCase()==='EXPIRED');
+      let outcomeCode='stockOnly',relevant=[];
+      if(used.length){outcomeCode='used';relevant=used;}
+      else if(parentsExpired.length){outcomeCode='expired';relevant=parentsExpired;}
+      else if(rejected.length){outcomeCode='rejected';relevant=rejected;}
+      else if(discarded.length){outcomeCode='other';relevant=discarded;}
+      else if(childrenExpired.length){relevant=childrenExpired;}
+      const shelfExpiry=dateMin(f.records,'expireDate');
+      let exit=outcomeCode==='stockOnly'&&childrenExpired.length
+        ? dateMax(relevant,'dateStockOut')
+        : dateMin(relevant,'dateStockOut');
+      const estimated=outcomeCode==='stockOnly';
+      if(!exit) exit=outcomeCode==='expired'?dateMin(parentsExpired,'expireDate'):(estimated?shelfExpiry:'');
+      if(outcomeCode==='expired'&&!dateMin(parentsExpired,'dateStockOut')&&exit)issues.estimatedExpiry++;
+      if(estimated&&exit)issues.estimatedExpiry++;
+      const terminalMissingExit=!exit;
+      if(terminalMissingExit)issues.missingExit++;
+      if(exit&&exit<arrivals[0])issues.conflict++;
+      results.push({key:f.key,group:f.group,source,arrival:arrivals[0],exit,
+        outcome:outcomeCode,estimated,terminalMissingExit,shelfExpiry});
     }
-    return {families:result,issues};
+    return {families:results,issues};
   }
   function sumMonth(families,year,month,actualValue=null,latestDate='',productFamily='',historyStart='') {
     const begin=`${year}-${String(month).padStart(2,'0')}-01`;
@@ -118,7 +125,7 @@
         else if(f.outcome==='expired')obj.expired++;
         else if(f.outcome==='rejected')obj.rejected++;
         else if(f.outcome==='other')obj.otherDiscard++;
-        if(f.estimated&&f.outcome==='expired')obj.estimatedExpiry++;
+        if(f.outcome==='stockOnly')obj.estimatedExpiry++;
       }
       if(aliveAtEnd)obj.ending++;
       if(!hasExit&&['used','expired','rejected','other'].includes(f.outcome))obj.unknownExit++;
@@ -131,7 +138,7 @@
     obj.utilization=pct(obj.used,obj.availability);
     // Independently recorded physical count is required to call a value a discrepancy.
     if(Number.isInteger(obj.actual)&&obj.actual>=0)obj.discrepancy=obj.actual-obj.ending;
-    obj.checkBalance=obj.beginning+obj.internal+obj.trc+obj.otherHospital+obj.unclassified-obj.used-obj.expired-obj.rejected-obj.otherDiscard-obj.ending;
+    obj.checkBalance=obj.beginning+obj.internal+obj.trc+obj.otherHospital+obj.unclassified-obj.used-obj.expired-obj.rejected-obj.otherDiscard-obj.estimatedExpiry-obj.ending;
     // If dates are missing, do not present a month's result as validated.
     obj.provisional=(!obj.covered||obj.unknownExit>0||obj.estimatedExpiry>0||obj.checkBalance!==0);
     return obj;
@@ -156,7 +163,7 @@
     {key:'trc',name:'รับจากสภากาชาดไทย',hint:'ตัวหาร'},
     {key:'otherHospital',name:'รับจากโรงพยาบาลอื่น',hint:'ข้อมูลประกอบ'},
     {key:'used',name:'จ่ายใช้ / ส่งต่อ',hint:'สนับสนุน'},
-    {key:'estimatedExpiry',name:'ใช้ ExpireDate เป็นวันสิ้นสุด',hint:'รายละเอียด LIS'},
+    {key:'estimatedExpiry',name:'ปรับคงคลังตาม ExpireDate / ถุงแบ่ง (ไม่นับ Expired KPI)',hint:'ปรับ Stock เท่านั้น'},
     {key:'unknownExit',name:'รายการวันที่ไม่ครบ',hint:'รายละเอียด LIS · ไม่รวม Stock'},
     {key:'rejected',name:'Rejected / ไม่เหมาะสม',hint:'แยก ไม่ใช่ Expired'},
     {key:'otherDiscard',name:'ทำลายเหตุอื่น',hint:'แยก ไม่ใช่ Expired'},
@@ -214,6 +221,7 @@
     loadYear();
   }
   function chooseMonth(month){const m=Number(month);if(m<1||m>12)return;state.month=m;render();}
+  function chooseGroup(group){const g=String(group);if(g!=='ALL'&&!GROUPS.some(x=>x.key===g))return;state.visibleGroup=g;render();}
 
   // Supabase returns 48 aggregated rows (not tens of thousands of LIS records).
   // Calculated percentages use the same formulas as v2.9.108; actual stock is separate.
@@ -249,7 +257,7 @@
         row.kpi=pct(row.expired,row.kpiDenominator);
         row.utilization=pct(row.used,row.availability);
         row.discrepancy=Number.isInteger(row.actual)&&row.actual>=0?row.actual-row.ending:null;
-        row.checkBalance=row.availability-row.used-row.expired-row.rejected-row.otherDiscard-row.ending;
+        row.checkBalance=row.availability-row.used-row.expired-row.rejected-row.otherDiscard-row.estimatedExpiry-row.ending;
         row.provisional=!row.covered||row.unknownExit>0||row.estimatedExpiry>0||row.checkBalance!==0||issues.missingExit>0||issues.conflict>0||issues.noArrival>0; // Audit metadata only, not KPI pass/fail.
         return row;
       });
@@ -288,7 +296,7 @@
     // Year-wide utilization: same opening inventory + receipt basis as a month, once per year.
     out.availability=out.beginning+sum('internal')+sum('trc')+sum('otherHospital')+sum('unclassified');
     out.utilization=pct(sum('used'),out.availability);
-    out.checkBalance=out.availability-sum('used')-sum('expired')-sum('rejected')-sum('otherDiscard')-out.ending;
+    out.checkBalance=out.availability-sum('used')-sum('expired')-sum('rejected')-sum('otherDiscard')-sum('estimatedExpiry')-out.ending;
     out.actual=null;out.discrepancy=null;
     out.covered=rows.every(r=>r.covered);
     out.provisional=rows.some(r=>r.provisional)||out.checkBalance!==0;
@@ -304,20 +312,20 @@
       ['สถานะ',report.cacheStale?'Cache เก่ากว่าการนำเข้า LIS ล่าสุด':'ผล KPI คำนวณจากสรุป LIS ใน Supabase'],
       ['วันที่คำนวณสถิติ Cache',cacheAgeLabel()],
       ['อัปเดตหลังนำเข้า','รัน SQL-v2.9.115-03-REFRESH-FY2569.sql (หรือคำสั่งรีเฟรชปีที่เลือก) ใน Supabase SQL Editor'],
-      ['สูตร KPI ตามตาราง','Expired ÷ (Internal CNMI + TRC + Ending Inventory) × 100; Cryo ไม่มี Internal ในตัวหาร'],
+      ['สูตร KPI ตามตาราง','สถานะ Expired ของถุงหลักเท่านั้น (1 family / ไม่มีสมาชิก Released,Dedicated) ÷ (Internal CNMI + TRC + Ending Inventory) × 100; Cryo ไม่มี Internal ในตัวหาร'],
       ['สูตร Utilization Rate รายเดือน','Used ÷ (Beginning + Internal + TRC + Other Hospital + Unclassified) × 100'],
       ['สูตร KPI รวมปี','Expired รวมปี ÷ (Internal รวมปี + TRC รวมปี + คงคลัง ณ สิ้นปี) × 100; Cryo ไม่รวม Internal'],
       ['สูตร Utilization Rate รวมปี','Used รวมปี ÷ (คงคลังต้นปี + รับเข้าตลอดปีทุกแหล่ง) × 100'],
-      ['นิยามคงคลัง','ต้นเดือน = ถุงที่รับเข้าก่อนวันที่ 1 และยังไม่มี Action สิ้นสุดก่อนวันที่ 1; สิ้นเดือน = ยอดหลัง Action เดือนนั้น; แยกประมาณจากวันหมดอายุ'],
+      ['นิยามคงคลัง','ต้นเดือน = ถุงที่รับเข้าก่อนวันที่ 1 และยังไม่มี Action สิ้นสุดก่อนวันที่ 1; สิ้นเดือน = ยอดหลัง Action เดือนนั้น; ExpireDate ของถุงที่ไม่ Expired เป็นเพียง Stock-only adjustment ไม่นับ KPI'],
       ['หมายเหตุ LIS','รายละเอียดการใช้ ExpireDate และรายการข้อมูลประกอบแยกจากผลผ่าน/ไม่ผ่านเกณฑ์'],
       ['ผลต่างทางบัญชี','Stock ตรวจนับจริง − Stock ปลายเดือนตาม LIS (ห้ามตั้งเป็น 0 เมื่อไม่มีการตรวจนับ)'],
-      ['ขอบเขต','นับ Bag family (ถุงหลัก + .S1/.S2) 1 ครั้งต่อกลุ่มผลิตภัณฑ์'],
+      ['ขอบเขต','นับ Bag family (ถุงหลัก + .S1/.S.1/.S2/.S.2) 1 ครั้งต่อกลุ่มผลิตภัณฑ์; ต้อง Expired ที่ถุงหลักเท่านั้น'],
       ['หมายเหตุ','Dedicated นับใช้, Rejected และทำลายเหตุอื่นไม่นับหมดอายุ, Transform เป็นขั้นตอนกลาง'],
       ['การจัดกลุ่ม','เม็ดเลือดแดง, พลาสมา, เกล็ดเลือด, Cryo; Whole Blood ไม่รวม'],
       ['ความครอบคลุม LIS',state.latest?.source_end_date||state.maxDate||'ยังไม่ยืนยัน'],
       ['ช่วงเดือนที่รายงาน',`${periodMonths(report.year,report.fiscal)[0]} ถึง ${periodMonths(report.year,report.fiscal)[11]}`],
       ['รายการที่วันจ่ายหายไป',report.issues.missingExit],
-      ['Expired ที่อนุมานจากวันหมดอายุ',report.issues.estimatedExpiry],
+      ['จำนวนรายการกำหนดวันที่จากวันหมดอายุ / ปรับ Stock เท่านั้น',report.issues.estimatedExpiry],
       ['ถุงที่ไม่มีวันรับเข้า',report.issues.noArrival],
       ['กลุ่มข้อมูลมีข้อขัดแย้ง',report.issues.conflict]
     ];
@@ -336,7 +344,7 @@
       detailSheet['!cols']=[{wch:43},{wch:29},...Array.from({length:12},()=>({wch:15})),{wch:16}];
       XLSX.utils.book_append_sheet(wb,detailSheet,g.en+' Detail');
     }
-    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.116.xlsx`);
+    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.117.xlsx`);
   }
   async function saveActual(g) {
     if(state.busy)return;
@@ -363,7 +371,7 @@
     const report=snapshot(),minYear=Number((state.minDate||'').slice(0,4))||state.year,maxYear=Math.max(Number((state.maxDate||'').slice(0,4))+(state.fiscal&&Number((state.maxDate||'').slice(5,7))>=10?1:0)||state.year,state.year,new Date().getFullYear());
     const years=Array.from({length:Math.max(1,maxYear-minYear+1)},(_,i)=>minYear+i).filter(y=>y>=2000&&y<=2100);
     const isAdmin=window.MinimumStockAuthUI?.getCurrentAccess?.()?.role==='admin';
-    const sections=GROUPS.map(g=>{
+    const sections=GROUPS.filter(g=>state.visibleGroup==='ALL'||g.key===state.visibleGroup).map(g=>{
       const months=report.months[g.key],at=months[state.month-1],annual=annualSummary(months,g);
       const makeRows = metrics=>metrics.map(metric=>{
         const isKpi=metric.key==='kpi',isResult=metric.isResult;
@@ -398,13 +406,17 @@
       <div class="waste-notice"><strong>ข้อมูลสรุปคำนวณล่าสุด: ${html(cacheAgeLabel())}</strong><span>หน้านี้อ่านผลรวมที่เก็บไว้ จึงไม่ต้องคำนวณประวัติหลายปีทุกครั้ง หากอัปโหลด LIS ใหม่ ให้รัน SQL รีเฟรชปีที่เกี่ยวข้องบน Supabase เพื่ออัปเดตตัวเลข</span></div>
       ${report.cacheStale?`<div class="waste-notice waste-cache-stale"><strong>ข้อมูลสรุปยังไม่รวม LIS ที่อัปโหลดล่าสุด</strong><span>โปรดรีเฟรช Cache ใน Supabase SQL Editor ก่อนนำรายงานไปใช้ ผู้ใช้ทั่วไปไม่สามารถกดคำนวณหนักจากหน้าเว็บได้</span></div>`:''}
       <div class="waste-target-grid">${GROUPS.map(g=>{const at=report.months[g.key][state.month-1];return `<div class="waste-target-card"><span>${html(g.label)}</span><strong>${at.covered?scalar(at.kpi,true):'—'}</strong><div><small>เป้าหมาย ≤ ${g.target}%</small>${statusHtml(at,g)}</div></div>`;}).join('')}</div>
-      ${(warning.missingExit||warning.noArrival||warning.conflict||warning.estimatedExpiry||warning.unclassified)?`<details class="simple-panel waste-method"><summary>ข้อมูลประกอบจาก LIS (ไม่ใช้ตัดสินผลผ่าน/ไม่ผ่าน)</summary><p>ไม่พบวันจ่าย/ออก ${fmt(warning.missingExit)} family · อ้างอิง ExpireDate ${fmt(warning.estimatedExpiry)} · ไม่มีวันรับเข้า ${fmt(warning.noArrival)} · ข้อมูลขัดแย้ง ${fmt(warning.conflict)} · แหล่งรับเข้าไม่ชัด ${fmt(warning.unclassified)}</p></details>`:''}
+      ${(warning.missingExit||warning.noArrival||warning.conflict||warning.estimatedExpiry||warning.unclassified)?`<details class="simple-panel waste-method"><summary>ข้อมูลประกอบจาก LIS (ไม่รวมเป็นจำนวน Expired)</summary><p>ไม่พบวันจ่าย/ออก ${fmt(warning.missingExit)} family · วันสิ้นสุดอนุมาน / ปรับ Stock ${fmt(warning.estimatedExpiry)} · ไม่มีวันรับเข้า ${fmt(warning.noArrival)} · ข้อมูลขัดแย้ง ${fmt(warning.conflict)} · แหล่งรับเข้าไม่ชัด ${fmt(warning.unclassified)}</p></details>`:''}
       <details class="simple-panel waste-method"><summary>สูตรที่ใช้คำนวณ KPI</summary><p class="waste-formula"><strong>สูตร KPI:</strong> หมดอายุ ÷ (ผลิตภายใน CNMI + รับจาก TRC + คงคลังปลายเดือน) × 100 (Cryo: ใช้ TRC + ปลายเดือน) · Utilization รายเดือน = จ่ายใช้ ÷ (คงคลังต้นเดือน + รับเข้าทุกแหล่ง) × 100 · รวมปี = หมดอายุทั้งปี ÷ (ผลิตใน CNMI ทั้งปี + TRC ทั้งปี + คงคลังสิ้นปี) · คงคลังต้น/ปลายปีไม่นำ 12 เดือนมาบวกกัน</p></details>
+      <div class="simple-panel waste-toolbar no-print"><label for="waste-group-filter">แสดงตารางผลิตภัณฑ์
+        <select id="waste-group-filter" class="form-select" onchange="CNMIWastage.chooseGroup(this.value)"><option value="ALL" ${state.visibleGroup==='ALL'?'selected':''}>ทั้งหมด 4 กลุ่ม</option>
+        ${GROUPS.map(g=>`<option value="${g.key}" ${state.visibleGroup===g.key?'selected':''}>${html(g.label)}</option>`).join('')}
+        </select></label><span class="small-muted">จำนวน Expired = ถุงหลัก Status Expired และไม่มีถุงใดในครอบครัวจ่ายใช้แล้ว (นับครั้งเดียว)</span></div>
       ${sections}
       <details class="simple-panel waste-real-inventory"><summary>บันทึกยอดตรวจนับจริงและผลต่างทางบัญชี (เพิ่มเติม)</summary><div class="panel-heading-row"><div><h3>ผลต่างทางบัญชี · ${monthLabel(report.months.RBC[state.month-1].begin)}</h3><div class="small-muted">ใช้ยอดตรวจนับจริงมาเทียบกับยอดคงคลังจาก LIS · ไม่มีผลตรวจนับจะแสดง “—” ไม่ใช่ศูนย์</div></div></div>
         ${state.schemaReady?`<div class="waste-check-grid">${actualInputs}</div>`:`<div class="waste-notice"><strong>ยังไม่ได้ติดตั้งตารางตรวจนับจริง</strong><span>รายงานจาก LIS ใช้งานได้ แต่หากต้องการบันทึกสต๊อกตรวจนับและคำนวณ Discrepancy ให้รัน SQL-v2.9.108-MONTHLY-WASTAGE-CHECK.sql ที่ Supabase หนึ่งครั้ง</span></div>`}
         ${state.schemaReady&&!isAdmin?'<p class="small-muted">อ่านข้อมูลได้ตามสิทธิ์ผู้ใช้ · การบันทึกยอดตรวจนับสำหรับ Admin เท่านั้น</p>':''}</details>
-      <details class="simple-panel waste-method"><summary>นิยามและวิธีนับถุงเลือด</summary><p>Expired เท่านั้นที่เป็นตัวตั้ง; Rejected และทำลายด้วยเหตุอื่นแยกต่างหาก; Dedicated นับเป็นจ่ายใช้; Be Transformed ไม่ใช่ผลลัพธ์ปลายทาง หากถุง .S ถูกใช้ จะไม่คิดถุงหลักที่หมดอายุซ้ำ</p><p>คงคลังต้นเดือนนับก่อน Action ของวันที่ 1; DateStockIn คือวันรับเข้าจริง และ DateStockOut คือวันจ่าย/Action จริง ถ้า LIS ยังแสดง Available/Be Transformed แต่พ้น ExpireDate จะไม่ค้างเป็น Stock ตลอดไป: อนุมานวันสิ้นสุดตาม ExpireDate และแสดงรอตรวจสอบ ไม่ใช่ Expired ที่ยืนยันแล้ว; รายการออกจริงแต่ไม่มีวันที่ออกต้องตรวจสอบ</p><p>ยอดคงคลังต้น/ปลายเป็นยอดคำนวณย้อนหลังจาก LIS ไม่ใช่ผลตรวจนับจริง; ช่องรวมปีสำหรับคงคลังแสดงยอดต้นปีและสิ้นปี (ไม่ใช่ผลบวก 12 เดือน); ปริมาณรับจากโรงพยาบาลอื่นแยกแสดงเพื่อทวนสมดุล และไม่อยู่ในตัวหาร KPI ตามตารางต้นฉบับ</p><p>เดือนแรกของประวัติ LIS อาจมีเลือดคงคลังที่รับเข้าก่อนช่วงข้อมูล ต้องมีข้อมูลเพียงพอในช่วงเดือนนั้นจึงแสดงผล KPI; รายการอนุมานจาก ExpireDate จัดเป็นข้อมูลประกอบ LIS ไม่ใช่เกณฑ์ตัดสิน KPI; การแสดง 0 หมายถึงนับได้ 0; เครื่องหมาย — หมายถึงยังไม่มีค่าหรือคำนวณไม่ได้</p></details>
+      <details class="simple-panel waste-method"><summary>นิยามและวิธีนับถุงเลือด</summary><p><strong>ตัวตั้ง Expired:</strong> ต้องมี Status=Expired ที่ถุงหลักและไม่มีสมาชิกถุงใดในครอบครัวที่ Released หรือ Dedicated; ถุง .S1/.S.1/.S2/.S.2 ที่หมดอายุลำพังไม่นับ. หนึ่งครอบครัวนับได้มากสุดหนึ่งถุงต่อกลุ่มผลิตภัณฑ์; Be Transformed ไม่ใช่ผลลัพธ์ปลายทาง</p><p>คงคลังต้นเดือนนับก่อน Action ของวันที่ 1; DateStockIn คือวันรับเข้าจริง และ DateStockOut คือวันจ่าย/Action จริง ถ้า LIS ยังแสดง Available/Be Transformed แต่พ้น ExpireDate จะไม่ค้างเป็น Stock ตลอดไป: ใช้เป็นการปรับยอดคงคลังตามวันสิ้นสุดแยกต่างหาก <strong>ไม่ใช่จำนวน Expired ใน KPI</strong>; รายการออกจริงแต่ไม่มีวันที่ออกต้องตรวจสอบ</p><p>ยอดคงคลังต้น/ปลายเป็นยอดคำนวณย้อนหลังจาก LIS ไม่ใช่ผลตรวจนับจริง; ช่องรวมปีสำหรับคงคลังแสดงยอดต้นปีและสิ้นปี (ไม่ใช่ผลบวก 12 เดือน); ปริมาณรับจากโรงพยาบาลอื่นแยกแสดงเพื่อทวนสมดุล และไม่อยู่ในตัวหาร KPI ตามตารางต้นฉบับ</p><p>เดือนแรกของประวัติ LIS อาจมีเลือดคงคลังที่รับเข้าก่อนช่วงข้อมูล ต้องมีข้อมูลเพียงพอในช่วงเดือนนั้นจึงแสดงผล KPI; รายการอนุมานจาก ExpireDate จัดเป็นข้อมูลประกอบ LIS ไม่ใช่เกณฑ์ตัดสิน KPI; การแสดง 0 หมายถึงนับได้ 0; เครื่องหมาย — หมายถึงยังไม่มีค่าหรือคำนวณไม่ได้</p></details>
     </div>`;
   }
   async function loadYear(){
@@ -450,5 +462,5 @@
     }
   }
   function retry(){state.summary=null;state.actual=[];state.minDate=null;state.maxDate=null;load();}
-  window.CNMIWastage={load,chooseYear,chooseMode,chooseMonth,exportExcel:exportReport,saveActual,retry,_test:{familiesFromRows,sumMonth,buildReport,reportFromSummary,annualSummary,periodMonths,group,outcome}};
+  window.CNMIWastage={load,chooseYear,chooseMode,chooseMonth,chooseGroup,exportExcel:exportReport,saveActual,retry,_test:{familiesFromRows,sumMonth,buildReport,reportFromSummary,annualSummary,periodMonths,group,outcome}};
 })();
