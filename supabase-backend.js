@@ -2548,6 +2548,14 @@
       p_blood_groups: f.bloodGroups.length ? f.bloodGroups : null,
       p_rhs: f.rhs.length ? f.rhs : null
     };
+    // v2.9.123: use the globally anchored Bag Family report when the approved
+    // Supabase activation SQL has been installed. A missing function falls back
+    // to legacy, never silently replace a genuine calculation/permission error.
+    const canonical = await client.rpc("minimum_stock_outreach_master_report_v29123", params);
+    if (!canonical.error) return { ...(canonical.data || { summary: {}, groups: [], sources: [] }), __canonical: true };
+    if (!/Could not find the function|PGRST202|42883|does not exist/i.test(String(canonical.error.message || canonical.error.code || ""))) {
+      throw new Error("รายงาน Bag Family v2.9.123 ไม่สำเร็จ: " + canonical.error.message);
+    }
     let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2934", params);
     const missing = error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""));
     if (missing) {
@@ -2567,7 +2575,7 @@
       error = previous.error;
     }
     if (error) throw new Error("คำนวณรายงานวิเคราะห์ออกหน่วยไม่สำเร็จ: " + error.message);
-    return data || { summary: {}, groups: [], sources: [] };
+    return { ...(data || { summary: {}, groups: [], sources: [] }), __canonical: false };
   }
 
   async function getOutreachMonthlyTrend(year, filters = {}) {
@@ -2584,6 +2592,12 @@
       p_blood_groups: f.bloodGroups.length ? f.bloodGroups : null,
       p_rhs: f.rhs.length ? f.rhs : null
     };
+    // Keep trend and summary on the same canonical cohort assignment.
+    const canonical = await client.rpc("minimum_stock_outreach_monthly_trend_v29123", params);
+    if (!canonical.error) return { ...(canonical.data || { year: safeYear, years: [], months: [] }), __canonical: true };
+    if (!/Could not find the function|PGRST202|42883|does not exist/i.test(String(canonical.error.message || canonical.error.code || ""))) {
+      throw new Error("แนวโน้ม Bag Family v2.9.123 ไม่สำเร็จ: " + canonical.error.message);
+    }
     let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2934", params);
     const missing = error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""));
     if (missing) {

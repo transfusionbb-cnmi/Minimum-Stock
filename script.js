@@ -1933,6 +1933,7 @@ function renderOutreachAnalysis() {
         </div>
       </div>
 
+      ${window.MinimumStockAuthUI?.getCurrentAccess?.()?.role === 'admin' && data.reportLoaded ? `<details class="simple-details mb-3 no-print"><summary>ตรวจสอบสูตรรายงาน (Admin)</summary><div class="pt-2 small-muted">${data.report?.__canonical === true ? 'รายงานรายเดือนและหลายเดือนใช้ Bag Family ที่กำหนดเดือนรับเข้าคงที่ (v2.9.123)' : 'ยังใช้สูตร v2.9.34 เดิม: ให้ทดสอบ SQL v2.9.123 และเปิดใช้หลังผล Preview ถูกต้อง'} · ไม่แก้ข้อมูล LIS ต้นฉบับ</div></details>` : ''}
       ${data.filterWarning ? `<div class="data-quality-strip mb-3"><strong>ตัวกรองบางรายการโหลดช้า</strong><span>รายงานหลักยังใช้ข้อมูลเดิมในฐานได้ตามปกติ · ${escapeOutreachHtml(data.filterWarning)}</span></div>` : ""}
       <div id="outreachValidationBox"></div>
       <div id="outreachFilterSummary" class="mb-3"></div>

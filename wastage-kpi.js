@@ -1,4 +1,4 @@
-/* CNMI Wastage KPI v2.9.122 — status-confirmed expired parent only; family-level one-unit outcome; product filter. */
+/* CNMI Wastage KPI v2.9.123 — status-confirmed expired parent only; family-level one-unit outcome; product filter. */
 (function () {
   'use strict';
   const GROUPS = [
@@ -224,12 +224,11 @@
   const mainMetricRows = mainMetricKeys.map(key=>metricRows.find(r=>r.key===key));
   const detailMetricRows = metricRows.filter(m=>m.key!=='result' && !mainMetricKeys.includes(m.key));
   const scalar = (v,percent=false) => v===null||v===undefined?'—':percent?`${Number(v).toFixed(2)}%`:fmt(v);
-  // Reporting status is determined by the KPI value and its target. Secondary LIS audit
-  // counters do NOT automatically turn a computable KPI into "ตรวจสอบข้อมูล".
+  // KPI attainment is determined by numeric value versus target only. Data provenance
+  // and separate LIS audit remain visible exclusively in the Admin diagnostic section.
   function resultLabel(row,g){
     if(!row.covered)return '—';
     if(row.kpi===null || !Number.isFinite(row.kpi))return '—';
-    if(stockRequiresVerification(g.key,row))return 'รอตรวจสอบ';
     return row.kpi<=g.target?'ผ่านเกณฑ์':'ไม่ผ่านเกณฑ์';
   }
   function resultClass(row,g){
@@ -239,7 +238,6 @@
   function statusHtml(row,g){
     const label=resultLabel(row,g);
     if(label==='—')return '<span class="waste-status is-pending">ยังไม่มีผล</span>';
-    if(label==='รอตรวจสอบ')return '<span class="waste-status is-pending">รอตรวจสอบ</span>';
     return label==='ผ่านเกณฑ์'?'<span class="waste-status is-good">ผ่านเกณฑ์</span>':'<span class="waste-status is-bad">ไม่ผ่านเกณฑ์</span>';
   }
   // Monthly assessments are summarized beside each product target, not in a
@@ -448,7 +446,7 @@
     out.actual=null;out.discrepancy=null;
     out.covered=rows.every(r=>r.covered);
     out.provisional=rows.some(r=>r.provisional)||out.checkBalance!==0;
-    out.result=!out.covered||out.kpi===null?'—':rows.some(r=>stockRequiresVerification(g.key,r))?'รอตรวจสอบ':out.kpi<=g.target?'ผ่านเกณฑ์':'ไม่ผ่านเกณฑ์';
+    out.result=!out.covered||out.kpi===null?'—':out.kpi<=g.target?'ผ่านเกณฑ์':'ไม่ผ่านเกณฑ์';
     return out;
   }
   function exportReport() {
@@ -494,7 +492,7 @@
       detailSheet['!cols']=[{wch:43},{wch:29},...Array.from({length:12},()=>({wch:15})),{wch:16}];
       XLSX.utils.book_append_sheet(wb,detailSheet,g.en+' Detail');
     }
-    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.122.xlsx`);
+    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.123.xlsx`);
   }
   async function saveActual(g) {
     if(state.busy)return;
@@ -555,8 +553,7 @@
       <div class="simple-panel waste-toolbar no-print"><label>รูปแบบปี <select class="form-select" onchange="CNMIWastage.chooseMode(this.value)"><option value="fiscal" ${state.fiscal?'selected':''}>ปีงบประมาณ (ต.ค.–ก.ย.)</option><option value="calendar" ${!state.fiscal?'selected':''}>ปีปฏิทิน (ม.ค.–ธ.ค.)</option></select></label>
         <label>${state.fiscal?'ปีงบประมาณ':'ปีปฏิทิน'} พ.ศ. <select id="waste-year" class="form-select" onchange="CNMIWastage.chooseYear(this.value)">${years.map(y=>`<option value="${y}" ${y===state.year?'selected':''}>${y+543}</option>`).join('')}</select></label>
         <label>เลือกเดือนที่เน้น <select class="form-select" onchange="CNMIWastage.chooseMonth(this.value)">${report.months.RBC.map((r,i)=>`<option value="${i+1}" ${i+1===state.month?'selected':''}>${monthLabel(r.begin)}</option>`).join('')}</select></label></div>
-      ${!state.summary.every(r=>r.platelet_internal_four_types_verified===true)||report.cacheStale
-        ? '<div class="kpi-unverified-inline" role="status">ข้อมูลบางกลุ่มอยู่ระหว่างตรวจสอบ</div>':''}
+
       <div class="waste-target-grid">${GROUPS.map(g=>{const at=report.months[g.key][state.month-1];return `<div class="waste-target-card"><span>${html(g.label)}</span><strong>${at.covered?scalar(at.kpi,true):'—'}</strong><div><small>เป้าหมาย ≤ ${g.target}%</small>${statusHtml(at,g)}</div></div>`;}).join('')}</div>
       <div class="simple-panel waste-toolbar no-print"><label for="waste-group-filter">แสดงตารางผลิตภัณฑ์
         <select id="waste-group-filter" class="form-select" onchange="CNMIWastage.chooseGroup(this.value)"><option value="ALL" ${state.visibleGroup==='ALL'?'selected':''}>ทั้งหมด 4 กลุ่ม</option>
