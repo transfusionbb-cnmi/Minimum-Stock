@@ -2460,7 +2460,7 @@
 
     if (p.includes("cryo-removed plasma") || p.includes("cryo removed plasma")) return "PLASMA";
     if (p.includes("cryoprecipitate") || /(^|[^a-z])cryo([^a-z]|$)/i.test(p)) return "CRYO";
-    if (p.includes("platelet") || /(^|[^a-z0-9])(sdp|ldppc|ppc)([^a-z0-9]|$)/i.test(p)) return "PLATELET";
+    if (p.includes("platelet") || /(^|[^a-z0-9])(sdp|ldpc|ldppc|ppc)([^a-z0-9]|$)/i.test(p)) return "PLATELET";
     if (p.includes("fresh frozen plasma") || p.includes("frozen plasma") || p.includes("plasma") || /(^|[^a-z0-9])ffp([^a-z0-9]|$)/i.test(p)) return "PLASMA";
     if (p.includes("red cell") || p.includes("packed cell") || /(^|[^a-z0-9])(prc|lprc|ldprc|rbc)([^a-z0-9]|$)/i.test(p)) return "RBC";
     if (p.includes("whole blood")) return "WHOLE_BLOOD";

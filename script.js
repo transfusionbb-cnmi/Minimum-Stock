@@ -2710,7 +2710,7 @@ function outreachProductFamilyClient(productType) {
 
   if (p.includes("cryo-removed plasma") || p.includes("cryo removed plasma")) return "PLASMA";
   if (p.includes("cryoprecipitate") || /(^|[^a-z])cryo([^a-z]|$)/i.test(p)) return "CRYO";
-  if (p.includes("platelet") || /(^|[^a-z0-9])(sdp|ldppc|ppc)([^a-z0-9]|$)/i.test(p)) return "PLATELET";
+  if (p.includes("platelet") || /(^|[^a-z0-9])(sdp|ldpc|ldppc|ppc)([^a-z0-9]|$)/i.test(p)) return "PLATELET";
   if (p.includes("fresh frozen plasma") || p.includes("frozen plasma") || p.includes("plasma") || /(^|[^a-z0-9])ffp([^a-z0-9]|$)/i.test(p)) return "PLASMA";
   if (p.includes("red cell") || p.includes("packed cell") || /(^|[^a-z0-9])(prc|lprc|ldprc|rbc)([^a-z0-9]|$)/i.test(p)) return "RBC";
   if (p.includes("whole blood")) return "WHOLE_BLOOD";
@@ -3478,7 +3478,7 @@ async function ensureBloodKpiHeavyInsights(filters = {}) {
 function renderKpiInlineFilterPanel(route, bootstrap, preset = {}) {
   if (route === 'minimum') return '';
   const options = bootstrap?.filterOptions || {};
-  const showDetailFilters = !['trc','cqi','trc-monthly','trc-minimum','trc-bags'].includes(route);
+  const showDetailFilters = !['trc','cqi','trc-monthly','trc-minimum','trc-bags','utilization','expiry'].includes(route);
   const showTrcMinimumProductFilter = ['trc-minimum','trc-bags'].includes(route);
   const selectedTrcProducts = normalizeKpiSelectedValues(preset.trcProductGroups || []);
   const selectedSourceGroups = route === 'outreach' ? [OUTREACH_GROUP_SELF_OUTREACH] : normalizeKpiSelectedValues(preset.sourceGroups || []);
@@ -4146,6 +4146,88 @@ function requestBloodKpiDeepLoad(route, year) {
   return loadBloodKpiPage(year, route, { deep: true, force: true });
 }
 
+// v2.9.118 — one authoritative Supabase Wastage Cache for both KPI routes.
+// Avoid re-deriving percentages from the old Used + Expired report.
+const KPI_ALIGNED_GROUPS = [
+  {key:'RBC',label:'เม็ดเลือดแดง',target:10},
+  {key:'PLASMA',label:'พลาสมา',target:5},
+  {key:'PLATELET',label:'เกล็ดเลือด',target:20},
+  {key:'CRYO',label:'Cryoprecipitate',target:5}
+];
+let kpiAlignedSelectedGroup = 'RBC';
+
+function renderAlignedWastageKpi({route, yearReports, filters, year}) {
+  const isExpiry = route === 'expiry';
+  const selected = KPI_ALIGNED_GROUPS.find(g=>g.key===kpiAlignedSelectedGroup) || KPI_ALIGNED_GROUPS[0];
+  const from = String(filters?.dateFrom || '').slice(0,7);
+  const to = String(filters?.dateTo || '').slice(0,7);
+  const sourceRows = g => yearReports.flatMap(item => item.report.months[g.key].filter(row=>{
+    const mm=String(row.begin||'').slice(0,7);
+    return (!from||mm>=from)&&(!to||mm<=to);
+  }).map(row=>({...row,year:Number(row.begin.slice(0,4)), month:Number(row.begin.slice(5,7))})));
+  const latestComplete = g => sourceRows(g).filter(row=>row.covered).at(-1) || null;
+  const chosenRows=sourceRows(selected);
+  const latest=latestComplete(selected);
+  const formatRate = value => value===null||value===undefined||!Number.isFinite(Number(value))?'—':`${Number(value).toFixed(2)}%`;
+  const latestRate = latest ? (isExpiry?latest.kpi:latest.utilization) : null;
+  const numerator = latest ? (isExpiry?latest.expired:latest.used) : null;
+  const denominator = latest ? (isExpiry?latest.kpiDenominator:latest.availability) : null;
+  const chartRows=chosenRows.map(row=>({
+    year:row.year,month:row.month,
+    value:row.covered ? (isExpiry?row.kpi:row.utilization) : null
+  }));
+  const title = isExpiry?'อัตราโลหิตหมดอายุ':'อัตราการใช้ประโยชน์จากโลหิต';
+  const latestLabel = latest?formatThaiMonthYear(latest.begin):'ไม่มีเดือนที่ข้อมูลครบ';
+  const groupCards = KPI_ALIGNED_GROUPS.map(g=>{
+    const row=latestComplete(g), metric=row?(isExpiry?row.kpi:row.utilization):null;
+    return `<button type="button" class="kpi-aligned-group ${g.key===selected.key?'is-selected':''}" onclick="changeKpiAlignedGroup('${g.key}')" aria-pressed="${g.key===selected.key}">
+      <span>${escapeOutreachHtml(g.label)}</span><strong>${formatRate(metric)}</strong>
+      <small>${row?formatThaiMonthYear(row.begin):'ยังไม่มีข้อมูลครบ'}${isExpiry?' · เป้าหมาย ≤ '+g.target+'%':''}</small>
+    </button>`;
+  }).join('');
+  const verified = yearReports.every(item=>item.ldpcReceiptVerified);
+  const chosenTable=chosenRows.map(row=>{
+    const covered=row.covered;
+    const label= formatThaiMonthYear(row.begin);
+    return `<tr><td>${escapeOutreachHtml(label)}</td>
+       <td class="text-end">${covered?Number(row.used).toLocaleString():'—'}</td>
+       <td class="text-end">${covered?Number(row.availability).toLocaleString():'—'}</td>
+       <td class="text-end">${covered?formatRate(row.utilization):'—'}</td>
+       <td class="text-end">${covered?Number(row.expired).toLocaleString():'—'}</td>
+       <td class="text-end">${covered?Number(row.kpiDenominator).toLocaleString():'—'}</td>
+       <td class="text-end">${covered?formatRate(row.kpi):'—'}</td>
+    </tr>`;
+  }).join('');
+  const latestStale = yearReports.some(item=>item.cacheStale || !Number.isFinite(Date.parse(item.refreshedAt)));
+  currentBloodKpiRouteData={route,year,yearReports,filters,aligned:true};
+  return `${kpiPageHeader(title,'อ่านค่าจาก Cache เดียวกับ KPI ประสิทธิภาพการลดความสูญเสีย',year,yearReports.map(x=>x.year))}
+    <div class="simple-panel mb-3 kpi-aligned-scope"><strong>ฐานคำนวณเดียวกัน</strong><span>เทียบค่าแบบรายเดือนและแยก 4 กลุ่มผลิตภัณฑ์ รวมทุกแหล่งรับเข้า/หมู่เลือด/Rh · ไม่ใช้สูตร Used ÷ (Used + Expired)</span></div>
+    ${!verified ? `<div class="waste-notice waste-cache-stale mb-3"><strong>LDPC: ยังไม่ยืนยันว่าตัดออกจากยอดรับเข้าใน Cache แล้ว</strong><span>แอพแยก LDPC และ LDPPC ถูกต้องแล้ว แต่ SQL Cache เดิมยังต้องตรวจและปรับก่อนรับรองตัวเลขเกล็ดเลือด กรุณาดูไฟล์ SQL ตรวจสอบที่แนบในชุดอัปเดต</span></div>`:''}
+    ${latestStale ? `<div class="waste-notice mb-3"><strong>ควรตรวจสอบรอบรีเฟรช Cache</strong><span>ไม่มีเวลารีเฟรชบางปีหรืออาจเก่ากว่าการนำเข้า LIS ล่าสุด โปรดตรวจสอบใน Supabase</span></div>`:''}
+    <div class="kpi-aligned-groups" aria-label="เลือกกลุ่มผลิตภัณฑ์">${groupCards}</div>
+    <div class="simple-panel kpi-aligned-focus mb-3">
+      <div><span>${isExpiry?'หมดอายุ ÷ (ผลิตภายใน CNMI + กาชาด + คงคลังปลายเดือน)':'จ่ายใช้ ÷ (คงคลังต้นเดือน + รับเข้าทุกแหล่ง)'}</span><strong>${formatRate(latestRate)}</strong><small>${escapeOutreachHtml(selected.label)} · ${escapeOutreachHtml(latestLabel)}</small></div>
+      <div><span>ตัวตั้ง / ตัวหาร</span><strong>${numerator===null?'—':Number(numerator).toLocaleString()} / ${denominator===null?'—':Number(denominator).toLocaleString()}</strong><small>นับเป็นถุงระดับ Bag Family</small></div>
+    </div>
+    <div class="simple-panel kpi-executive-panel mb-3"><div class="panel-heading-row"><h3>เทียบปี · ${escapeOutreachHtml(selected.label)} (${isExpiry?'หมดอายุ':'ใช้ประโยชน์'})</h3></div>
+      ${renderKpiYearOverlayChart(chartRows,'value',{title:`${selected.label} · ${isExpiry?'อัตราหมดอายุ':'อัตราใช้ประโยชน์'}`,unit:'%',yMax:isExpiry?undefined:100,showMultiYearLabels:true,labelDecimals:2})}
+      <p class="small-muted mt-2">จุดกราฟแสดงเปอร์เซ็นต์ 2 ตำแหน่งตรงกับตาราง KPI ลดความสูญเสียในเดือนเดียวกัน · เดือนที่ข้อมูลไม่ครบเว้นว่าง</p>
+    </div>
+    <details class="simple-panel kpi-aligned-table mb-3"><summary>ดูตัวตั้ง ตัวหาร และผลรายเดือน (${escapeOutreachHtml(selected.label)})</summary>
+      <div class="table-responsive"><table class="table simple-table align-middle"><thead><tr><th>เดือน</th><th class="text-end">ใช้/จ่าย</th><th class="text-end">พร้อมใช้</th><th class="text-end">ใช้ประโยชน์</th><th class="text-end">หมดอายุ</th><th class="text-end">ตัวหาร KPI</th><th class="text-end">หมดอายุ (%)</th></tr></thead><tbody>${chosenTable||'<tr><td colspan="7">ไม่มีข้อมูลในช่วงนี้</td></tr>'}</tbody></table></div>
+    </details>
+    ${renderKpiInfoDetails('สูตรเดียวกับ KPI ลดความสูญเสีย', 'หมดอายุ (%) = Expired ของ Bag Family ÷ (ผลิตภายใน CNMI + กาชาด + คงคลังปลายเดือน) × 100; Cryo ไม่รวมผลิตภายใน. ใช้ประโยชน์ (%) = จ่ายใช้ ÷ (คงคลังต้นเดือน + รับเข้าทุกแหล่ง) × 100. สูตรทั้งสองมีตัวหารต่างกัน จึงไม่จำเป็นต้องรวมได้ 100%.')}`;
+}
+function changeKpiAlignedGroup(group) {
+  if (!KPI_ALIGNED_GROUPS.some(g=>g.key===group)) return;
+  kpiAlignedSelectedGroup=group;
+  const d=currentBloodKpiRouteData;
+  const box=document.getElementById('bloodKpiDashboard');
+  if (!d?.aligned||!box||!['utilization','expiry'].includes(currentBloodKpiRoute))return;
+  box.innerHTML=renderAlignedWastageKpi({route:d.route,yearReports:d.yearReports,filters:d.filters,year:d.year});
+  enhanceBloodKpiChartExports(box);
+}
+
 function renderKpiUtilization({ analysis, trend, dependency, year }) {
   const summary = normalizeOutreachSummary(analysis?.report?.summary || {});
   const finalBase = Number(summary.used||0) + Number(summary.expired||0);
@@ -4251,6 +4333,23 @@ function renderKpiYearOverlayChart(rows = [], key = 'rate', options = {}) {
   const x = m => left + (m - 1) * (w-left-right) / 11;
   const y = v => top + (h-top-bottom) * (1 - Math.max(0, Math.min(yMax, Number(v))) / yMax);
   const grid = [0,.25,.5,.75,1].map(f => { const v=yMax*f; return `<line x1="${left}" y1="${y(v)}" x2="${w-right}" y2="${y(v)}" stroke="#e7eff5"/><text x="${left-10}" y="${y(v)+4}" text-anchor="end" font-size="12" fill="#60798c">${Number(v.toFixed(1))}${options.unit||''}</text>`; }).join('');
+  // When every year is labeled, distribute colliding point labels within each month.
+  const labelPlacement = new Map();
+  if (options.showMultiYearLabels) {
+    for(let month=1;month<=12;month++) {
+      const present=rows.filter(r=>Number(r.month)===month && years.includes(Number(r.year)) && r[key]!==null && r[key]!==undefined && Number.isFinite(Number(r[key])));
+      present.sort((a,b)=>y(a[key])-y(b[key]));
+      const minAllowed=top+19,maxAllowed=h-bottom-10,gap=19;
+      let positions=present.map(r=>Math.max(minAllowed,Math.min(maxAllowed,y(r[key])-17)));
+      for(let k=1;k<positions.length;k++)positions[k]=Math.max(positions[k],positions[k-1]+gap);
+      const overflow=positions.length?Math.max(0,positions[positions.length-1]-maxAllowed):0;
+      if(overflow)positions=positions.map(v=>v-overflow);
+      for(let k=positions.length-2;k>=0;k--)positions[k]=Math.min(positions[k],positions[k+1]-gap);
+      const underflow=positions.length?Math.max(0,minAllowed-positions[0]):0;
+      if(underflow)positions=positions.map(v=>v+underflow);
+      present.forEach((r,k)=>labelPlacement.set(`${r.year}-${month}`,positions[k]));
+    }
+  }
   const series = years.map((year,i) => {
     const color = colors[i % colors.length];
     const pts = rows.filter(r=>Number(r.year)===year && r[key] !== null && r[key] !== undefined && Number.isFinite(Number(r[key]))).sort((a,b)=>Number(a.month)-Number(b.month));
@@ -4259,10 +4358,12 @@ function renderKpiYearOverlayChart(rows = [], key = 'rate', options = {}) {
     const dots = pts.map(r => {
       const pointY = y(r[key]);
       const labelOffsets = [-14,24,-28,35];
-      const labelY = Math.max(top + 17, Math.min(h - bottom - 8, pointY + labelOffsets[i % labelOffsets.length]));
-      const showLabel = years.length <= 2 || (options.showMultiYearLabels && (years.length <= 4 || i === years.length - 1));
-      const label = showLabel ? `<text x="${x(Number(r.month))}" y="${labelY}" text-anchor="middle" font-size="${years.length > 2 ? 11 : 13}" font-weight="700" fill="${color}" style="paint-order:stroke;stroke:#fff;stroke-width:4px">${Number(r[key]).toFixed(1)}${options.unit||''}</text>` : '';
-      return `<circle cx="${x(Number(r.month))}" cy="${pointY}" r="5" fill="#fff" stroke="${color}" stroke-width="3"><title>${names[Number(r.month)]} ${year+543}: ${Number(r[key]).toFixed(1)}${options.unit||''}</title></circle>${label}`;
+      const labelY = labelPlacement.has(`${year}-${Number(r.month)}`) ? labelPlacement.get(`${year}-${Number(r.month)}`) : Math.max(top + 17, Math.min(h - bottom - 8, pointY + labelOffsets[i % labelOffsets.length]));
+      const showLabel = years.length <= 2 || Boolean(options.showMultiYearLabels);
+      const decimals = Number.isInteger(options.labelDecimals) ? options.labelDecimals : 1;
+      const leader = showLabel&&Math.abs(labelY-pointY)>12?`<line x1="${x(Number(r.month))}" y1="${pointY}" x2="${x(Number(r.month))}" y2="${labelY}" stroke="${color}" stroke-opacity="0.35" stroke-width="1.2"/>`:'';
+      const label = showLabel ? `<text x="${x(Number(r.month))}" y="${labelY}" text-anchor="middle" font-size="${years.length > 2 ? 10.5 : 12}" font-weight="700" fill="${color}" style="paint-order:stroke;stroke:#fff;stroke-width:4px">${Number(r[key]).toFixed(decimals)}${options.unit||''}</text>` : '';
+      return `${leader}<circle cx="${x(Number(r.month))}" cy="${pointY}" r="5" fill="#fff" stroke="${color}" stroke-width="3"><title>${names[Number(r.month)]} ${year+543}: ${Number(r[key]).toFixed(decimals)}${options.unit||''}</title></circle>${label}`;
     }).join('');
     return `<path d="${paths}" fill="none" stroke="${color}" stroke-width="3.5"/>${dots}<g transform="translate(${left+i*155},57)"><line x1="0" y1="0" x2="25" y2="0" stroke="${color}" stroke-width="4"/><text x="32" y="4" font-size="13" fill="#3a536b">${year+543}</text></g>`;
   }).join('');
@@ -4539,12 +4640,15 @@ async function loadBloodKpiPage(year = null, route = null, options = {}) {
     if (currentBloodKpiRoute === 'overview') {
       const [dependency, analysis] = await Promise.all([ensureBloodKpiDependencyRange(filters), ensureBloodKpiAnalysis(filters)]);
       html = renderKpiOverview({dependency,analysis,year:endYear});
-    } else if (currentBloodKpiRoute === 'utilization') {
-      const [dependency, analysis, trend] = await Promise.all([ensureBloodKpiDependencyRange(filters), ensureBloodKpiAnalysis(filters), ensureBloodKpiTrendRange(filters)]);
-      html = renderKpiUtilization({dependency,analysis,trend,year:endYear});
-    } else if (currentBloodKpiRoute === 'expiry') {
-      const [dependency, analysis, trend] = await Promise.all([ensureBloodKpiDependencyRange(filters), ensureBloodKpiAnalysis(filters), ensureBloodKpiTrendRange(filters)]);
-      html = renderKpiExpiry({dependency,analysis,trend,year:endYear});
+    } else if (currentBloodKpiRoute === 'utilization' || currentBloodKpiRoute === 'expiry') {
+      const bootstrap=await ensureBloodKpiBootstrap();
+      const years=Array.from({length:Math.max(0,meta.endYear-meta.startYear+1)},(_,i)=>meta.startYear+i).filter(y=>y>=2000&&y<=2100);
+      const yearReports=await window.CNMIWastage.loadAlignedCalendarYears(years,{
+        minDate:bootstrap?.sourceStartDate||bootstrap?.filterOptions?.minDate||'',
+        maxDate:bootstrap?.sourceEndDate||bootstrap?.filterOptions?.maxDate||'',
+        latestUploadedAt:bootstrap?.latestUpload?.created_at||''
+      });
+      html = renderAlignedWastageKpi({route:currentBloodKpiRoute,yearReports,filters,year:endYear});
     } else if (currentBloodKpiRoute === 'trc') {
       const dependency = await ensureBloodKpiDependencyRange(filters);
       html = renderKpiTrc({dependency,year:endYear});
@@ -4577,7 +4681,7 @@ async function loadBloodKpiPage(year = null, route = null, options = {}) {
       html = renderKpiMinimum({dashboard,year:new Date().getFullYear()});
     }
     box.innerHTML = html;
-    if ((selection.compareYears?.length>=2 || (selection.compareYearA && selection.compareYearB)) && currentBloodKpiRoute !== 'minimum') {
+    if ((selection.compareYears?.length>=2 || (selection.compareYearA && selection.compareYearB)) && !['minimum','utilization','expiry'].includes(currentBloodKpiRoute)) {
       const resultRoute = currentBloodKpiRoute;
       try {
         const comparison = await renderBloodKpiYearComparison(resultRoute,selection,filters,currentBloodKpiRouteData||{});

@@ -1,4 +1,4 @@
-/* CNMI Wastage KPI v2.9.117 — status-confirmed expired parent only; family-level one-unit outcome; product filter. */
+/* CNMI Wastage KPI v2.9.118 — status-confirmed expired parent only; family-level one-unit outcome; product filter. */
 (function () {
   'use strict';
   const GROUPS = [
@@ -26,11 +26,17 @@
     const y=+m[1],mo=+m[2],d=+m[3];
     return (y>=2000&&y<=2100&&mo>=1&&mo<=12&&d>=1&&d<=31) ? m[0] : '';
   };
+  // LDPC is NOT LDPPC. Match the whole normalized product name or exact code only.
+  // This rule applies to the RECEIPT counter, not to used/expired outcomes.
+  function isLdpcReceipt(product) {
+    const normalized = String(product || '').trim().toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+    return normalized === 'ldpc' || normalized === 'leukocyte depleted platelet concentrate';
+  }
   function group(product) {
     const s=String(product||'').toLowerCase().trim();
     if (s.includes('cryo-removed plasma')||s.includes('cryo removed plasma')) return 'PLASMA';
     if (s.includes('cryoprecipitate')||/(^|[^a-z])cryo([^a-z]|$)/.test(s)) return 'CRYO';
-    if (s.includes('platelet')||/(^|[^a-z0-9])(sdp|ldppc|ppc)([^a-z0-9]|$)/.test(s)) return 'PLATELET';
+    if (s.includes('platelet')||/(^|[^a-z0-9])(sdp|ldpc|ldppc|ppc)([^a-z0-9]|$)/.test(s)) return 'PLATELET';
     if (s.includes('fresh frozen plasma')||s.includes('frozen plasma')||s.includes('plasma')||/(^|[^a-z0-9])ffp([^a-z0-9]|$)/.test(s)) return 'PLASMA';
     if (s.includes('red cell')||s.includes('packed cell')||/(^|[^a-z0-9])(sdr|prc|lprc|ldprc|rbc)([^a-z0-9]|$)/.test(s)) return 'RBC';
     return null; // Whole Blood and other intermediates are not part of these four endpoints.
@@ -58,14 +64,14 @@
   }
   // Families are grouped by parent Bag Number + category so an .S subunit cannot inflate counts.
   // Lightweight JS parity helper for synthetic tests / fallback. The live web reads
-  // the authoritative monthly Supabase cache, rebuilt with SQL v2.9.117.
+  // the authoritative monthly Supabase cache, rebuilt with the installed Supabase SQL Cache.
   function familiesFromRows(rows) {
     const m=new Map(), issues={noArrival:0,conflict:0,missingExit:0,estimatedExpiry:0,unclassified:0};
     for(const row of rows||[]) {
       if(row.aggregateEligible===false) continue;
       const g=group(row.productType);
       const id=String(row.bagNumber||'').trim().toUpperCase();
-      const base=id.replace(/\.S\.?\d+$/i,'');
+      const base=id.replace(/\.(?:S|U)\.?\d+$/i,'');
       if(!g||!base)continue;
       const key=base+'||'+g;
       if(!m.has(key))m.set(key,{key,group:g,records:[]});
@@ -104,6 +110,7 @@
       if(terminalMissingExit)issues.missingExit++;
       if(exit&&exit<arrivals[0])issues.conflict++;
       results.push({key:f.key,group:f.group,source,arrival:arrivals[0],exit,
+        receiptEligible: f.records.some(r=>!isLdpcReceipt(r.productType)),
         outcome:outcomeCode,estimated,terminalMissingExit,shelfExpiry});
     }
     return {families:results,issues};
@@ -119,7 +126,7 @@
       const aliveAtStart=f.arrival<begin && (!hasExit||f.exit>=begin);
       const aliveAtEnd=!hasExit||f.exit>end;
       if(aliveAtStart)obj.beginning++;
-      if(f.arrival>=begin && f.arrival<=end)obj[f.source]++;
+      if(f.arrival>=begin && f.arrival<=end && f.receiptEligible!==false)obj[f.source]++;
       if(hasExit&&f.exit>=begin&&f.exit<=end) {
         if(f.outcome==='used')obj.used++;
         else if(f.outcome==='expired')obj.expired++;
@@ -264,6 +271,65 @@
     }
     return result;
   }
+  // Shared read-only source for the Utilization and Expiry KPI pages.
+  // Preferred calendar-year cache; fiscal cache is a safe fallback if only FY
+  // snapshots were refreshed in Supabase. Never invent missing months as zero.
+  const alignedCache = new Map();
+  async function alignedCacheRead(year, fiscal) {
+    const key=`${year}:${fiscal?'FY':'CY'}`;
+    if (!alignedCache.has(key)) {
+      alignedCache.set(key, MinimumStockBackend.getWastageMonthlySummary(year, fiscal).catch(err=>{
+        alignedCache.delete(key); throw err;
+      }));
+    }
+    return alignedCache.get(key);
+  }
+  async function loadAlignedCalendarYears(years, bounds = {}) {
+    const unique = [...new Set((years || []).map(Number).filter(y=>Number.isInteger(y)&&y>=2000&&y<=2100))];
+    if (unique.length > 10) throw new Error('เลือกเทียบได้สูงสุด 10 ปี');
+    const result = await Promise.all(unique.map(async year => {
+      const minDate=bounds.minDate||'',maxDate=bounds.maxDate||'';
+      let calendar=null;
+      try { calendar=await alignedCacheRead(year, false); } catch(e) {
+        // A missing CY snapshot may have a complete FY summary instead.
+      }
+      let report=null, sources=[];
+      if (Array.isArray(calendar) && calendar.length===48) {
+        sources=[calendar];
+        report=reportFromSummary(calendar,year,[],maxDate,minDate,false);
+      } else {
+        let fiscal=null, following=null;
+        try { fiscal=await alignedCacheRead(year,true); } catch(e) {}
+        if (!Array.isArray(fiscal)||fiscal.length!==48) {
+          throw new Error(`ยังไม่มี Cache KPI ปี ${year+543} แบบปีปฏิทินหรือปีงบประมาณ กรุณารีเฟรชข้อมูลใน Supabase ก่อน`);
+        }
+        try { following=await alignedCacheRead(year+1,true); } catch(e) {}
+        if (!Array.isArray(following)||following.length!==48) following=null;
+        sources=following?[fiscal,following]:[fiscal];
+        const a=reportFromSummary(fiscal,year,[],maxDate,minDate,true);
+        const b=following?reportFromSummary(following,year+1,[],maxDate,minDate,true):null;
+        const empty=reportFromSummary([],year,[],maxDate,minDate,false);
+        report={year,fiscal:false,months:{},issues:a.issues,familyCount:a.familyCount};
+        for (const g of GROUPS) {
+          report.months[g.key]=Array.from({length:12},(_,i)=>{
+            if(i<9)return a.months[g.key][i+3]; // FY month 4..12 = Jan..Sep
+            if(b)return b.months[g.key][i-9]; // next FY month 1..3 = Oct..Dec
+            return {...empty.months[g.key][i],covered:false,kpi:null,utilization:null};
+          });
+        }
+      }
+      const dates=sources.map(rows=>rows[0]?.refreshed_at||'').filter(Boolean);
+      const refreshedAt=dates.length?dates.sort()[0]:''; // oldest contributing cache
+      return {
+        year,report,refreshedAt,
+        cacheStale:!!bounds.latestUploadedAt && !!refreshedAt && Date.parse(refreshedAt)<Date.parse(bounds.latestUploadedAt),
+        // The current SQL may still include LDPC receipts. Do not claim otherwise.
+        ldpcReceiptVerified:sources.length>0 && sources.every(rows=>rows.every(r=>r.ldpc_receipts_excluded===true)),
+      };
+    }));
+    return result.sort((a,b)=>a.year-b.year);
+  }
+  function invalidateAlignedCache() { alignedCache.clear(); }
   function cacheRefreshedAt(){return state.summary?.[0]?.refreshed_at || '';}
   function cacheIsStale(){
     const refreshed=Date.parse(cacheRefreshedAt()),uploaded=Date.parse(state.latest?.created_at||'');
@@ -319,7 +385,7 @@
       ['นิยามคงคลัง','ต้นเดือน = ถุงที่รับเข้าก่อนวันที่ 1 และยังไม่มี Action สิ้นสุดก่อนวันที่ 1; สิ้นเดือน = ยอดหลัง Action เดือนนั้น; ExpireDate ของถุงที่ไม่ Expired เป็นเพียง Stock-only adjustment ไม่นับ KPI'],
       ['หมายเหตุ LIS','รายละเอียดการใช้ ExpireDate และรายการข้อมูลประกอบแยกจากผลผ่าน/ไม่ผ่านเกณฑ์'],
       ['ผลต่างทางบัญชี','Stock ตรวจนับจริง − Stock ปลายเดือนตาม LIS (ห้ามตั้งเป็น 0 เมื่อไม่มีการตรวจนับ)'],
-      ['ขอบเขต','นับ Bag family (ถุงหลัก + .S1/.S.1/.S2/.S.2) 1 ครั้งต่อกลุ่มผลิตภัณฑ์; ต้อง Expired ที่ถุงหลักเท่านั้น'],
+      ['ขอบเขต','นับ Bag family (ถุงหลัก + .S1/.S.1/.S2/.S.2 และ .U1/.U2/...) 1 ครั้งต่อกลุ่มผลิตภัณฑ์; ต้อง Expired ที่ถุงหลักเท่านั้น; ยอดรับเข้าไม่รวม LDPC (ไม่ใช่ LDPPC) เมื่อ SQL Cache ปรับแล้ว'],
       ['หมายเหตุ','Dedicated นับใช้, Rejected และทำลายเหตุอื่นไม่นับหมดอายุ, Transform เป็นขั้นตอนกลาง'],
       ['การจัดกลุ่ม','เม็ดเลือดแดง, พลาสมา, เกล็ดเลือด, Cryo; Whole Blood ไม่รวม'],
       ['ความครอบคลุม LIS',state.latest?.source_end_date||state.maxDate||'ยังไม่ยืนยัน'],
@@ -344,7 +410,7 @@
       detailSheet['!cols']=[{wch:43},{wch:29},...Array.from({length:12},()=>({wch:15})),{wch:16}];
       XLSX.utils.book_append_sheet(wb,detailSheet,g.en+' Detail');
     }
-    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.117.xlsx`);
+    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.118.xlsx`);
   }
   async function saveActual(g) {
     if(state.busy)return;
@@ -405,6 +471,7 @@
         <label>เลือกเดือนที่เน้น <select class="form-select" onchange="CNMIWastage.chooseMonth(this.value)">${report.months.RBC.map((r,i)=>`<option value="${i+1}" ${i+1===state.month?'selected':''}>${monthLabel(r.begin)}</option>`).join('')}</select></label><span>ช่วงข้อมูล LIS ล่าสุดถึง: <strong>${html(state.latest?.source_end_date||state.maxDate||'ไม่พบวันที่ครอบคลุมไฟล์')}</strong></span></div>
       <div class="waste-notice"><strong>ข้อมูลสรุปคำนวณล่าสุด: ${html(cacheAgeLabel())}</strong><span>หน้านี้อ่านผลรวมที่เก็บไว้ จึงไม่ต้องคำนวณประวัติหลายปีทุกครั้ง หากอัปโหลด LIS ใหม่ ให้รัน SQL รีเฟรชปีที่เกี่ยวข้องบน Supabase เพื่ออัปเดตตัวเลข</span></div>
       ${report.cacheStale?`<div class="waste-notice waste-cache-stale"><strong>ข้อมูลสรุปยังไม่รวม LIS ที่อัปโหลดล่าสุด</strong><span>โปรดรีเฟรช Cache ใน Supabase SQL Editor ก่อนนำรายงานไปใช้ ผู้ใช้ทั่วไปไม่สามารถกดคำนวณหนักจากหน้าเว็บได้</span></div>`:''}
+      ${!state.summary.every(r=>r.ldpc_receipts_excluded===true)?`<div class="waste-notice waste-cache-stale"><strong>ข้อมูลรับเข้าเกล็ดเลือด: ยังไม่ได้ยืนยันการยกเว้น LDPC</strong><span>ต้องตรวจสอบ/ปรับ SQL ที่สร้าง Cache ให้ไม่รวม LDPC เฉพาะยอดรับเข้า (LDPPC ยังนับตามเดิม) ก่อนนำผลเกล็ดเลือดไปอ้างอิงเป็นตัวชี้วัดทางการ</span></div>`:''}
       <div class="waste-target-grid">${GROUPS.map(g=>{const at=report.months[g.key][state.month-1];return `<div class="waste-target-card"><span>${html(g.label)}</span><strong>${at.covered?scalar(at.kpi,true):'—'}</strong><div><small>เป้าหมาย ≤ ${g.target}%</small>${statusHtml(at,g)}</div></div>`;}).join('')}</div>
       ${(warning.missingExit||warning.noArrival||warning.conflict||warning.estimatedExpiry||warning.unclassified)?`<details class="simple-panel waste-method"><summary>ข้อมูลประกอบจาก LIS (ไม่รวมเป็นจำนวน Expired)</summary><p>ไม่พบวันจ่าย/ออก ${fmt(warning.missingExit)} family · วันสิ้นสุดอนุมาน / ปรับ Stock ${fmt(warning.estimatedExpiry)} · ไม่มีวันรับเข้า ${fmt(warning.noArrival)} · ข้อมูลขัดแย้ง ${fmt(warning.conflict)} · แหล่งรับเข้าไม่ชัด ${fmt(warning.unclassified)}</p></details>`:''}
       <details class="simple-panel waste-method"><summary>สูตรที่ใช้คำนวณ KPI</summary><p class="waste-formula"><strong>สูตร KPI:</strong> หมดอายุ ÷ (ผลิตภายใน CNMI + รับจาก TRC + คงคลังปลายเดือน) × 100 (Cryo: ใช้ TRC + ปลายเดือน) · Utilization รายเดือน = จ่ายใช้ ÷ (คงคลังต้นเดือน + รับเข้าทุกแหล่ง) × 100 · รวมปี = หมดอายุทั้งปี ÷ (ผลิตใน CNMI ทั้งปี + TRC ทั้งปี + คงคลังสิ้นปี) · คงคลังต้น/ปลายปีไม่นำ 12 เดือนมาบวกกัน</p></details>
@@ -461,6 +528,6 @@
         box.innerHTML=`<div class="simple-panel"><h3>ไม่สามารถอ่านข้อมูล LIS</h3><p>${html(err.message)}</p><button class="btn btn-light" onclick="CNMIWastage.retry()">ลองอีกครั้ง</button></div>`;
     }
   }
-  function retry(){state.summary=null;state.actual=[];state.minDate=null;state.maxDate=null;load();}
-  window.CNMIWastage={load,chooseYear,chooseMode,chooseMonth,chooseGroup,exportExcel:exportReport,saveActual,retry,_test:{familiesFromRows,sumMonth,buildReport,reportFromSummary,annualSummary,periodMonths,group,outcome}};
+  function retry(){state.summary=null;state.actual=[];state.minDate=null;state.maxDate=null;invalidateAlignedCache();load();}
+  window.CNMIWastage={load,chooseYear,chooseMode,chooseMonth,chooseGroup,exportExcel:exportReport,saveActual,retry,loadAlignedCalendarYears,invalidateAlignedCache,_test:{familiesFromRows,sumMonth,buildReport,reportFromSummary,annualSummary,periodMonths,group,outcome,isLdpcReceipt}};
 })();
