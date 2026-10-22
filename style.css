@@ -4226,3 +4226,8 @@ body { font-size:16px; line-height:1.55; }
 .waste-section-head{padding:14px 17px 10px}
 .waste-table th,.waste-table td{padding:8px 10px}
 @media print{.kpi-admin-audit-panel,.kpi-unverified-inline{display:none!important}}
+
+/* v2.9.122 — KPI assessment appears once, beside the product target. */
+.waste-section-subline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:#6c8193;font-size:12px;line-height:1.4}
+.waste-section-subline .waste-status{font-size:11px;flex:none}
+@media print{.waste-section-subline .waste-status{border:1px solid currentColor}}

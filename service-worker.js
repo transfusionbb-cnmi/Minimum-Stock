@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-121-quiet-ui-ledger";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-122-assessment-inline";
 const APP_SHELL = [
   "./",
   "./index.html",

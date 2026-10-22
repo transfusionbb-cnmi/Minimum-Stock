@@ -1,4 +1,4 @@
-/* CNMI Wastage KPI v2.9.121 — status-confirmed expired parent only; family-level one-unit outcome; product filter. */
+/* CNMI Wastage KPI v2.9.122 — status-confirmed expired parent only; family-level one-unit outcome; product filter. */
 (function () {
   'use strict';
   const GROUPS = [
@@ -220,9 +220,9 @@
     {key:'discrepancy',name:'ผลต่างทางบัญชี (ตรวจนับ − LIS)',hint:'Check',nullable:true},
     {key:'checkBalance',name:'สมดุลรายการเคลื่อนไหว LIS',hint:'Check เชิงคำนวณ'}
   ];
-  const mainMetricKeys = ['kpi','expired','beginning','internal','trc','used','ending','utilization','result'];
+  const mainMetricKeys = ['kpi','expired','beginning','internal','trc','used','ending','utilization'];
   const mainMetricRows = mainMetricKeys.map(key=>metricRows.find(r=>r.key===key));
-  const detailMetricRows = metricRows.filter(m=>!mainMetricKeys.includes(m.key));
+  const detailMetricRows = metricRows.filter(m=>m.key!=='result' && !mainMetricKeys.includes(m.key));
   const scalar = (v,percent=false) => v===null||v===undefined?'—':percent?`${Number(v).toFixed(2)}%`:fmt(v);
   // Reporting status is determined by the KPI value and its target. Secondary LIS audit
   // counters do NOT automatically turn a computable KPI into "ตรวจสอบข้อมูล".
@@ -241,6 +241,14 @@
     if(label==='—')return '<span class="waste-status is-pending">ยังไม่มีผล</span>';
     if(label==='รอตรวจสอบ')return '<span class="waste-status is-pending">รอตรวจสอบ</span>';
     return label==='ผ่านเกณฑ์'?'<span class="waste-status is-good">ผ่านเกณฑ์</span>':'<span class="waste-status is-bad">ไม่ผ่านเกณฑ์</span>';
+  }
+  // Monthly assessments are summarized beside each product target, not in a
+  // duplicate 'ผลการประเมิน' table row. Tooltip keeps month-by-month context.
+  function kpiCellTitle(row,g){
+    if(!row.covered || row.kpi===null)return 'ยังไม่มีผล KPI';
+    const comparison=row.kpi<=g.target?'ไม่เกินเป้าหมาย':'เกินเป้าหมาย';
+    const assessment=resultLabel(row,g);
+    return `${scalar(row.kpi,true)} · ${comparison} ≤ ${g.target}% · ${assessment}`;
   }
   // Missing future months must be blank (not reported as false "0% pass").
   function displayMetric(row,metric,g){
@@ -486,7 +494,7 @@
       detailSheet['!cols']=[{wch:43},{wch:29},...Array.from({length:12},()=>({wch:15})),{wch:16}];
       XLSX.utils.book_append_sheet(wb,detailSheet,g.en+' Detail');
     }
-    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.121.xlsx`);
+    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.122.xlsx`);
   }
   async function saveActual(g) {
     if(state.busy)return;
@@ -519,14 +527,14 @@
         const isKpi=metric.key==='kpi',isResult=metric.isResult;
         const rowClass=isKpi?'waste-main-row':isResult?'waste-result-row':metric.key==='discrepancy'?'waste-audit-row':'';
         return `<tr class="${rowClass}"><th scope="row"><span>${html(metric.name)}</span>${metric.hint?`<small>${html(metric.hint)}</small>`:''}</th>
-          ${months.map((r,i)=>`<td class="${i+1===state.month?'waste-selected':''} ${isResult?resultClass(r,g):''}">${displayMetric(r,metric,g)}</td>`).join('')}
-          <td class="waste-annual ${isResult?(annual.result==='ผ่านเกณฑ์'?'waste-result-good':annual.result==='ไม่ผ่านเกณฑ์'?'waste-result-bad':''):''}">${!annual.covered?'—':isResult?annual.result:scalar(annual[metric.key],metric.percent)}</td></tr>`;
+          ${months.map((r,i)=>`<td class="${i+1===state.month?'waste-selected':''}"${isKpi?` title="${html(kpiCellTitle(r,g))}"`:''}>${displayMetric(r,metric,g)}</td>`).join('')}
+          <td class="waste-annual"${isKpi?` title="${html(kpiCellTitle(annual,g))}"`:''}>${!annual.covered?'—':scalar(annual[metric.key],metric.percent)}</td></tr>`;
       }).join('');
       const body=makeRows(mainMetricRows),detailBody=makeRows(detailMetricRows);
       const needsAudit=months.some(r=>r.covered&&stockRequiresVerification(g.key,r));
       const qaWarning=needsAudit ? `<div class="waste-audit-alert"><strong>ยังไม่รับรองค่า ${html(g.label)} จาก Cache</strong><span>${g.key==='PLATELET'?'ต้องตรวจยอดผลิตเองเฉพาะ 4 ชื่อผลิตภัณฑ์จาก LIS และคงคลังตามวันจริง':'ต้องตรวจรายการคงคลัง Cryo กับ ExpireDate / DateStockOut / Be Transformed ตาม Bag Family'} ก่อนใช้ตัวเลขเป็น KPI ทางการ · ตัวเลขด้านล่างยังแสดงค่าเดิมเพื่อ Audit</span></div>`:'';
       return `<section class="simple-panel waste-section" aria-label="KPI ${html(g.label)}">
-        <div class="waste-section-head"><div><h3>${html(g.label)}</h3><span class="small-muted">${html(g.en)} · เป้าหมาย ≤ ${g.target}%</span></div><div class="waste-kpi-figure"><strong>${at.covered?scalar(at.kpi,true):'—'}</strong>${statusHtml(at,g)}</div></div>
+        <div class="waste-section-head"><div><h3>${html(g.label)}</h3><div class="waste-section-subline"><span>${html(g.en)} · เป้าหมาย ≤ ${g.target}%</span>${statusHtml(at,g)}</div></div><div class="waste-kpi-figure"><strong>${at.covered?scalar(at.kpi,true):'—'}</strong></div></div>
         <div class="waste-table-scroll" tabindex="0" aria-label="ตารางสถิติรายเดือน ${html(g.label)}"><table class="waste-table"><thead><tr><th>รายการ / หน่วย</th>${months.map((r,i)=>`<th class="${i+1===state.month?'waste-selected':''}">${monthLabel(r.begin)}</th>`).join('')}<th class="waste-annual">รวมปี</th></tr></thead><tbody>${body}</tbody></table></div>
         <details class="waste-detail-panel"><summary>ข้อมูลประกอบ LIS และรายการอื่น ๆ <span>เปิดดูเพิ่มเติม</span></summary>
           <div class="waste-table-scroll"><table class="waste-table waste-extra-table"><thead><tr><th>รายการเพิ่มเติม</th>${months.map(r=>`<th>${monthLabel(r.begin)}</th>`).join('')}<th class="waste-annual">รวมปี</th></tr></thead><tbody>${detailBody}</tbody></table></div>
