@@ -1,4 +1,4 @@
-/* CNMI Wastage KPI v2.9.118 — status-confirmed expired parent only; family-level one-unit outcome; product filter. */
+/* CNMI Wastage KPI v2.9.119 — status-confirmed expired parent only; family-level one-unit outcome; product filter. */
 (function () {
   'use strict';
   const GROUPS = [
@@ -32,8 +32,41 @@
     const normalized = String(product || '').trim().toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
     return normalized === 'ldpc' || normalized === 'leukocyte depleted platelet concentrate';
   }
+  // Only these FOUR exact LIS product names represent CNMI self-produced
+  // platelet receipts. Avoid substring matching: LDPC must not become LDPPC.
+  const CNMI_SELF_MADE_PLATELETS = new Set([
+    'leukocyte depleted pooled platelet concentrate',
+    'single donor platelet',
+    'irradiated leukocyte depleted pooled platelet concentrate',
+    'irradiated single donor platelet'
+  ]);
+  function normalizeExactProduct(value) {
+    return String(value||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  }
+  function isSelfMadePlateletReceipt(product) {
+    return CNMI_SELF_MADE_PLATELETS.has(normalizeExactProduct(product));
+  }
+  function eligibleReceiptRows(family,source) {
+    if (family.group==='PLATELET' && source==='internal') {
+      // This restricts INTERNAL PRODUCTION, not Released/Expired outcomes.
+      return family.records.filter(r=>isSelfMadePlateletReceipt(r.productType));
+    }
+    // LDPC must never be included in receipt totals as a generic platelet.
+    return family.records.filter(r=>!isLdpcReceipt(r.productType));
+  }
+  function receiptIsEligibleForFamily(family,source) {
+    return eligibleReceiptRows(family,source).length>0;
+  }
+  function stockRequiresVerification(groupKey,row) {
+    // SQL Cache cannot be reconstructed or 'fixed' on the client. New optional
+    // explicit attestations may only be returned AFTER SQL/LIS audit is complete.
+    if (groupKey==='PLATELET') return row.plateletSelfMadeVerified!==true || row.stockLedgerVerified!==true;
+    if (groupKey==='CRYO') return row.stockLedgerVerified!==true;
+    return false;
+  }
   function group(product) {
     const s=String(product||'').toLowerCase().trim();
+    if(normalizeExactProduct(product)==='fresh frozen plasma female')return null; // excluded from every FFP/Plasma KPI
     if (s.includes('cryo-removed plasma')||s.includes('cryo removed plasma')) return 'PLASMA';
     if (s.includes('cryoprecipitate')||/(^|[^a-z])cryo([^a-z]|$)/.test(s)) return 'CRYO';
     if (s.includes('platelet')||/(^|[^a-z0-9])(sdp|ldpc|ldppc|ppc)([^a-z0-9]|$)/.test(s)) return 'PLATELET';
@@ -109,8 +142,10 @@
       const terminalMissingExit=!exit;
       if(terminalMissingExit)issues.missingExit++;
       if(exit&&exit<arrivals[0])issues.conflict++;
-      results.push({key:f.key,group:f.group,source,arrival:arrivals[0],exit,
-        receiptEligible: f.records.some(r=>!isLdpcReceipt(r.productType)),
+      const eligibleReceipts=eligibleReceiptRows(f,source);
+      const receiptArrival=dateMin(eligibleReceipts,'dateStockIn');
+      results.push({key:f.key,group:f.group,source,arrival:arrivals[0],receiptArrival,exit,
+        receiptEligible: !!receiptArrival,
         outcome:outcomeCode,estimated,terminalMissingExit,shelfExpiry});
     }
     return {families:results,issues};
@@ -126,7 +161,8 @@
       const aliveAtStart=f.arrival<begin && (!hasExit||f.exit>=begin);
       const aliveAtEnd=!hasExit||f.exit>end;
       if(aliveAtStart)obj.beginning++;
-      if(f.arrival>=begin && f.arrival<=end && f.receiptEligible!==false)obj[f.source]++;
+      const receiptDate=f.receiptArrival===undefined?f.arrival:f.receiptArrival;
+      if(receiptDate>=begin && receiptDate<=end && f.receiptEligible!==false)obj[f.source]++;
       if(hasExit&&f.exit>=begin&&f.exit<=end) {
         if(f.outcome==='used')obj.used++;
         else if(f.outcome==='expired')obj.expired++;
@@ -138,6 +174,7 @@
       if(!hasExit&&['used','expired','rejected','other'].includes(f.outcome))obj.unknownExit++;
       // 'Available' with an expiration date in the past needs LIS investigation, not an invented expiry event.
     }
+    obj.plateletSelfMadeVerified=false;obj.stockLedgerVerified=false;
     obj.availability=obj.beginning+obj.internal+obj.trc+obj.otherHospital+obj.unclassified;
     // The supplied table explicitly marked Internal + TRC + Ending as denominator.
     obj.kpiDenominator=(productFamily==='CRYO'?0:obj.internal)+obj.trc+obj.ending;
@@ -165,7 +202,7 @@
   }
   const metricRows = [
     {key:'expired',name:'จำนวนที่หมดอายุ',hint:'ตัวตั้ง'},
-    {key:'beginning',name:'คงคลัง ณ ต้นเดือน (จาก LIS)',hint:'ก่อน Action วันที่ 1'},
+    {key:'beginning',name:'คงคลังต้นเดือน (ประมาณการ LIS)',hint:'ไม่ใช่ยอดตรวจนับจริง'},
     {key:'internal',name:'ผลิตภายใน CNMI (ใน รพ. + ออกหน่วย)',hint:'ตัวหาร'},
     {key:'trc',name:'รับจากสภากาชาดไทย',hint:'ตัวหาร'},
     {key:'otherHospital',name:'รับจากโรงพยาบาลอื่น',hint:'ข้อมูลประกอบ'},
@@ -174,7 +211,7 @@
     {key:'unknownExit',name:'รายการวันที่ไม่ครบ',hint:'รายละเอียด LIS · ไม่รวม Stock'},
     {key:'rejected',name:'Rejected / ไม่เหมาะสม',hint:'แยก ไม่ใช่ Expired'},
     {key:'otherDiscard',name:'ทำลายเหตุอื่น',hint:'แยก ไม่ใช่ Expired'},
-    {key:'ending',name:'คงคลัง ณ สิ้นเดือน (จาก LIS)',hint:'หลัง Action เดือนนั้น'},
+    {key:'ending',name:'คงคลังสิ้นเดือน (ประมาณการ LIS)',hint:'ต้องเทียบตรวจนับจริง'},
     {key:'kpiDenominator',name:'ตัวหาร KPI ตามตาราง',hint:'ภายใน + กาชาด + ปลายเดือน'},
     {key:'kpi',name:'Wastage reduction (%)',hint:'KPI หลัก',percent:true},
     {key:'result',name:'ผลการประเมิน',hint:'เทียบเป้าหมาย KPI',isResult:true},
@@ -192,6 +229,7 @@
   function resultLabel(row,g){
     if(!row.covered)return '—';
     if(row.kpi===null || !Number.isFinite(row.kpi))return '—';
+    if(stockRequiresVerification(g.key,row))return 'รอตรวจสอบ';
     return row.kpi<=g.target?'ผ่านเกณฑ์':'ไม่ผ่านเกณฑ์';
   }
   function resultClass(row,g){
@@ -201,6 +239,7 @@
   function statusHtml(row,g){
     const label=resultLabel(row,g);
     if(label==='—')return '<span class="waste-status is-pending">ยังไม่มีผล</span>';
+    if(label==='รอตรวจสอบ')return '<span class="waste-status is-pending">รอตรวจสอบ</span>';
     return label==='ผ่านเกณฑ์'?'<span class="waste-status is-good">ผ่านเกณฑ์</span>':'<span class="waste-status is-bad">ไม่ผ่านเกณฑ์</span>';
   }
   // Missing future months must be blank (not reported as false "0% pass").
@@ -251,6 +290,8 @@
         const found=actual.find(x=>x.monthStart===begin&&x.productFamily===g.key);
         const count=k=>Number(src[k]||0);
         const row={year,month,begin,end,
+          plateletSelfMadeVerified:src.platelet_internal_four_types_verified===true,
+          stockLedgerVerified:src.inventory_ledger_verified===true,
           beginning:count('beginning'),internal:count('internal'),trc:count('trc'),
           otherHospital:count('other_hospital'),unclassified:count('unclassified'),
           used:count('used'),expired:count('expired'),rejected:count('rejected'),
@@ -325,6 +366,8 @@
         cacheStale:!!bounds.latestUploadedAt && !!refreshedAt && Date.parse(refreshedAt)<Date.parse(bounds.latestUploadedAt),
         // The current SQL may still include LDPC receipts. Do not claim otherwise.
         ldpcReceiptVerified:sources.length>0 && sources.every(rows=>rows.every(r=>r.ldpc_receipts_excluded===true)),
+        plateletFourTypesVerified:sources.length>0 && sources.every(rows=>rows.every(r=>r.platelet_internal_four_types_verified===true)),
+        stockLedgerVerified:sources.length>0 && sources.every(rows=>rows.every(r=>r.inventory_ledger_verified===true)),
       };
     }));
     return result.sort((a,b)=>a.year-b.year);
@@ -366,7 +409,7 @@
     out.actual=null;out.discrepancy=null;
     out.covered=rows.every(r=>r.covered);
     out.provisional=rows.some(r=>r.provisional)||out.checkBalance!==0;
-    out.result=!out.covered||out.kpi===null?'—':out.kpi<=g.target?'ผ่านเกณฑ์':'ไม่ผ่านเกณฑ์';
+    out.result=!out.covered||out.kpi===null?'—':rows.some(r=>stockRequiresVerification(g.key,r))?'รอตรวจสอบ':out.kpi<=g.target?'ผ่านเกณฑ์':'ไม่ผ่านเกณฑ์';
     return out;
   }
   function exportReport() {
@@ -383,6 +426,8 @@
       ['สูตร KPI รวมปี','Expired รวมปี ÷ (Internal รวมปี + TRC รวมปี + คงคลัง ณ สิ้นปี) × 100; Cryo ไม่รวม Internal'],
       ['สูตร Utilization Rate รวมปี','Used รวมปี ÷ (คงคลังต้นปี + รับเข้าตลอดปีทุกแหล่ง) × 100'],
       ['นิยามคงคลัง','ต้นเดือน = ถุงที่รับเข้าก่อนวันที่ 1 และยังไม่มี Action สิ้นสุดก่อนวันที่ 1; สิ้นเดือน = ยอดหลัง Action เดือนนั้น; ExpireDate ของถุงที่ไม่ Expired เป็นเพียง Stock-only adjustment ไม่นับ KPI'],
+      ['สถานะการตรวจสอบ','เกล็ดเลือดและ Cryo ยังต้องยืนยัน Receipt/Stock จาก SQL Cache; ค่า KPI ที่ยังไม่ยืนยันเป็นข้อมูลสำหรับ Audit ไม่ใช่ผลผ่านเกณฑ์'],
+      ['ผลิตเกล็ดเลือดภายใน','Leukocyte Depleted Pooled Platelet Concentrate; Single Donor Platelet; Irradiated-Leukocyte Depleted Pooled Platelet Concentrate; Irradiated-Single Donor Platelet เท่านั้น'],
       ['หมายเหตุ LIS','รายละเอียดการใช้ ExpireDate และรายการข้อมูลประกอบแยกจากผลผ่าน/ไม่ผ่านเกณฑ์'],
       ['ผลต่างทางบัญชี','Stock ตรวจนับจริง − Stock ปลายเดือนตาม LIS (ห้ามตั้งเป็น 0 เมื่อไม่มีการตรวจนับ)'],
       ['ขอบเขต','นับ Bag family (ถุงหลัก + .S1/.S.1/.S2/.S.2 และ .U1/.U2/...) 1 ครั้งต่อกลุ่มผลิตภัณฑ์; ต้อง Expired ที่ถุงหลักเท่านั้น; ยอดรับเข้าไม่รวม LDPC (ไม่ใช่ LDPPC) เมื่อ SQL Cache ปรับแล้ว'],
@@ -410,7 +455,7 @@
       detailSheet['!cols']=[{wch:43},{wch:29},...Array.from({length:12},()=>({wch:15})),{wch:16}];
       XLSX.utils.book_append_sheet(wb,detailSheet,g.en+' Detail');
     }
-    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.118.xlsx`);
+    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.119.xlsx`);
   }
   async function saveActual(g) {
     if(state.busy)return;
@@ -447,8 +492,11 @@
           <td class="waste-annual ${isResult?(annual.result==='ผ่านเกณฑ์'?'waste-result-good':annual.result==='ไม่ผ่านเกณฑ์'?'waste-result-bad':''):''}">${!annual.covered?'—':isResult?annual.result:scalar(annual[metric.key],metric.percent)}</td></tr>`;
       }).join('');
       const body=makeRows(mainMetricRows),detailBody=makeRows(detailMetricRows);
+      const needsAudit=months.some(r=>r.covered&&stockRequiresVerification(g.key,r));
+      const qaWarning=needsAudit ? `<div class="waste-audit-alert"><strong>ยังไม่รับรองค่า ${html(g.label)} จาก Cache</strong><span>${g.key==='PLATELET'?'ต้องตรวจยอดผลิตเองเฉพาะ 4 ชื่อผลิตภัณฑ์จาก LIS และคงคลังตามวันจริง':'ต้องตรวจรายการคงคลัง Cryo กับ ExpireDate / DateStockOut / Be Transformed ตาม Bag Family'} ก่อนใช้ตัวเลขเป็น KPI ทางการ · ตัวเลขด้านล่างยังแสดงค่าเดิมเพื่อ Audit</span></div>`:'';
       return `<section class="simple-panel waste-section" aria-label="KPI ${html(g.label)}">
         <div class="waste-section-head"><div><h3>${html(g.label)}</h3><span class="small-muted">${html(g.en)} · เป้าหมาย ≤ ${g.target}%</span></div><div class="waste-kpi-figure"><strong>${at.covered?scalar(at.kpi,true):'—'}</strong>${statusHtml(at,g)}</div></div>
+        ${qaWarning}
         <div class="waste-table-scroll" tabindex="0" aria-label="ตารางสถิติรายเดือน ${html(g.label)}"><table class="waste-table"><thead><tr><th>รายการ / หน่วย</th>${months.map((r,i)=>`<th class="${i+1===state.month?'waste-selected':''}">${monthLabel(r.begin)}</th>`).join('')}<th class="waste-annual">รวมปี</th></tr></thead><tbody>${body}</tbody></table></div>
         <details class="waste-detail-panel"><summary>ข้อมูลประกอบ LIS และรายการอื่น ๆ <span>เปิดดูเพิ่มเติม</span></summary>
           <div class="waste-table-scroll"><table class="waste-table waste-extra-table"><thead><tr><th>รายการเพิ่มเติม</th>${months.map(r=>`<th>${monthLabel(r.begin)}</th>`).join('')}<th class="waste-annual">รวมปี</th></tr></thead><tbody>${detailBody}</tbody></table></div>
@@ -471,7 +519,7 @@
         <label>เลือกเดือนที่เน้น <select class="form-select" onchange="CNMIWastage.chooseMonth(this.value)">${report.months.RBC.map((r,i)=>`<option value="${i+1}" ${i+1===state.month?'selected':''}>${monthLabel(r.begin)}</option>`).join('')}</select></label><span>ช่วงข้อมูล LIS ล่าสุดถึง: <strong>${html(state.latest?.source_end_date||state.maxDate||'ไม่พบวันที่ครอบคลุมไฟล์')}</strong></span></div>
       <div class="waste-notice"><strong>ข้อมูลสรุปคำนวณล่าสุด: ${html(cacheAgeLabel())}</strong><span>หน้านี้อ่านผลรวมที่เก็บไว้ จึงไม่ต้องคำนวณประวัติหลายปีทุกครั้ง หากอัปโหลด LIS ใหม่ ให้รัน SQL รีเฟรชปีที่เกี่ยวข้องบน Supabase เพื่ออัปเดตตัวเลข</span></div>
       ${report.cacheStale?`<div class="waste-notice waste-cache-stale"><strong>ข้อมูลสรุปยังไม่รวม LIS ที่อัปโหลดล่าสุด</strong><span>โปรดรีเฟรช Cache ใน Supabase SQL Editor ก่อนนำรายงานไปใช้ ผู้ใช้ทั่วไปไม่สามารถกดคำนวณหนักจากหน้าเว็บได้</span></div>`:''}
-      ${!state.summary.every(r=>r.ldpc_receipts_excluded===true)?`<div class="waste-notice waste-cache-stale"><strong>ข้อมูลรับเข้าเกล็ดเลือด: ยังไม่ได้ยืนยันการยกเว้น LDPC</strong><span>ต้องตรวจสอบ/ปรับ SQL ที่สร้าง Cache ให้ไม่รวม LDPC เฉพาะยอดรับเข้า (LDPPC ยังนับตามเดิม) ก่อนนำผลเกล็ดเลือดไปอ้างอิงเป็นตัวชี้วัดทางการ</span></div>`:''}
+      ${!state.summary.every(r=>r.platelet_internal_four_types_verified===true)?`<div class="waste-notice waste-cache-stale"><strong>รับเข้าเกล็ดเลือด: ยังไม่ได้ยืนยันชื่อผลิตเองทั้ง 4 รายการ</strong><span>ต้องตรวจสอบ/ปรับ SQL ให้ CNMI Internal นับเฉพาะ 4 ชื่อที่ระบุ และไม่รวม LDPC; รายการใช้งาน/หมดอายุยังคงนับตามสถานะ ก่อนนำผลเกล็ดเลือดไปอ้างอิงเป็นตัวชี้วัดทางการ</span></div>`:''}
       <div class="waste-target-grid">${GROUPS.map(g=>{const at=report.months[g.key][state.month-1];return `<div class="waste-target-card"><span>${html(g.label)}</span><strong>${at.covered?scalar(at.kpi,true):'—'}</strong><div><small>เป้าหมาย ≤ ${g.target}%</small>${statusHtml(at,g)}</div></div>`;}).join('')}</div>
       ${(warning.missingExit||warning.noArrival||warning.conflict||warning.estimatedExpiry||warning.unclassified)?`<details class="simple-panel waste-method"><summary>ข้อมูลประกอบจาก LIS (ไม่รวมเป็นจำนวน Expired)</summary><p>ไม่พบวันจ่าย/ออก ${fmt(warning.missingExit)} family · วันสิ้นสุดอนุมาน / ปรับ Stock ${fmt(warning.estimatedExpiry)} · ไม่มีวันรับเข้า ${fmt(warning.noArrival)} · ข้อมูลขัดแย้ง ${fmt(warning.conflict)} · แหล่งรับเข้าไม่ชัด ${fmt(warning.unclassified)}</p></details>`:''}
       <details class="simple-panel waste-method"><summary>สูตรที่ใช้คำนวณ KPI</summary><p class="waste-formula"><strong>สูตร KPI:</strong> หมดอายุ ÷ (ผลิตภายใน CNMI + รับจาก TRC + คงคลังปลายเดือน) × 100 (Cryo: ใช้ TRC + ปลายเดือน) · Utilization รายเดือน = จ่ายใช้ ÷ (คงคลังต้นเดือน + รับเข้าทุกแหล่ง) × 100 · รวมปี = หมดอายุทั้งปี ÷ (ผลิตใน CNMI ทั้งปี + TRC ทั้งปี + คงคลังสิ้นปี) · คงคลังต้น/ปลายปีไม่นำ 12 เดือนมาบวกกัน</p></details>
@@ -483,7 +531,7 @@
       <details class="simple-panel waste-real-inventory"><summary>บันทึกยอดตรวจนับจริงและผลต่างทางบัญชี (เพิ่มเติม)</summary><div class="panel-heading-row"><div><h3>ผลต่างทางบัญชี · ${monthLabel(report.months.RBC[state.month-1].begin)}</h3><div class="small-muted">ใช้ยอดตรวจนับจริงมาเทียบกับยอดคงคลังจาก LIS · ไม่มีผลตรวจนับจะแสดง “—” ไม่ใช่ศูนย์</div></div></div>
         ${state.schemaReady?`<div class="waste-check-grid">${actualInputs}</div>`:`<div class="waste-notice"><strong>ยังไม่ได้ติดตั้งตารางตรวจนับจริง</strong><span>รายงานจาก LIS ใช้งานได้ แต่หากต้องการบันทึกสต๊อกตรวจนับและคำนวณ Discrepancy ให้รัน SQL-v2.9.108-MONTHLY-WASTAGE-CHECK.sql ที่ Supabase หนึ่งครั้ง</span></div>`}
         ${state.schemaReady&&!isAdmin?'<p class="small-muted">อ่านข้อมูลได้ตามสิทธิ์ผู้ใช้ · การบันทึกยอดตรวจนับสำหรับ Admin เท่านั้น</p>':''}</details>
-      <details class="simple-panel waste-method"><summary>นิยามและวิธีนับถุงเลือด</summary><p><strong>ตัวตั้ง Expired:</strong> ต้องมี Status=Expired ที่ถุงหลักและไม่มีสมาชิกถุงใดในครอบครัวที่ Released หรือ Dedicated; ถุง .S1/.S.1/.S2/.S.2 ที่หมดอายุลำพังไม่นับ. หนึ่งครอบครัวนับได้มากสุดหนึ่งถุงต่อกลุ่มผลิตภัณฑ์; Be Transformed ไม่ใช่ผลลัพธ์ปลายทาง</p><p>คงคลังต้นเดือนนับก่อน Action ของวันที่ 1; DateStockIn คือวันรับเข้าจริง และ DateStockOut คือวันจ่าย/Action จริง ถ้า LIS ยังแสดง Available/Be Transformed แต่พ้น ExpireDate จะไม่ค้างเป็น Stock ตลอดไป: ใช้เป็นการปรับยอดคงคลังตามวันสิ้นสุดแยกต่างหาก <strong>ไม่ใช่จำนวน Expired ใน KPI</strong>; รายการออกจริงแต่ไม่มีวันที่ออกต้องตรวจสอบ</p><p>ยอดคงคลังต้น/ปลายเป็นยอดคำนวณย้อนหลังจาก LIS ไม่ใช่ผลตรวจนับจริง; ช่องรวมปีสำหรับคงคลังแสดงยอดต้นปีและสิ้นปี (ไม่ใช่ผลบวก 12 เดือน); ปริมาณรับจากโรงพยาบาลอื่นแยกแสดงเพื่อทวนสมดุล และไม่อยู่ในตัวหาร KPI ตามตารางต้นฉบับ</p><p>เดือนแรกของประวัติ LIS อาจมีเลือดคงคลังที่รับเข้าก่อนช่วงข้อมูล ต้องมีข้อมูลเพียงพอในช่วงเดือนนั้นจึงแสดงผล KPI; รายการอนุมานจาก ExpireDate จัดเป็นข้อมูลประกอบ LIS ไม่ใช่เกณฑ์ตัดสิน KPI; การแสดง 0 หมายถึงนับได้ 0; เครื่องหมาย — หมายถึงยังไม่มีค่าหรือคำนวณไม่ได้</p></details>
+      <details class="simple-panel waste-method"><summary>นิยามและวิธีนับถุงเลือด</summary><p><strong>ตัวตั้ง Expired:</strong> ต้องมี Status=Expired ที่ถุงหลักและไม่มีสมาชิกถุงใดในครอบครัวที่ Released หรือ Dedicated; ถุง .S1/.S.1/.S2/.S.2 ที่หมดอายุลำพังไม่นับ. หนึ่งครอบครัวนับได้มากสุดหนึ่งถุงต่อกลุ่มผลิตภัณฑ์; Be Transformed ไม่ใช่ผลลัพธ์ปลายทาง</p><p>คงคลังต้นเดือนนับก่อน Action ของวันที่ 1; DateStockIn คือวันรับเข้าจริง และ DateStockOut คือวันจ่าย/Action จริง ถ้า LIS ยังแสดง Available/Be Transformed แต่พ้น ExpireDate จะไม่ค้างเป็น Stock ตลอดไป: ใช้เป็นการปรับยอดคงคลังตามวันสิ้นสุดแยกต่างหาก <strong>ไม่ใช่จำนวน Expired ใน KPI</strong>; รายการออกจริงแต่ไม่มีวันที่ออกต้องตรวจสอบ</p><p>ยอดคงคลังต้น/ปลายเป็นยอดคำนวณย้อนหลังจาก LIS ไม่ใช่ผลตรวจนับจริง; ช่องรวมปีสำหรับคงคลังแสดงยอดต้นปีและสิ้นปี (ไม่ใช่ผลบวก 12 เดือน); ปริมาณรับจากโรงพยาบาลอื่นแยกแสดงเพื่อทวนสมดุล และไม่อยู่ในตัวหาร KPI ตามตารางต้นฉบับ</p><p>เดือนแรกของประวัติ LIS อาจมีเลือดคงคลังที่รับเข้าก่อนช่วงข้อมูล ต้องมีข้อมูลเพียงพอในช่วงเดือนนั้นจึงแสดงผล KPI; รายการอนุมานจาก ExpireDate จัดเป็นข้อมูลประกอบ LIS ไม่ใช่เกณฑ์ตัดสิน KPI; การแสดง 0 หมายถึงนับได้ 0; เครื่องหมาย — หมายถึงยังไม่มีค่าหรือคำนวณไม่ได้; รอตรวจสอบ = ยังไม่ยืนยันข้อกำหนดผลิตเองและ/หรือคงคลังจาก LIS</p></details>
     </div>`;
   }
   async function loadYear(){
@@ -529,5 +577,5 @@
     }
   }
   function retry(){state.summary=null;state.actual=[];state.minDate=null;state.maxDate=null;invalidateAlignedCache();load();}
-  window.CNMIWastage={load,chooseYear,chooseMode,chooseMonth,chooseGroup,exportExcel:exportReport,saveActual,retry,loadAlignedCalendarYears,invalidateAlignedCache,_test:{familiesFromRows,sumMonth,buildReport,reportFromSummary,annualSummary,periodMonths,group,outcome,isLdpcReceipt}};
+  window.CNMIWastage={load,chooseYear,chooseMode,chooseMonth,chooseGroup,exportExcel:exportReport,saveActual,retry,loadAlignedCalendarYears,invalidateAlignedCache,_test:{familiesFromRows,sumMonth,buildReport,reportFromSummary,annualSummary,periodMonths,group,outcome,isLdpcReceipt,isSelfMadePlateletReceipt,receiptIsEligibleForFamily,eligibleReceiptRows,stockRequiresVerification}};
 })();

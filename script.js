@@ -4182,10 +4182,10 @@ function renderAlignedWastageKpi({route, yearReports, filters, year}) {
     const row=latestComplete(g), metric=row?(isExpiry?row.kpi:row.utilization):null;
     return `<button type="button" class="kpi-aligned-group ${g.key===selected.key?'is-selected':''}" onclick="changeKpiAlignedGroup('${g.key}')" aria-pressed="${g.key===selected.key}">
       <span>${escapeOutreachHtml(g.label)}</span><strong>${formatRate(metric)}</strong>
-      <small>${row?formatThaiMonthYear(row.begin):'ยังไม่มีข้อมูลครบ'}${isExpiry?' · เป้าหมาย ≤ '+g.target+'%':''}</small>
+      <small>${row?formatThaiMonthYear(row.begin):'ยังไม่มีข้อมูลครบ'}${['PLATELET','CRYO'].includes(g.key)?' · ตรวจสอบ LIS':''}${isExpiry?' · เป้าหมาย ≤ '+g.target+'%':''}</small>
     </button>`;
   }).join('');
-  const verified = yearReports.every(item=>item.ldpcReceiptVerified);
+  const verified = yearReports.every(item=>item.plateletFourTypesVerified);
   const chosenTable=chosenRows.map(row=>{
     const covered=row.covered;
     const label= formatThaiMonthYear(row.begin);
@@ -4202,7 +4202,8 @@ function renderAlignedWastageKpi({route, yearReports, filters, year}) {
   currentBloodKpiRouteData={route,year,yearReports,filters,aligned:true};
   return `${kpiPageHeader(title,'อ่านค่าจาก Cache เดียวกับ KPI ประสิทธิภาพการลดความสูญเสีย',year,yearReports.map(x=>x.year))}
     <div class="simple-panel mb-3 kpi-aligned-scope"><strong>ฐานคำนวณเดียวกัน</strong><span>เทียบค่าแบบรายเดือนและแยก 4 กลุ่มผลิตภัณฑ์ รวมทุกแหล่งรับเข้า/หมู่เลือด/Rh · ไม่ใช้สูตร Used ÷ (Used + Expired)</span></div>
-    ${!verified ? `<div class="waste-notice waste-cache-stale mb-3"><strong>LDPC: ยังไม่ยืนยันว่าตัดออกจากยอดรับเข้าใน Cache แล้ว</strong><span>แอพแยก LDPC และ LDPPC ถูกต้องแล้ว แต่ SQL Cache เดิมยังต้องตรวจและปรับก่อนรับรองตัวเลขเกล็ดเลือด กรุณาดูไฟล์ SQL ตรวจสอบที่แนบในชุดอัปเดต</span></div>`:''}
+    ${selected.key==='PLATELET' && !verified ? `<div class="waste-notice waste-cache-stale mb-3"><strong>เกล็ดเลือด: ยอดผลิตเองยังไม่ยืนยัน</strong><span>นับเฉพาะ 4 ชื่อผลิตภัณฑ์ตาม LIS และไม่นับ LDPC รวมในยอดรับเข้า ต้องตรวจ SQL Cache ก่อนรับรอง KPI</span></div>`:''}
+    ${['PLATELET','CRYO'].includes(selected.key)&&yearReports.some(item=>!item.stockLedgerVerified)?`<div class="waste-notice waste-cache-stale mb-3"><strong>คงคลัง ${escapeOutreachHtml(selected.label)} ยังต้อง Audit</strong><span>คงคลังจากประวัติ LIS เป็นค่าคำนวณ ไม่ใช่ยอดตรวจนับจริง โปรดตรวจ ExpireDate, DateStockOut และสถานะ Be Transformed ก่อนนำ KPI ไปใช้ทางการ</span></div>`:''}
     ${latestStale ? `<div class="waste-notice mb-3"><strong>ควรตรวจสอบรอบรีเฟรช Cache</strong><span>ไม่มีเวลารีเฟรชบางปีหรืออาจเก่ากว่าการนำเข้า LIS ล่าสุด โปรดตรวจสอบใน Supabase</span></div>`:''}
     <div class="kpi-aligned-groups" aria-label="เลือกกลุ่มผลิตภัณฑ์">${groupCards}</div>
     <div class="simple-panel kpi-aligned-focus mb-3">
@@ -4211,7 +4212,7 @@ function renderAlignedWastageKpi({route, yearReports, filters, year}) {
     </div>
     <div class="simple-panel kpi-executive-panel mb-3"><div class="panel-heading-row"><h3>เทียบปี · ${escapeOutreachHtml(selected.label)} (${isExpiry?'หมดอายุ':'ใช้ประโยชน์'})</h3></div>
       ${renderKpiYearOverlayChart(chartRows,'value',{title:`${selected.label} · ${isExpiry?'อัตราหมดอายุ':'อัตราใช้ประโยชน์'}`,unit:'%',yMax:isExpiry?undefined:100,showMultiYearLabels:true,labelDecimals:2})}
-      <p class="small-muted mt-2">จุดกราฟแสดงเปอร์เซ็นต์ 2 ตำแหน่งตรงกับตาราง KPI ลดความสูญเสียในเดือนเดียวกัน · เดือนที่ข้อมูลไม่ครบเว้นว่าง</p>
+      <p class="small-muted mt-2">จุดกราฟแสดงเปอร์เซ็นต์จาก Cache 2 ตำแหน่ง · ค่าเกล็ดเลือดและ Cryo ที่ยังไม่ตรวจสอบเป็นข้อมูลเบื้องต้น · เดือนที่ข้อมูลไม่ครบเว้นว่าง</p>
     </div>
     <details class="simple-panel kpi-aligned-table mb-3"><summary>ดูตัวตั้ง ตัวหาร และผลรายเดือน (${escapeOutreachHtml(selected.label)})</summary>
       <div class="table-responsive"><table class="table simple-table align-middle"><thead><tr><th>เดือน</th><th class="text-end">ใช้/จ่าย</th><th class="text-end">พร้อมใช้</th><th class="text-end">ใช้ประโยชน์</th><th class="text-end">หมดอายุ</th><th class="text-end">ตัวหาร KPI</th><th class="text-end">หมดอายุ (%)</th></tr></thead><tbody>${chosenTable||'<tr><td colspan="7">ไม่มีข้อมูลในช่วงนี้</td></tr>'}</tbody></table></div>

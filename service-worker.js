@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-118-aligned-kpi-ldpc-check";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-119-platelet-cryo-audit";
 const APP_SHELL = [
   "./",
   "./index.html",
