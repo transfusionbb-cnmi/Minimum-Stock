@@ -4199,12 +4199,18 @@ function renderAlignedWastageKpi({route, yearReports, filters, year}) {
     </tr>`;
   }).join('');
   const latestStale = yearReports.some(item=>item.cacheStale || !Number.isFinite(Date.parse(item.refreshedAt)));
+  const conflictingSnapshots = yearReports.reduce((n,item)=>n+(item.cacheConflicts||0),0);
+  const suppressedOldMonths = yearReports.reduce((n,item)=>n+(item.staleCalendarSuppressed||0),0);
+  const outdatedFiscalMonths = yearReports.reduce((n,item)=>n+(item.fiscalNeedsRefresh||0),0);
   currentBloodKpiRouteData={route,year,yearReports,filters,aligned:true};
   return `${kpiPageHeader(title,'อ่านค่าจาก Cache เดียวกับ KPI ประสิทธิภาพการลดความสูญเสีย',year,yearReports.map(x=>x.year))}
     <div class="simple-panel mb-3 kpi-aligned-scope"><strong>ฐานคำนวณเดียวกัน</strong><span>เทียบค่าแบบรายเดือนและแยก 4 กลุ่มผลิตภัณฑ์ รวมทุกแหล่งรับเข้า/หมู่เลือด/Rh · ไม่ใช้สูตร Used ÷ (Used + Expired)</span></div>
     ${selected.key==='PLATELET' && !verified ? `<div class="waste-notice waste-cache-stale mb-3"><strong>เกล็ดเลือด: ยอดผลิตเองยังไม่ยืนยัน</strong><span>นับเฉพาะ 4 ชื่อผลิตภัณฑ์ตาม LIS และไม่นับ LDPC รวมในยอดรับเข้า ต้องตรวจ SQL Cache ก่อนรับรอง KPI</span></div>`:''}
     ${['PLATELET','CRYO'].includes(selected.key)&&yearReports.some(item=>!item.stockLedgerVerified)?`<div class="waste-notice waste-cache-stale mb-3"><strong>คงคลัง ${escapeOutreachHtml(selected.label)} ยังต้อง Audit</strong><span>คงคลังจากประวัติ LIS เป็นค่าคำนวณ ไม่ใช่ยอดตรวจนับจริง โปรดตรวจ ExpireDate, DateStockOut และสถานะ Be Transformed ก่อนนำ KPI ไปใช้ทางการ</span></div>`:''}
-    ${latestStale ? `<div class="waste-notice mb-3"><strong>ควรตรวจสอบรอบรีเฟรช Cache</strong><span>ไม่มีเวลารีเฟรชบางปีหรืออาจเก่ากว่าการนำเข้า LIS ล่าสุด โปรดตรวจสอบใน Supabase</span></div>`:''}
+    ${conflictingSnapshots ? `<div class="waste-notice waste-cache-stale mb-3"><strong>พบ Cache ปีปฏิทินและปีงบประมาณไม่ตรงกัน</strong><span>มี ${conflictingSnapshots.toLocaleString()} คู่เดือน/ผลิตภัณฑ์ที่ยอดแตกต่าง · หน้านี้เลือกปีงบประมาณเป็นฐานเดียวกับหน้า KPI ลดความสูญเสียสำหรับเดือนที่มีข้อมูล · ยังต้องตรวจ SQL และ LIS ก่อนรับรอง KPI</span></div>`:''}
+    ${outdatedFiscalMonths ? `<div class="waste-notice waste-cache-stale mb-3"><strong>Cache ปีปฏิทินรีเฟรชใหม่กว่าปีงบประมาณบางเดือน</strong><span>มี ${outdatedFiscalMonths.toLocaleString()} คู่เดือน/ผลิตภัณฑ์ที่ควรรีเฟรชปีงบประมาณก่อนใช้รายงาน (ขณะนี้แสดง FY เพื่อให้ตรงกับ KPI ลดความสูญเสีย)</span></div>`:''}
+    ${suppressedOldMonths ? `<div class="waste-notice mb-3"><strong>ไม่แสดงเดือนที่มีเพียง Cache เก่า</strong><span>เว้นว่าง ${suppressedOldMonths.toLocaleString()} จุดข้อมูลที่มี Cache ปีปฏิทินเก่ากว่าปีงบประมาณที่มีอยู่ เพื่อไม่ให้แสดงยอดคงคลังสะสมผิดเป็นหมื่นถุง</span></div>`:''}
+    ${latestStale ? `<div class="waste-notice mb-3"><strong>ควรตรวจสอบรอบรีเฟรช Cache</strong><span>บางช่วงใช้ Snapshot ที่เก่าหรือยังไม่มีเวลารีเฟรช โปรดตรวจสอบกับ Supabase และ LIS</span></div>`:''}
     <div class="kpi-aligned-groups" aria-label="เลือกกลุ่มผลิตภัณฑ์">${groupCards}</div>
     <div class="simple-panel kpi-aligned-focus mb-3">
       <div><span>${isExpiry?'หมดอายุ ÷ (ผลิตภายใน CNMI + กาชาด + คงคลังปลายเดือน)':'จ่ายใช้ ÷ (คงคลังต้นเดือน + รับเข้าทุกแหล่ง)'}</span><strong>${formatRate(latestRate)}</strong><small>${escapeOutreachHtml(selected.label)} · ${escapeOutreachHtml(latestLabel)}</small></div>

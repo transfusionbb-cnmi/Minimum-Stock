@@ -1,4 +1,4 @@
-/* CNMI Wastage KPI v2.9.119 — status-confirmed expired parent only; family-level one-unit outcome; product filter. */
+/* CNMI Wastage KPI v2.9.120 — status-confirmed expired parent only; family-level one-unit outcome; product filter. */
 (function () {
   'use strict';
   const GROUPS = [
@@ -312,9 +312,10 @@
     }
     return result;
   }
-  // Shared read-only source for the Utilization and Expiry KPI pages.
-  // Preferred calendar-year cache; fiscal cache is a safe fallback if only FY
-  // snapshots were refreshed in Supabase. Never invent missing months as zero.
+  // v2.9.120: Resolve each calendar month against the freshest overlapping
+  // SQL cache (CY year / FY year / FY year+1), not merely the first 48 rows.
+  // A stale CY snapshot must NEVER silently override a newer FY snapshot.
+  // Missing months stay blank; no synthetic stock or 0% KPIs are created.
   const alignedCache = new Map();
   async function alignedCacheRead(year, fiscal) {
     const key=`${year}:${fiscal?'FY':'CY'}`;
@@ -325,49 +326,79 @@
     }
     return alignedCache.get(key);
   }
+  const completeSummary = rows => Array.isArray(rows) && rows.length===48 &&
+    GROUPS.every(g=>rows.filter(r=>r.product_family===g.key).length===12);
+  const refreshedNumber = row => {
+    const n=Date.parse(row?.refreshed_at||'');
+    return Number.isFinite(n)?n:-Infinity;
+  };
+  function sameMonthlyLedger(a,b) {
+    return ['beginning','internal','trc','other_hospital','unclassified','used',
+      'expired','rejected','other_discard','ending'].every(k=>Number(a?.[k]||0)===Number(b?.[k]||0));
+  }
   async function loadAlignedCalendarYears(years, bounds = {}) {
-    const unique = [...new Set((years || []).map(Number).filter(y=>Number.isInteger(y)&&y>=2000&&y<=2100))];
-    if (unique.length > 10) throw new Error('เลือกเทียบได้สูงสุด 10 ปี');
-    const result = await Promise.all(unique.map(async year => {
-      const minDate=bounds.minDate||'',maxDate=bounds.maxDate||'';
-      let calendar=null;
-      try { calendar=await alignedCacheRead(year, false); } catch(e) {
-        // A missing CY snapshot may have a complete FY summary instead.
+    const unique=[...new Set((years||[]).map(Number).filter(y=>Number.isInteger(y)&&y>=2000&&y<=2100))];
+    if(unique.length>10)throw new Error('เลือกเทียบได้สูงสุด 10 ปี');
+    const result=await Promise.all(unique.map(async year=>{
+      const minDate=bounds.minDate||'', maxDate=bounds.maxDate||'';
+      const requests=await Promise.allSettled([
+        alignedCacheRead(year,false), // CY: Jan--Dec
+        alignedCacheRead(year,true),  // FY: Oct previous--Sep current
+        alignedCacheRead(year+1,true) // next FY: Oct current--Sep next
+      ]);
+      const raws=requests.map(r=>r.status==='fulfilled'&&completeSummary(r.value)?r.value:null);
+      const [cy,fy,following]=raws;
+      if(!cy&&!fy&&!following){
+        throw new Error(`ไม่มี Cache KPI ปี ${year+543} ที่ครบ 48 แถว กรุณาตรวจข้อมูลใน Supabase`);
       }
-      let report=null, sources=[];
-      if (Array.isArray(calendar) && calendar.length===48) {
-        sources=[calendar];
-        report=reportFromSummary(calendar,year,[],maxDate,minDate,false);
-      } else {
-        let fiscal=null, following=null;
-        try { fiscal=await alignedCacheRead(year,true); } catch(e) {}
-        if (!Array.isArray(fiscal)||fiscal.length!==48) {
-          throw new Error(`ยังไม่มี Cache KPI ปี ${year+543} แบบปีปฏิทินหรือปีงบประมาณ กรุณารีเฟรชข้อมูลใน Supabase ก่อน`);
-        }
-        try { following=await alignedCacheRead(year+1,true); } catch(e) {}
-        if (!Array.isArray(following)||following.length!==48) following=null;
-        sources=following?[fiscal,following]:[fiscal];
-        const a=reportFromSummary(fiscal,year,[],maxDate,minDate,true);
-        const b=following?reportFromSummary(following,year+1,[],maxDate,minDate,true):null;
-        const empty=reportFromSummary([],year,[],maxDate,minDate,false);
-        report={year,fiscal:false,months:{},issues:a.issues,familyCount:a.familyCount};
-        for (const g of GROUPS) {
-          report.months[g.key]=Array.from({length:12},(_,i)=>{
-            if(i<9)return a.months[g.key][i+3]; // FY month 4..12 = Jan..Sep
-            if(b)return b.months[g.key][i-9]; // next FY month 1..3 = Oct..Dec
-            return {...empty.months[g.key][i],covered:false,kpi:null,utilization:null};
-          });
-        }
+      const cr=cy?reportFromSummary(cy,year,[],maxDate,minDate,false):null;
+      const fr=fy?reportFromSummary(fy,year,[],maxDate,minDate,true):null;
+      const nr=following?reportFromSummary(following,year+1,[],maxDate,minDate,true):null;
+      const empty=reportFromSummary([],year,[],maxDate,minDate,false);
+      const report={year,fiscal:false,months:{},issues:fr?.issues||cr?.issues||nr?.issues||{},familyCount:fr?.familyCount||cr?.familyCount||nr?.familyCount||0};
+      let cacheConflicts=0, staleCalendarSuppressed=0, calendarFallbacks=0, fiscalNeedsRefresh=0;
+      // A CY-only month from a snapshot older than any FY contributing to this
+      // year cannot be called current, even if the CY snapshot has 48 rows.
+      const latestFiscalStamp=Math.max(...[fy,following].filter(Boolean).flatMap(rows=>rows.map(refreshedNumber)),-Infinity);
+      const usedSourceRows=[];
+      const calendarMonthStarts=periodMonths(year,false);
+      for(const g of GROUPS) {
+        report.months[g.key]=Array.from({length:12},(_,i)=>{
+          const cRow=cy?.find(r=>r.product_family===g.key&&r.month_start===calendarMonthStarts[i]);
+          const fRows=i<9?fy:following;
+          const fReport=i<9?fr:nr;
+          const fIndex=i<9?i+3:i-9;
+          const fRow=fRows?.find(r=>r.product_family===g.key && r.month_start===calendarMonthStarts[i]);
+          const cValue=cr?.months[g.key][i];
+          const fValue=fReport?.months[g.key][fIndex];
+          if(cRow&&fRow&&!sameMonthlyLedger(cRow,fRow))cacheConflicts++;
+          let selected, origin;
+          // Match the dedicated wastage KPI page: FY is canonical whenever
+          // its month exists. A later CY refresh is NOT proof its stock is
+          // correct; surface that divergence rather than switching sources.
+          if(fRow) {
+            selected=fValue;origin=fRow;
+            if(cRow&&refreshedNumber(cRow)>refreshedNumber(fRow)) fiscalNeedsRefresh++;
+          } else if(cRow) {
+            if(latestFiscalStamp>-Infinity && refreshedNumber(cRow)<latestFiscalStamp){
+              staleCalendarSuppressed++;
+            } else {
+              selected=cValue;origin=cRow;calendarFallbacks++;
+            }
+          }
+          if(origin)usedSourceRows.push(origin);
+          // Preserve missing months as unknown rather than showing stale
+          // stock balances or inventing a zero rate.
+          return selected?{...selected}:{...empty.months[g.key][i],covered:false,kpi:null,utilization:null};
+        });
       }
-      const dates=sources.map(rows=>rows[0]?.refreshed_at||'').filter(Boolean);
-      const refreshedAt=dates.length?dates.sort()[0]:''; // oldest contributing cache
+      const refreshedAt=usedSourceRows.map(r=>r.refreshed_at).filter(Boolean).sort()[0]||'';
       return {
-        year,report,refreshedAt,
-        cacheStale:!!bounds.latestUploadedAt && !!refreshedAt && Date.parse(refreshedAt)<Date.parse(bounds.latestUploadedAt),
-        // The current SQL may still include LDPC receipts. Do not claim otherwise.
-        ldpcReceiptVerified:sources.length>0 && sources.every(rows=>rows.every(r=>r.ldpc_receipts_excluded===true)),
-        plateletFourTypesVerified:sources.length>0 && sources.every(rows=>rows.every(r=>r.platelet_internal_four_types_verified===true)),
-        stockLedgerVerified:sources.length>0 && sources.every(rows=>rows.every(r=>r.inventory_ledger_verified===true)),
+        year,report,refreshedAt,cacheConflicts,staleCalendarSuppressed,calendarFallbacks,fiscalNeedsRefresh,
+        cacheStale: (!!bounds.latestUploadedAt&&!!refreshedAt&&Date.parse(refreshedAt)<Date.parse(bounds.latestUploadedAt)) || calendarFallbacks>0 || fiscalNeedsRefresh>0,
+        ldpcReceiptVerified:usedSourceRows.length>0&&usedSourceRows.every(r=>r.ldpc_receipts_excluded===true),
+        plateletFourTypesVerified:usedSourceRows.length>0&&usedSourceRows.every(r=>r.platelet_internal_four_types_verified===true),
+        stockLedgerVerified:usedSourceRows.length>0&&usedSourceRows.every(r=>r.inventory_ledger_verified===true)
       };
     }));
     return result.sort((a,b)=>a.year-b.year);
@@ -455,7 +486,7 @@
       detailSheet['!cols']=[{wch:43},{wch:29},...Array.from({length:12},()=>({wch:15})),{wch:16}];
       XLSX.utils.book_append_sheet(wb,detailSheet,g.en+' Detail');
     }
-    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.119.xlsx`);
+    XLSX.writeFile(wb,`CNMI-Wastage-KPI-${state.fiscal?'FY':'CY'}${state.year+543}-v2.9.120.xlsx`);
   }
   async function saveActual(g) {
     if(state.busy)return;
