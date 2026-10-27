@@ -411,25 +411,19 @@ function renderEmptyDashboardAfterClear() {
   if (mobilePlanningDashboard) mobilePlanningDashboard.innerHTML = "";
 }
 
-function isSameDashboardData(a, b) {
-  if (!a || !b) return false;
-  return String(a.fileName || "") === String(b.fileName || "") &&
-    String(a.calculatedAt || "") === String(b.calculatedAt || "") &&
-    Number(a.totalRows || 0) === Number(b.totalRows || 0) &&
-    Number(a.releasedRows || 0) === Number(b.releasedRows || 0);
-}
-
 function renderDashboard(data) {
   currentDashboardData = data;
 
   const results = data.results || [];
+  const verifiedResults = results.filter(r => r.stockVerified === true);
   const totalMin = results.reduce((sum, r) => sum + Number(r.minimumStock || 0), 0);
-  const totalNet = results.reduce((sum, r) => sum + Number(r.netAvailable || 0), 0);
-  const needItems = results.filter(r => ["critical", "warning"].includes(String(r.alertLevel || "").toLowerCase()));
+  const totalNet = verifiedResults.reduce((sum, r) => sum + Number(r.netAvailable || 0), 0);
+  const needItems = verifiedResults.filter(r => ["critical", "warning"].includes(String(r.alertLevel || "").toLowerCase()));
   const overstockItems = results.filter(r => String(r.alertLevel || "").toLowerCase() === "overstock");
-  const normalItems = Math.max(0, results.length - needItems.length - overstockItems.length);
+  const normalItems = Math.max(0, verifiedResults.length - needItems.length - overstockItems.length);
   const topDashboard = document.getElementById("topDashboard");
   const stockAudit = data.stockAudit;
+  const incompleteStock = stockAudit?.verified !== true || verifiedResults.length !== results.length;
   const auditHint = stockAudit?.verified
     ? (stockAudit.changes?.length
         ? `ปรับยอดพร้อมใช้ตาม Location ใน LIS ล่าสุด ${stockAudit.changes.length} รายการ · ถุงที่อยู่กับ Patient ไม่นับเป็นพร้อมใช้`
@@ -451,11 +445,12 @@ function renderDashboard(data) {
     <div class="simple-kpi-grid">
       <div class="simple-kpi is-alert"><span>ควรเติม</span><strong>${needItems.length}</strong><small>รายการ</small></div>
       <div class="simple-kpi is-good"><span>อยู่ในเกณฑ์</span><strong>${normalItems}</strong><small>รายการ</small></div>
-      <div class="simple-kpi"><span>ใช้ได้จริงรวม</span><strong>${totalNet.toLocaleString()}</strong><small>unit</small></div>
+      <div class="simple-kpi"><span>ใช้ได้จริงรวม</span><strong>${verifiedResults.length === results.length ? totalNet.toLocaleString() : "—"}</strong><small>${verifiedResults.length === results.length ? "unit" : "ยังไม่ยืนยันรายการถุง"}</small></div>
       <div class="simple-kpi"><span>เป้าขั้นต่ำรวม</span><strong>${totalMin.toLocaleString()}</strong><small>unit</small></div>
     </div>
 
-    ${needItems.length ? `
+    ${incompleteStock ? `
+      <div class="attention-strip"><strong>ยังยืนยันสต๊อกพร้อมใช้ไม่ได้</strong><span> กรุณาตรวจ StockRows ใน LIS Snapshot ล่าสุดก่อนใช้ยอดวางแผน</span></div>` : needItems.length ? `
       <div class="attention-strip">
         <div><strong>ต้องดู ${needItems.length} รายการ</strong><span> ${needItems.slice(0,4).map(r => `${r.type} ${r.bloodGroup}`).join(" · ")}${needItems.length > 4 ? " …" : ""}</span></div>
       </div>` : `
@@ -548,7 +543,9 @@ function showConfirmModal(title, message, options = {}) {
 
   // Instant mode: แสดงข้อมูลสรุปล่าสุดจากเครื่องก่อน แล้วค่อย sync Supabase เบื้องหลัง
   // ทำให้การเปิดหน้า Minimum Stock กลับมาไวเหมือนช่วงก่อนย้ายฐานข้อมูล
-  if (cachedData) {
+  const displayedCachedData = Boolean(cachedData && cachedData.stockAudit?.verified === true &&
+      cachedData.results.every(r => r.stockVerified === true));
+  if (displayedCachedData) {
     renderDashboard(cachedData);
   } else {
     topDashboard.innerHTML = `
@@ -561,7 +558,8 @@ function showConfirmModal(title, message, options = {}) {
 
   try {
     const data = await MinimumStockBackend.getDashboard({
-      gasWebAppUrl: WEB_APP_URL
+      gasWebAppUrl: WEB_APP_URL,
+      forceRefresh: true
     });
 
     if (!data.ok) {
@@ -580,14 +578,14 @@ function showConfirmModal(title, message, options = {}) {
       return;
     }
 
-    saveDashboardCache(data);
-    if (!cachedData || !isSameDashboardData(cachedData, data)) {
-      renderDashboard(data);
-    }
+    // Always render reconciled per-bag results, even for the SAME LIS upload.
+    // Identical file/timestamp does NOT imply identical derived inventory.
+    if (data.stockAudit?.verified === true) saveDashboardCache(data);
+    renderDashboard(data);
 
   } catch (err) {
-    if (cachedData) {
-      showStatus("แสดงข้อมูลล่าสุดที่เคยโหลดไว้ก่อน ระบบจะ Sync ใหม่เมื่อเชื่อมต่อได้", true);
+    if (displayedCachedData) {
+      showStatus("แสดงข้อมูลล่าสุดที่เคยตรวจจากรายการถุงไว้ก่อน ระบบจะ Sync ใหม่เมื่อเชื่อมต่อได้", true);
       return;
     }
 
@@ -610,8 +608,10 @@ function renderTabContent() {
   const filtered = results.filter(r => r.type === currentTab);
   const tabContent = document.getElementById("tabContent");
 
+  const valueOrDash = (r, field) => r.stockVerified === false || r[field] == null ? "—" : r[field];
   const statusText = r => {
     const level = String(r.alertLevel || "").toLowerCase();
+    if (level === "unverified") return "รอยืนยันข้อมูล";
     if (level === "critical") return "เติมด่วน";
     if (level === "warning") return "ควรเติม";
     if (level === "overstock") return "สูงกว่าปกติ";
@@ -622,13 +622,15 @@ function renderTabContent() {
   tabContent.innerHTML = `
     <div class="simple-table-card desktop-stock-table">
       <table class="table align-middle mb-0 simple-table">
-        <thead><tr><th>หมู่เลือด</th><th class="text-end">ควรมี</th><th class="text-end">สต๊อกต้นวัน</th><th class="text-end">ขาด / เกิน</th><th>สถานะ</th></tr></thead>
+        <thead><tr><th>หมู่เลือด</th><th class="text-end">ควรมี</th><th class="text-end">พร้อมใช้จริง</th><th class="text-end">รอตรวจ (ไม่นับ)</th><th class="text-end">Patient (ไม่นับ)</th><th class="text-end">ขาด / เกิน</th><th>สถานะ</th></tr></thead>
         <tbody>${filtered.map(r => `
           <tr>
             <td class="fw-bold fs-5">${r.bloodGroup}</td>
             <td class="text-end">${r.minimumStock ?? 0}</td>
-            <td class="text-end fw-bold">${r.netAvailable ?? 0}</td>
-            <td class="text-end fw-bold ${Number(r.gap || 0) < 0 ? "text-danger" : ""}">${Number(r.gap || 0) > 0 ? "+" : ""}${r.gap ?? 0}</td>
+            <td class="text-end fw-bold">${valueOrDash(r, "netAvailable")}</td>
+            <td class="text-end">${valueOrDash(r, "pendingScreening")}</td>
+            <td class="text-end">${valueOrDash(r, "patientManual")}</td>
+            <td class="text-end fw-bold ${Number(r.gap || 0) < 0 ? "text-danger" : ""}">${r.stockVerified === false || r.gap == null ? "—" : `${Number(r.gap) > 0 ? "+" : ""}${r.gap}`}</td>
             <td><span class="action-pill ${getAlertClass(r.alertLevel)}">${statusText(r)}</span></td>
           </tr>`).join("")}</tbody>
       </table>
@@ -640,9 +642,9 @@ function renderTabContent() {
           <div class="stock-mobile-head"><div class="fs-3 fw-bold">Group ${r.bloodGroup}</div><span class="action-pill ${getAlertClass(r.alertLevel)}">${statusText(r)}</span></div>
           <div class="stock-mobile-grid simple-4-grid">
             <div class="stock-mobile-item"><div class="stock-mobile-label">ควรมี</div><div class="stock-mobile-value">${r.minimumStock ?? 0}</div></div>
-            <div class="stock-mobile-item"><div class="stock-mobile-label">ใช้ได้จริง</div><div class="stock-mobile-value">${r.netAvailable ?? 0}</div></div>
-            <div class="stock-mobile-item"><div class="stock-mobile-label">ขาด/เกิน</div><div class="stock-mobile-value">${Number(r.gap || 0) > 0 ? "+" : ""}${r.gap ?? 0}</div></div>
-            <div class="stock-mobile-item"><div class="stock-mobile-label">พร้อมใช้</div><div class="stock-mobile-value">${r.available ?? 0}</div></div>
+            <div class="stock-mobile-item"><div class="stock-mobile-label">พร้อมใช้จริง</div><div class="stock-mobile-value">${valueOrDash(r, "netAvailable")}</div></div>
+            <div class="stock-mobile-item"><div class="stock-mobile-label">รอตรวจ / Patient</div><div class="stock-mobile-value">${valueOrDash(r, "pendingScreening")} / ${valueOrDash(r, "patientManual")}</div></div>
+            <div class="stock-mobile-item"><div class="stock-mobile-label">ขาด/เกิน</div><div class="stock-mobile-value">${r.stockVerified === false || r.gap == null ? "—" : `${Number(r.gap) > 0 ? "+" : ""}${r.gap}`}</div></div>
           </div>
         </div>`).join("")}
     </div>
@@ -653,7 +655,7 @@ function renderTabContent() {
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0 technical-table">
           <thead><tr><th>Group</th><th>Minimum</th><th>พร้อมใช้</th><th>LR</th><th>Patient (ไม่นับ)</th><th>รอตรวจ</th><th>คล้องผู้ป่วย</th><th>S ไม่รวม</th><th>อื่น/ไม่รวม</th><th>ใช้ได้จริง</th></tr></thead>
-          <tbody>${filtered.map(r => `<tr><td><b>${r.bloodGroup}</b></td><td>${r.minimumStock ?? 0}</td><td>${r.available ?? 0}</td><td>${r.lrSpare ?? 0}</td><td>${r.patientManual ?? 0}</td><td>${r.pendingScreening ?? 0}</td><td>${r.readyToIssue ?? 0}</td><td>${r.splitSubunitExcluded ?? 0}</td><td>${r.excludedOtherLocation ?? 0}</td><td><b>${r.netAvailable ?? 0}</b></td></tr>`).join("")}</tbody>
+          <tbody>${filtered.map(r => `<tr><td><b>${r.bloodGroup}</b></td><td>${r.minimumStock ?? 0}</td><td>${valueOrDash(r, "available")}</td><td>${valueOrDash(r, "lrSpare")}</td><td>${valueOrDash(r, "patientManual")}</td><td>${valueOrDash(r, "pendingScreening")}</td><td>${valueOrDash(r, "readyToIssue")}</td><td>${r.splitSubunitExcluded ?? 0}</td><td>${valueOrDash(r, "excludedOtherLocation")}</td><td><b>${valueOrDash(r, "netAvailable")}</b></td></tr>`).join("")}</tbody>
         </table>
       </div>
     </details>

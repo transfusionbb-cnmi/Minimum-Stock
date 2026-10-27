@@ -390,11 +390,20 @@
 
   function normalizeCurrentStockLocation(value) {
     const text = String(value || "").trim().toLowerCase();
-
-    if (/^blood[\s_-]*bank(?:$|[\s_\-/])/i.test(text) || text.includes("คลังเลือด")) return "BLOOD_BANK";
-    if (text === "lr" || /(^|[^a-z])lr([^a-z]|$)/.test(text)) return "LR";
+    // Patient/ward locations take precedence even if their raw LIS label also
+    // contains "Blood Bank". Reserved components are never routine stock.
     if (text.includes("patient") || text.includes("ผู้ป่วย")) return "PATIENT";
+    if (text === "lr" || /(^|[^a-z])lr([^a-z]|$)/.test(text)) return "LR";
+    if (/^blood[\s_-]*bank(?:$|[\s_\-/])/i.test(text) || text.includes("คลังเลือด")) return "BLOOD_BANK";
+    return "OTHER";
+  }
 
+  function normalizeCurrentStockStatus(value) {
+    const status = String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, " ");
+    if (status === "available") return "Available";
+    if (status === "readytoissue" || status === "ready to issue") return "ReadyToIssue";
+    if (status === "in screening process" || status === "inscreeningprocess") return "In Screening Process";
+    if (status === "quarantine") return "Quarantine";
     return "OTHER";
   }
 
@@ -423,7 +432,7 @@
       const productType = String(row[EXCEL_COL.productType] || "").trim();
       const bloodGroup = String(row[EXCEL_COL.bloodGroup] || "").trim();
       const location = String(row[EXCEL_COL.location] || "").trim();
-      const status = String(row[EXCEL_COL.status] || "").trim();
+      const status = normalizeCurrentStockStatus(row[EXCEL_COL.status]);
 
       const isCurrentStock =
         status === "Available" ||
@@ -474,8 +483,16 @@
   function reconcileDashboardCurrentStock(snapshot) {
     const originalResults = Array.isArray(snapshot?.results) ? snapshot.results : [];
     const stockRows = snapshot?.stock_rows ?? snapshot?.stockRows;
+    // Never certify old summary counters as current on-hand when bag-level
+    // source is missing. Unknown is safer than a fabricated numeric stock.
+    const unverified = (reason) => ({
+      results: originalResults.map(row => ({ ...row, available: null,
+        netAvailable: null, gap: null, alertLevel: "Unverified",
+        stockVerified: false, patientManual: null, pendingScreening: null })),
+      stockAudit: { verified: false, reason }
+    });
     if (!Array.isArray(stockRows) || stockRows.length === 0) {
-      return { results: originalResults, stockAudit: { verified: false, reason: "ไม่มีรายการ StockRows สำหรับตรวจระดับถุง" } };
+      return unverified("Snapshot ไม่มี stock_rows จึงยืนยันสต๊อกพร้อมใช้ไม่ได้");
     }
 
     const unique = new Map();
@@ -484,7 +501,7 @@
       const type = String(record?.type || "").trim();
       const bloodGroup = String(record?.bloodGroup || "").trim();
       const bagNo = normalizeBagKey(record?.bagNumber);
-      const status = String(record?.status || "").trim();
+      const status = normalizeCurrentStockStatus(record?.status);
       if (!type || !bloodGroup || !bagNo) { ignoredNoBag++; continue; }
       if (isSplitSubunitBagNumber(bagNo)) continue;
       if (!["Available", "ReadyToIssue", "In Screening Process", "Quarantine"].includes(status)) continue;
@@ -499,7 +516,7 @@
     }
     // Do not certify a zero stock if stock rows are unreadable/without bag identifiers.
     if (unique.size === 0) {
-      return { results: originalResults, stockAudit: { verified: false, reason: "ไม่พบเลขถุงที่ใช้ตรวจสอบได้" } };
+      return unverified("ไม่พบเลขถุงที่ใช้ตรวจสอบได้");
     }
     const byGroup = new Map();
     const groupKey = (type, bloodGroup) => [String(type || "").trim(), String(bloodGroup || "").trim()].join("||");
@@ -548,7 +565,7 @@
         changes.push({ type: row.type, bloodGroup: row.bloodGroup,
           before: Number(row.netAvailable ?? row.available ?? 0), after: netAvailable });
       }
-      return { ...row, ...counts, netAvailable, gap, alertLevel, suggestion, suggestedAction };
+      return { ...row, ...counts, netAvailable, gap, alertLevel, suggestion, suggestedAction, stockVerified: ignoredNoBag === 0 };
     });
     return { results, stockAudit: {
       verified: ignoredNoBag === 0, checkedBags: unique.size, ignoredNoBag, changes,
