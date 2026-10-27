@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "minimum-stock-pwa-v2-9-123-outcome-cohort";
+const CACHE_NAME = "minimum-stock-pwa-v2-9-125-exclude-patient-stock";
 const APP_SHELL = [
   "./",
   "./index.html",

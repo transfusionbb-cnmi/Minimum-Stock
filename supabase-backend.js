@@ -385,13 +385,13 @@
   function isSplitSubunitBagNumber(value) {
     // ถุงย่อย/แบ่งส่วน เช่น .S1, .S2, .S10 ไม่ถือเป็น 1 standard unit
     // ส่วน suffix อื่น เช่น .P5 ของ pooled product ยังนับตามปกติ
-    return /\.S\d+$/i.test(normalizeBagKey(value));
+    return /\.[SU]\.?\d+$/i.test(normalizeBagKey(value));
   }
 
   function normalizeCurrentStockLocation(value) {
     const text = String(value || "").trim().toLowerCase();
 
-    if (text === "blood bank" || text.includes("คลังเลือด")) return "BLOOD_BANK";
+    if (/^blood[\s_-]*bank(?:$|[\s_\-/])/i.test(text) || text.includes("คลังเลือด")) return "BLOOD_BANK";
     if (text === "lr" || /(^|[^a-z])lr([^a-z]|$)/.test(text)) return "LR";
     if (text.includes("patient") || text.includes("ผู้ป่วย")) return "PATIENT";
 
@@ -465,6 +465,95 @@
     });
 
     return Array.from(unique.values());
+  }
+
+  // v2.9.125: reconcile the minimum-stock dashboard against actual per-bag
+  // StockRows from the SAME uploaded LIS snapshot. A patient-reserved bag must
+  // never become a routine available unit, even if an older summary included it.
+  // This does not alter Supabase records, usage history or past KPI calculations.
+  function reconcileDashboardCurrentStock(snapshot) {
+    const originalResults = Array.isArray(snapshot?.results) ? snapshot.results : [];
+    const stockRows = snapshot?.stock_rows ?? snapshot?.stockRows;
+    if (!Array.isArray(stockRows) || stockRows.length === 0) {
+      return { results: originalResults, stockAudit: { verified: false, reason: "ไม่มีรายการ StockRows สำหรับตรวจระดับถุง" } };
+    }
+
+    const unique = new Map();
+    let ignoredNoBag = 0;
+    for (const record of stockRows) {
+      const type = String(record?.type || "").trim();
+      const bloodGroup = String(record?.bloodGroup || "").trim();
+      const bagNo = normalizeBagKey(record?.bagNumber);
+      const status = String(record?.status || "").trim();
+      if (!type || !bloodGroup || !bagNo) { ignoredNoBag++; continue; }
+      if (isSplitSubunitBagNumber(bagNo)) continue;
+      if (!["Available", "ReadyToIssue", "In Screening Process", "Quarantine"].includes(status)) continue;
+      const key = [type, bloodGroup, bagNo.replace(/\.00$/, "")].join("||");
+      const candidate = { ...record, status, location: String(record?.location || "") };
+      const previous = unique.get(key);
+      if (!previous || currentStockStatusPriority(status) > currentStockStatusPriority(previous.status)
+        || (currentStockStatusPriority(status) === currentStockStatusPriority(previous.status)
+          && currentStockLocationPriority(candidate.location) > currentStockLocationPriority(previous.location))) {
+        unique.set(key, candidate);
+      }
+    }
+    // Do not certify a zero stock if stock rows are unreadable/without bag identifiers.
+    if (unique.size === 0) {
+      return { results: originalResults, stockAudit: { verified: false, reason: "ไม่พบเลขถุงที่ใช้ตรวจสอบได้" } };
+    }
+    const byGroup = new Map();
+    const groupKey = (type, bloodGroup) => [String(type || "").trim(), String(bloodGroup || "").trim()].join("||");
+    for (const record of unique.values()) {
+      const key = groupKey(record.type, record.bloodGroup);
+      if (!byGroup.has(key)) {
+        byGroup.set(key, { available: 0, lrSpare: 0, patientManual: 0,
+          pendingScreening: 0, readyToIssue: 0, excludedOtherLocation: 0 });
+      }
+      const bucket = byGroup.get(key);
+      const loc = normalizeCurrentStockLocation(record.location);
+      if (record.status === "Available") {
+        if (loc === "BLOOD_BANK") bucket.available++;
+        else if (loc === "LR") bucket.lrSpare++;
+        else if (loc === "PATIENT") bucket.patientManual++;
+        else bucket.excludedOtherLocation++;
+      } else if (record.status === "ReadyToIssue") {
+        bucket.readyToIssue++;
+      } else if (loc === "BLOOD_BANK") {
+        bucket.pendingScreening++;
+      } else {
+        bucket.excludedOtherLocation++;
+      }
+    }
+
+    const changes = [];
+    const results = originalResults.map(row => {
+      const key = groupKey(row.type, row.bloodGroup);
+      const counts = byGroup.get(key) || { available: 0, lrSpare: 0, patientManual: 0,
+        pendingScreening: 0, readyToIssue: 0, excludedOtherLocation: 0 };
+      const netAvailable = counts.available;
+      const minimumStock = Number(row.minimumStock || 0);
+      const gap = netAvailable - minimumStock;
+      let alertLevel = "Normal", suggestion = "เพียงพอ", suggestedAction = "ติดตาม stock ตามรอบปกติ";
+      if (gap <= -5) {
+        alertLevel = "Critical"; suggestion = "ต่ำกว่า Minimum มาก"; suggestedAction = "ควรพิจารณาเติม stock โดยเร็ว";
+      } else if (gap < 0) {
+        alertLevel = "Warning"; suggestion = "ต่ำกว่า Minimum"; suggestedAction = "ควรพิจารณาเติม stock";
+      } else if (gap === 0) {
+        alertLevel = "Watch"; suggestion = "พอดี Minimum"; suggestedAction = "ควรเฝ้าระวังใกล้ชิด";
+      } else if (minimumStock > 0 && gap > minimumStock * 3) {
+        alertLevel = "Overstock"; suggestion = "สูงกว่า Minimum มาก";
+        suggestedAction = "ระวังหมดอายุ / พิจารณาชะลอการเติม stock";
+      }
+      if (Number(row.netAvailable ?? row.available ?? 0) !== netAvailable) {
+        changes.push({ type: row.type, bloodGroup: row.bloodGroup,
+          before: Number(row.netAvailable ?? row.available ?? 0), after: netAvailable });
+      }
+      return { ...row, ...counts, netAvailable, gap, alertLevel, suggestion, suggestedAction };
+    });
+    return { results, stockAudit: {
+      verified: ignoredNoBag === 0, checkedBags: unique.size, ignoredNoBag, changes,
+      reason: ignoredNoBag ? "บางรายการไม่มีเลขถุง จึงยังไม่รับรองยอด" : "นับจาก StockRows ตามสถานะและ Location ของถุงจริง"
+    } };
   }
 
   function calculateMinimumStock(dataRows) {
@@ -2361,11 +2450,16 @@
   async function getDashboard(options = {}) {
     if (!isConfigured()) return fallbackGetDashboard(options.gasWebAppUrl);
 
+    // Full snapshot contains stock_rows for one-to-one verification of
+    // Location Patient/ReadyToIssue. Summary JSON alone cannot prove availability.
     const snapshot = await getLatestSnapshot({
-      full: false,
+      full: true,
       forceRefresh: Boolean(options.forceRefresh)
     });
-    return toDashboard(snapshot);
+    const dashboard = toDashboard(snapshot);
+    if (!snapshot) return dashboard;
+    const checked = reconcileDashboardCurrentStock(snapshot);
+    return { ...dashboard, results: checked.results, stockAudit: checked.stockAudit };
   }
 
   async function getMobilePlanning(options = {}) {
@@ -2548,13 +2642,13 @@
       p_blood_groups: f.bloodGroups.length ? f.bloodGroups : null,
       p_rhs: f.rhs.length ? f.rhs : null
     };
-    // v2.9.123: use the globally anchored Bag Family report when the approved
+    // v2.9.124: use private snapshot-backed Bag Family report when the approved
     // Supabase activation SQL has been installed. A missing function falls back
     // to legacy, never silently replace a genuine calculation/permission error.
-    const canonical = await client.rpc("minimum_stock_outreach_master_report_v29123", params);
+    const canonical = await client.rpc("minimum_stock_outreach_master_report_v29124", params);
     if (!canonical.error) return { ...(canonical.data || { summary: {}, groups: [], sources: [] }), __canonical: true };
     if (!/Could not find the function|PGRST202|42883|does not exist/i.test(String(canonical.error.message || canonical.error.code || ""))) {
-      throw new Error("รายงาน Bag Family v2.9.123 ไม่สำเร็จ: " + canonical.error.message);
+      throw new Error("รายงาน Bag Family v2.9.124 ไม่สำเร็จ: " + canonical.error.message);
     }
     let { data, error } = await client.rpc("minimum_stock_outreach_master_report_v2934", params);
     const missing = error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""));
@@ -2592,11 +2686,11 @@
       p_blood_groups: f.bloodGroups.length ? f.bloodGroups : null,
       p_rhs: f.rhs.length ? f.rhs : null
     };
-    // Keep trend and summary on the same canonical cohort assignment.
-    const canonical = await client.rpc("minimum_stock_outreach_monthly_trend_v29123", params);
+    // Keep trend and summary on the same indexed cached family cohort assignment.
+    const canonical = await client.rpc("minimum_stock_outreach_monthly_trend_v29124", params);
     if (!canonical.error) return { ...(canonical.data || { year: safeYear, years: [], months: [] }), __canonical: true };
     if (!/Could not find the function|PGRST202|42883|does not exist/i.test(String(canonical.error.message || canonical.error.code || ""))) {
-      throw new Error("แนวโน้ม Bag Family v2.9.123 ไม่สำเร็จ: " + canonical.error.message);
+      throw new Error("แนวโน้ม Bag Family v2.9.124 ไม่สำเร็จ: " + canonical.error.message);
     }
     let { data, error } = await client.rpc("minimum_stock_outreach_monthly_trend_v2934", params);
     const missing = error && /Could not find the function|PGRST202|does not exist/i.test(String(error.message || error.code || ""));
@@ -3632,6 +3726,7 @@
     _internal: {
       parseExcelFile,
       calculateMinimumStock,
+      reconcileDashboardCurrentStock,
       buildLatestStockDetail,
       buildLatestUsageHistory,
       buildLatestInHistory,

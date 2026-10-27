@@ -299,6 +299,7 @@ function saveDashboardCache(data) {
       releasedRows: Number(data.releasedRows || 0),
       resultRows: Number(data.resultRows || (data.results || []).length || 0),
       results: data.results || [],
+      stockAudit: data.stockAudit || null,
       cachedAt: new Date().toISOString()
     };
     localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(slim));
@@ -428,6 +429,12 @@ function renderDashboard(data) {
   const overstockItems = results.filter(r => String(r.alertLevel || "").toLowerCase() === "overstock");
   const normalItems = Math.max(0, results.length - needItems.length - overstockItems.length);
   const topDashboard = document.getElementById("topDashboard");
+  const stockAudit = data.stockAudit;
+  const auditHint = stockAudit?.verified
+    ? (stockAudit.changes?.length
+        ? `ปรับยอดพร้อมใช้ตาม Location ใน LIS ล่าสุด ${stockAudit.changes.length} รายการ · ถุงที่อยู่กับ Patient ไม่นับเป็นพร้อมใช้`
+        : `ตรวจจากรายการถุงใน LIS ล่าสุดแล้ว · Location Patient และถุงที่จองผู้ป่วยไม่นับเป็นพร้อมใช้`)
+    : `ยอดพร้อมใช้ยังไม่ผ่านการตรวจระดับถุง: ${stockAudit?.reason || "กรุณาตรวจสอบ LIS ล่าสุด"}`;
 
   topDashboard.innerHTML = `
     <div class="simple-page-head">
@@ -438,6 +445,8 @@ function renderDashboard(data) {
       </div>
       <button class="btn btn-main no-print" onclick="scrollToUpload()">อัปเดต LIS</button>
     </div>
+
+    <div class="small-muted mb-2">${escapeOutreachHtml(auditHint)}</div>
 
     <div class="simple-kpi-grid">
       <div class="simple-kpi is-alert"><span>ควรเติม</span><strong>${needItems.length}</strong><small>รายการ</small></div>
@@ -640,10 +649,10 @@ function renderTabContent() {
 
     <details class="simple-details mt-3">
       <summary>ดูรายละเอียดวิธีนับ ${currentTab}</summary>
-      <div class="small-muted pt-3 pb-2">พร้อมใช้ = Available ที่ Blood Bank · คล้องผู้ป่วย = ReadyToIssue · ถุงย่อย .S1/.S2 ไม่รวม standard unit</div>
+      <div class="small-muted pt-3 pb-2">พร้อมใช้ = Status Available และ Location Blood Bank เท่านั้น · Patient/LR และ ReadyToIssue ไม่รวม · ถุงย่อย .S/.U ไม่รวม standard unit</div>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0 technical-table">
-          <thead><tr><th>Group</th><th>Minimum</th><th>พร้อมใช้</th><th>LR</th><th>Patient</th><th>รอตรวจ</th><th>คล้องผู้ป่วย</th><th>S ไม่รวม</th><th>อื่น/ไม่รวม</th><th>ใช้ได้จริง</th></tr></thead>
+          <thead><tr><th>Group</th><th>Minimum</th><th>พร้อมใช้</th><th>LR</th><th>Patient (ไม่นับ)</th><th>รอตรวจ</th><th>คล้องผู้ป่วย</th><th>S ไม่รวม</th><th>อื่น/ไม่รวม</th><th>ใช้ได้จริง</th></tr></thead>
           <tbody>${filtered.map(r => `<tr><td><b>${r.bloodGroup}</b></td><td>${r.minimumStock ?? 0}</td><td>${r.available ?? 0}</td><td>${r.lrSpare ?? 0}</td><td>${r.patientManual ?? 0}</td><td>${r.pendingScreening ?? 0}</td><td>${r.readyToIssue ?? 0}</td><td>${r.splitSubunitExcluded ?? 0}</td><td>${r.excludedOtherLocation ?? 0}</td><td><b>${r.netAvailable ?? 0}</b></td></tr>`).join("")}</tbody>
         </table>
       </div>
